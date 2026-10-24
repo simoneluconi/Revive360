@@ -1,0 +1,4 @@
+0755 /usr/share/g360r/boot.sh
+0755 /usr/share/g360r/g360rd
+0755 /usr/share/g360r/launcher.sh
+0644 /usr/share/g360r/netup.sh

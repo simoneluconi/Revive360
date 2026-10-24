@@ -1,0 +1,10 @@
+[Unit]
+Description=Revive360 companion controller (runs only when the SD has g360r/g360r.conf)
+After=di-camera-app.service
+
+[Service]
+Type=simple
+ExecStart=/usr/share/g360r/boot.sh
+
+[Install]
+WantedBy=default.target

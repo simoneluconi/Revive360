@@ -31,7 +31,7 @@ G360R_DHCP_LO=192.168.107.10
 G360R_DHCP_HI=192.168.107.50
 G360R_MAC_FILE=/opt/etc/.mac.info
 # STA-stack units that may own wlan0 and must be stopped before hostapd takes it.
-G360R_STA_UNITS="connman wpa_supplicant net-config"
+G360R_STA_UNITS="connman wpa_supplicant net-config mobileap-agent"
 
 _netup_dir=/tmp/g360r
 _netup_hostapd_conf=$_netup_dir/hostapd.conf
@@ -288,16 +288,62 @@ _netup_start_dhcp() {
     return 1
 }
 
-# Supervisor tick: keep BOTH hostapd and dnsmasq alive (hostapd runs the AP, dnsmasq
-# the DHCP server). If hostapd died, the AP is gone, so restart it first.
-dhcp_check() {
-    if ! _netup_hostapd_running; then
-        log "netup: hostapd not running, restarting"
-        _netup_start_hostapd
-        _netup_import_hostapd_log
+# --- resume-safety ------------------------------------------------------------------
+# This controller is frozen into the hibernation snapshot and thawed on every boot
+# (see docs/firmware/10). Across snapshot->resume the device power-cycles, so the dhd
+# chip / wlan0 / hostapd are RESET: a frozen hostapd PID reappears in /proc but the
+# radio is dead. So the health check must verify AP RADIO state, not pid-alive, and on
+# failure tear down and re-run the FULL bring-up fresh (idempotent).
+
+# Quiet radio check (no logrun; used on every supervisor tick). 0=AP up, 1=not, 2=wl absent.
+_netup_wl_ap_quiet() {
+    [ -x /usr/bin/wl ] || return 2
+    ap=$(/usr/bin/wl ap 2>/dev/null | tr -cd '0-9')
+    [ "$ap" = "1" ] && return 0
+    /usr/bin/wl status 2>/dev/null | grep -qiE "BSS .*(up|started)|AP .*up|SSID.*$AP_SSID" && return 0
+    return 1
+}
+
+# True only if the AP is really serving: hostapd alive AND iface UP AND radio in AP mode
+# (or hostapd's own AP-ENABLED when wl is unavailable) AND dnsmasq alive.
+_netup_ap_healthy() {
+    _netup_hostapd_running || return 1
+    case "$("$BIN" ifflags "$G360R_AP_IF" 2>/dev/null)" in *UP*) : ;; *) return 1 ;; esac
+    # `wl ap` is advisory only: its answer under cfg80211/hostapd is not confirmed on the
+    # hardware, and a false "not AP" here would drop the phone every 5 s
+    if ! _netup_wl_ap_quiet && [ "$_netup_wl_warned" != 1 ]; then
+        log "netup: wl does not report AP mode (advisory, AP kept)"
+        _netup_wl_warned=1
     fi
-    _netup_dhcp_running && return 0
-    pgrep -f "dnsmasq -C $_netup_dhcp_conf" >/dev/null 2>&1 && return 0
-    log "netup: dnsmasq not running, restarting"
-    _netup_start_dhcp
+    _netup_dhcp_running || pgrep -f "dnsmasq -C $_netup_dhcp_conf" >/dev/null 2>&1 || return 1
+    return 0
+}
+
+# Idempotent tear-down: kill our hostapd + dnsmasq so the fresh bring-up owns the iface.
+# (wlan.sh stop is left to netup()'s _netup_load_apsta_fw, which runs it before softap.)
+_netup_teardown() {
+    log "netup: tearing down AP for a fresh bring-up"
+    [ -f "$_netup_hostapd_pid" ] && { p=$(cat "$_netup_hostapd_pid" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; }
+    pkill -f "hostapd -dd $_netup_hostapd_conf" 2>/dev/null
+    [ -f "$_netup_dhcp_pid" ] && { p=$(cat "$_netup_dhcp_pid" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; }
+    pkill -f "dnsmasq -C $_netup_dhcp_conf" 2>/dev/null
+    rm -f "$_netup_hostapd_pid" "$_netup_dhcp_pid" 2>/dev/null
+}
+
+# Supervisor tick (called every ~5 s): verify AP radio health and, if down, tear down +
+# re-run the full bring-up. No wall-clock heuristic: the app sets the camera clock on
+# every connection (POST /api/v1/time), a jump of years that must not drop the AP.
+_netup_wl_warned=0
+_netup_last_reinit=0
+
+dhcp_check() {
+    if ! _netup_ap_healthy; then
+        now=$(cut -d. -f1 /proc/uptime)
+        # At most one full re-init a minute (monotonic uptime, not the wall clock)
+        [ $((now - _netup_last_reinit)) -lt 60 ] && return 1
+        _netup_last_reinit=$now
+        log "netup: AP not healthy (radio/iface/dhcp down) - re-bringing up"
+        _netup_teardown; netup; return $?
+    fi
+    return 0
 }

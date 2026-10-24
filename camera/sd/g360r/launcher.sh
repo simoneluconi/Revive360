@@ -1,10 +1,14 @@
 #!/bin/sh
-# Revive360 - launcher (runs from /tmp/g360r, started by start.sh).
+# Revive360 - launcher (runs from /tmp/g360r, started by start.sh from the
+# factory SD hook, or by boot.sh from the modified firmware with G360R_MODE=normal).
+#
+# Normal mode: the stock app is alive, pets the watchdog and runs its own power
+# policy, so steps 0 and 1 are skipped there.
 #
 # Sequence (every step is logged with a timestamp to /sdcard/g360r/log/g360r.log):
 #   0. disable the hardware watchdog (kept off by the supervisor)
 #   1. reset the factory-mode low-battery auto-off (vconf, volatile memory/ key)
-#   2. one beep (shell-side LED blink disabled until led.N is identified)
+#   2. status LED blue via `st app 360 led` (never raw led.N), one beep
 #   3. optional LED mapping diagnostic (ledtest=1 in g360r.conf)
 #   4. wait for wlan0, bring up our softAP (netup.sh: pluggable strategies)
 #   5. start the HTTP server (g360rd serve), two beeps
@@ -26,10 +30,11 @@ WAV_OK="$SND_DIR/04_N_OK.wav"
 WAV_ERR="$SND_DIR/05_N_Cancel.wav"
 VCONF_KEY=memory/sysman/battery_skip_low_batt_power_off
 WDT=/sys/devices/platform/jack/set_watchdog
+MODE=${G360R_MODE:-factory}
 
 # Hardware watchdog off before anything else (start.sh already did it; this
 # covers an older start.sh on the card). See watchdog_off below.
-[ -e "$WDT" ] && echo 0 > "$WDT" 2>/dev/null
+[ "$MODE" = factory ] && [ -e "$WDT" ] && echo 0 > "$WDT" 2>/dev/null
 
 mkdir -p "$RUN" "$LOGDIR" 2>/dev/null
 echo $$ > "$RUN/launcher.pid"
@@ -85,19 +90,39 @@ beep() {
 # SoC in a loop (Test 1). Kept at 0 for the whole session: re-written on every
 # supervisor tick in case di-camera-app re-arms it.
 watchdog_off() {
+    [ "$MODE" = factory ] || return 0
     [ -e "$WDT" ] || return 1
     echo 0 > "$WDT" 2>/dev/null
 }
 
-# Shell-side "starting" LED indication: disabled. The old version wrote
-# trigger=timer to every /sys/class/leds/led.N, but led.0..4 are not identified
-# yet (one may be a GPIO that is not an LED). Use `st app led` / `st app 360 led`
-# for feedback once their arguments are known; until then this is a no-op.
-leds_blink() {   # on_ms off_ms
-    :
+# Shell-side LED indication through di-camera-app's factory command
+#   st app 360 led <status|front|rear> <r|g|b> <on|off>
+# which maps logical LEDs to the right GPIOs itself. We never write the raw
+# /sys/class/leds/led.N here: they are not identified yet and one may be a GPIO
+# that is not an LED. Each st call runs in the background and is killed after
+# 5 s, so a stuck message queue cannot block the launcher.
+st_bg() {
+    [ -x /usr/bin/st ] || return 0
+    ( /usr/bin/st "$@" >/dev/null 2>&1 &
+      p=$!; sleep 5; kill "$p" 2>/dev/null ) &
+}
+
+# status_led starting|ready|error: blue / green / red on the status LED.
+status_led() {
+    case "$1" in
+        starting) on=b ;;
+        ready)    on=g ;;
+        *)        on=r ;;
+    esac
+    log "status LED: $1 (st app 360 led status $on on)"
+    for c in r g b; do
+        [ "$c" = "$on" ] || st_bg app 360 led status "$c" off
+    done
+    st_bg app 360 led status "$on" on
 }
 
 vconf_reset() {
+    [ "$MODE" = factory ] || return 0
     cur=$(vconftool get "$VCONF_KEY" 2>&1)
     case "$cur" in
         *"value = 0"*) return 0 ;;
@@ -109,8 +134,10 @@ vconf_reset() {
 
 # ------------------------------------------------------------ start
 
-milestone "launcher start (pid $$)"
-if watchdog_off; then
+milestone "launcher start (pid $$, $MODE mode)"
+if [ "$MODE" != factory ]; then
+    log "watchdog: left to the stock app ($MODE mode)"
+elif watchdog_off; then
     log "watchdog: $WDT set to 0 (reads: $(cat "$WDT" 2>&1))"
 else
     log "WARNING: watchdog control $WDT missing - expect a reset ~30 s after boot"
@@ -126,7 +153,7 @@ sed 's/^\([[:space:]]*psk[[:space:]]*=\).*/\1********/' "$CONF" 2>/dev/null | gr
 log "cgroup: $(tr '\n' ' ' < /proc/self/cgroup)"
 
 vconf_reset
-leds_blink 1000 1000
+status_led starting
 beep 1 "$WAV_OK"
 
 logrun ls -la /sys/class/leds/
@@ -144,14 +171,18 @@ if [ "$(cfg ledtest 0)" = "1" ]; then
     milestone "LED diagnostic (ledtest=1)"
     "$BIN" ledtest --log "$LOG" --beep "$WAV_OK" >/dev/null 2>&1
     milestone "LED diagnostic done"
-    leds_blink 1000 1000
+    status_led starting
 fi
 
 # ------------------------------------------------------------ network
 
+# In normal mode the stock stack may keep Wi-Fi off (no wlan0): netup loads the
+# driver itself, so a short wait is enough there
 milestone "waiting for wlan0"
+wlan_wait=60
+[ "$MODE" = factory ] || wlan_wait=5
 i=0
-while [ ! -d /sys/class/net/wlan0 ] && [ $i -lt 60 ]; do sleep 1; i=$((i + 1)); done
+while [ ! -d /sys/class/net/wlan0 ] && [ $i -lt $wlan_wait ]; do sleep 1; i=$((i + 1)); done
 log "wlan0 present after ${i}s: $([ -d /sys/class/net/wlan0 ] && echo yes || echo NO)"
 
 # The softAP bring-up lives in netup.sh (not part of this delivery yet). It
@@ -186,12 +217,15 @@ sleep 2
 if kill -0 "$SERVER_PID" 2>/dev/null; then
     if [ -z "$NET_ERROR" ]; then
         milestone "READY: join Wi-Fi '$AP_SSID' and open http://$AP_IP:$PORT/api/v1/info"
+        status_led ready
         beep 2 "$WAV_OK"
     else
+        status_led error
         beep 3 "$WAV_ERR"
     fi
 else
     milestone "server died immediately (see g360rd.stderr)"
+    status_led error
     beep 3 "$WAV_ERR"
 fi
 

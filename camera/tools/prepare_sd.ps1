@@ -4,16 +4,22 @@
 #   ... -Drive E: -NewPsk          generate a new passphrase even if one exists
 #   ... -Drive E: -LedTest on|off  enable/disable the LED mapping diagnostic
 #   ... -Drive E: -SelfTest on|off on-camera API self-test (takes 3 real shots)
+#   ... -Drive E: -Normal          card for the modified firmware (camera\fw\README.md):
+#                                  no factory trigger files; existing ones are renamed *.off
+#   ... -Drive E: -KeepAwake on|off sdb.conf at the root: disables the stock idle
+#                                  auto power-off (for tests)
 #
-# Copies the trigger files (info.tg, cmd.tg) to the card root and the payload to
-# <card>\g360r\. Creates g360r\g360r.conf with a random 8-digit passphrase on
+# Copies the trigger files (info.tg, cmd.tg; not with -Normal) to the card root and the
+# payload to <card>\g360r\. Creates g360r\g360r.conf with a random 8-digit passphrase on
 # first use (kept on later runs) and prints it: enter it once in the app.
 # Files on the card get LF line endings (the camera's bash rejects CRLF).
 param(
     [Parameter(Mandatory = $true)][string]$Drive,
     [switch]$NewPsk,
     [ValidateSet('', 'on', 'off')][string]$LedTest = '',
-    [ValidateSet('', 'on', 'off')][string]$SelfTest = ''
+    [ValidateSet('', 'on', 'off')][string]$SelfTest = '',
+    [switch]$Normal,
+    [ValidateSet('', 'on', 'off')][string]$KeepAwake = ''
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -33,8 +39,19 @@ function Write-Lf([string]$path, [string]$text) {
 
 New-Item -ItemType Directory -Force (Join-Path $root 'g360r\bin') | Out-Null
 New-Item -ItemType Directory -Force (Join-Path $root 'g360r\log') | Out-Null
-Copy-Item (Join-Path $src 'info.tg') $root -Force
-Copy-Item (Join-Path $src 'cmd.tg') $root -Force
+if ($Normal) {
+    # info.tg at the root would start the factory-mode hook instead of the normal camera
+    foreach ($t in @('info.tg', 'cmd.tg')) {
+        $p = Join-Path $root $t
+        if (Test-Path $p) { Move-Item $p "$p.off" -Force; Write-Host "  renamed $t -> $t.off" }
+    }
+} else {
+    Copy-Item (Join-Path $src 'info.tg') $root -Force
+    Copy-Item (Join-Path $src 'cmd.tg') $root -Force
+}
+$sdb = Join-Path $root 'sdb.conf'
+if ($KeepAwake -eq 'on')  { Write-Lf $sdb '' }
+if ($KeepAwake -eq 'off' -and (Test-Path $sdb)) { Remove-Item $sdb -Force }
 Get-ChildItem (Join-Path $src 'g360r') -File | ForEach-Object { Copy-Item $_.FullName (Join-Path $root 'g360r') -Force }
 Copy-Item (Join-Path $src 'g360r\bin\g360rd') (Join-Path $root 'g360r\bin\g360rd') -Force
 
@@ -82,5 +99,7 @@ Write-Host "  SSID             : G360R-XXXXXX (last 6 hex digits of the camera's
 Write-Host "  LED diagnostic   : $ledState"
 $selfState = if ($text -match '(?m)^selftest=1') { 'ON (3 real shots after boot)' } else { 'off' }
 Write-Host "  API self-test    : $selfState"
+Write-Host "  Mode             : $(if ($Normal) { 'normal (modified firmware)' } else { 'factory SD hook (info.tg)' })"
+Write-Host "  Idle power-off   : $(if (Test-Path $sdb) { 'DISABLED (sdb.conf)' } else { 'stock' })"
 Write-Host "  Logs after a run : $($root)g360r\log\"
 Write-Host 'Eject the card safely before removing it.'
