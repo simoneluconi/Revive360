@@ -189,6 +189,10 @@ void api_status(req_t *r)
         sbuf_puts(&b, ",");
     }
     storage_json(&b);
+    if (g_srv.ad.record) {
+        sbuf_puts(&b, ",\"recording\":");
+        recording_json(&b);
+    }
     sbuf_printf(&b, ",\"busy\":%s,\"uptime_s\":%lld}", g_srv.busy ? "true" : "false",
                 (long long)((now_ms_mono() - g_srv.start_ms) / 1000));
     http_send_json(r, 200, &b);

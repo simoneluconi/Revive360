@@ -20,6 +20,15 @@
 
 #define MAX_LEDS   8
 #define MAX_LIST   8
+#define MAX_SETTINGS        10
+#define MAX_SETTING_VALUES  16
+
+/* One camera setting of protocol §5.12: id and accepted tokens. */
+typedef struct {
+    const char *id;                              /* mode, lens, video_size ... */
+    const char *values[MAX_SETTING_VALUES];
+    int n_values;
+} setting_def_t;
 
 typedef struct {
     char id[16];          /* opaque protocol id, e.g. "led0" */
@@ -65,6 +74,16 @@ struct adapter {
     int (*trigger_capture)(adapter_t *a, int mode, const char *quality,
                            const char *resolution, char *err, size_t errlen);
 
+    /* Settings (§5.12). get: current token into out, 0; -1 = unknown (null).
+     * set: value is already validated against the definition; 0 or -1 + err. */
+    setting_def_t settings[MAX_SETTINGS]; int n_settings;
+    int (*get_setting)(adapter_t *a, const char *id, char *out, size_t outlen);
+    int (*set_setting)(adapter_t *a, const char *id, const char *value, char *err, size_t errlen);
+
+    /* Video recording (§5.13), NULL = unsupported. start=1/0. Returns once the
+     * request was made; the files are found by the caller polling DCIM. */
+    int (*record)(adapter_t *a, int start, char *err, size_t errlen);
+
     void *priv;                 /* adapter-private state (sim dir ...) */
 };
 
@@ -81,6 +100,10 @@ int mode_from_name(const char *s);
 void adapter_read_info_ini(const char *path, char *model_raw, size_t mlen, char *build, size_t blen);
 void adapter_discover_leds(adapter_t *a, const char *leds_dir, int max, const config_t *cfg);
 int  adapter_storage_mounted(const adapter_t *a);
+
+/* Adds one Gear 360 setting (mode, lens, photo_size, video_size, timer,
+ * timelapse_interval, loop_time) with its protocol tokens. */
+void adapter_add_360_setting(adapter_t *a, const char *id);
 
 /* Adapter constructors (adapter_*.c) */
 void adapter_c200_init(adapter_t *a, const config_t *cfg);

@@ -178,3 +178,43 @@ int adapter_detect(adapter_t *a, const char *forced, const char *sim_dir, const 
     LOGI("adapter: selected %s (%s), model %s, storage %s", a->id, a->status, a->model, a->storage_root);
     return 0;
 }
+
+/* ------------------------------------------------------------ 360 settings */
+
+static void def(adapter_t *a, const char *id, const char *const *v, int n)
+{
+    setting_def_t *d;
+    if (a->n_settings >= MAX_SETTINGS)
+        return;
+    d = &a->settings[a->n_settings++];
+    d->id = id;
+    d->n_values = n < MAX_SETTING_VALUES ? n : MAX_SETTING_VALUES;
+    for (int i = 0; i < d->n_values; i++)
+        d->values[i] = v[i];
+}
+
+/* Protocol tokens (§5.12) of the Gear 360 settings. Each adapter adds the ones
+ * it can drive, in display order. The video sizes are the stock list; the
+ * firmware's extra ones (2880x1440, 2560x1280@60/@24, 1080p60) come later. */
+const char *const SET360_MODE[] = { "photo", "video", "timelapse", "looping" };
+const char *const SET360_LENS[] = { "dual", "rear", "front" };
+const char *const SET360_PHOTO_SIZE[] = { "dual_large", "dual_small", "single_large", "single_wide" };
+const char *const SET360_VIDEO_SIZE[] = { "3840x1920@30", "2560x1280@30", "1920x960@30",
+                                          "2560x1440@30", "1920x1080@30", "1280x720@30" };
+/* timer: the C200 menu has off + 3 presets, the order of 2/5/10 is unconfirmed */
+const char *const SET360_TIMER[] = { "off", "2", "5", "10" };
+const char *const SET360_TIMELAPSE[] = { "0.5", "1", "2", "5", "10", "20", "30", "60" };
+const char *const SET360_LOOP[] = { "5", "20", "60", "max" };
+
+#define N(x) ((int)(sizeof x / sizeof x[0]))
+
+void adapter_add_360_setting(adapter_t *a, const char *id)
+{
+    if (strcmp(id, "mode") == 0) def(a, id, SET360_MODE, N(SET360_MODE));
+    else if (strcmp(id, "lens") == 0) def(a, id, SET360_LENS, N(SET360_LENS));
+    else if (strcmp(id, "photo_size") == 0) def(a, id, SET360_PHOTO_SIZE, N(SET360_PHOTO_SIZE));
+    else if (strcmp(id, "video_size") == 0) def(a, id, SET360_VIDEO_SIZE, N(SET360_VIDEO_SIZE));
+    else if (strcmp(id, "timer") == 0) def(a, id, SET360_TIMER, N(SET360_TIMER));
+    else if (strcmp(id, "timelapse_interval") == 0) def(a, id, SET360_TIMELAPSE, N(SET360_TIMELAPSE));
+    else if (strcmp(id, "loop_time") == 0) def(a, id, SET360_LOOP, N(SET360_LOOP));
+}

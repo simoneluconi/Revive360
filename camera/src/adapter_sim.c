@@ -27,6 +27,8 @@
 
 typedef struct {
     char dir[256];
+    char setting[MAX_SETTINGS][32];     /* current token per a->settings[i] */
+    int recording;
 } sim_t;
 
 /* ------------------------------------------------------- tiny JPEG */
@@ -278,6 +280,72 @@ static int sim_capture(adapter_t *a, int mode, const char *quality,
     return 0;
 }
 
+/* ------------------------------------------------------- settings, record */
+
+static int setting_index(const adapter_t *a, const char *id)
+{
+    for (int i = 0; i < a->n_settings; i++)
+        if (strcmp(a->settings[i].id, id) == 0)
+            return i;
+    return -1;
+}
+
+static int sim_get_setting(adapter_t *a, const char *id, char *out, size_t outlen)
+{
+    sim_t *s = a->priv;
+    int i = setting_index(a, id);
+    if (i < 0)
+        return -1;
+    snprintf(out, outlen, "%s", s->setting[i]);
+    return 0;
+}
+
+/* SIM_SETTING_FAIL in the sim dir makes every set fail (tests the 500 path) */
+static int sim_set_setting(adapter_t *a, const char *id, const char *value, char *err, size_t errlen)
+{
+    sim_t *s = a->priv;
+    char flag[300];
+    int i = setting_index(a, id);
+    snprintf(flag, sizeof flag, "%s/SIM_SETTING_FAIL", s->dir);
+    if (i < 0 || file_exists(flag)) {
+        snprintf(err, errlen, "sim refused %s", id);
+        return -1;
+    }
+    snprintf(s->setting[i], sizeof s->setting[i], "%s", value);
+    LOGI("sim: %s = %s", id, value);
+    return 0;
+}
+
+/* Start: nothing to do. Stop: write a small MP4 in DCIM/100VIDEO. */
+static int sim_record(adapter_t *a, int start, char *err, size_t errlen)
+{
+    sim_t *s = a->priv;
+    char dir[512], path[600];
+    FILE *fp;
+
+    s->recording = start;
+    if (start)
+        return 0;
+    snprintf(dir, sizeof dir, "%s/DCIM/100VIDEO", a->storage_root);
+    if (mkdir_p(dir, 0755) < 0) {
+        snprintf(err, errlen, "cannot create %s", dir);
+        return -1;
+    }
+    snprintf(path, sizeof path, "%s/360_%04d.MP4", dir, next_number(dir));
+    fp = fopen(path, "wb");
+    if (!fp) {
+        snprintf(err, errlen, "cannot write %s", path);
+        return -1;
+    }
+    /* a minimal ftyp box, then padding */
+    fwrite("\0\0\0\x18" "ftypmp42\0\0\0\0mp42isom", 1, 24, fp);
+    for (int i = 0; i < 4096; i++)
+        fputc(0, fp);
+    fclose(fp);
+    LOGI("sim: recorded %s", path);
+    return 0;
+}
+
 /* ------------------------------------------------------- setup */
 
 static void ensure_file(const char *path, const char *content)
@@ -372,6 +440,18 @@ int adapter_sim_init(adapter_t *a, const char *dir, const config_t *cfg)
     a->files_delete = 1;
     a->thumbnails = 1;
     a->trigger_capture = sim_capture;
+    /* Every Gear 360 setting, starting at its first token (photo, dual ...) */
+    {
+        static const char *const ids[] = { "mode", "lens", "photo_size", "video_size", "timer",
+                                           "timelapse_interval", "loop_time" };
+        for (i = 0; i < (int)(sizeof ids / sizeof ids[0]); i++)
+            adapter_add_360_setting(a, ids[i]);
+        for (i = 0; i < a->n_settings; i++)
+            snprintf(s->setting[i], sizeof s->setting[i], "%s", a->settings[i].values[0]);
+    }
+    a->get_setting = sim_get_setting;
+    a->set_setting = sim_set_setting;
+    a->record = sim_record;
     snprintf(p, sizeof p, "%s/sys/class/leds", dir);
     adapter_discover_leds(a, p, 5, cfg);
     LOGI("adapter: sim rooted at %s", dir);

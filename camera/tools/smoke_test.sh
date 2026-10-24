@@ -185,6 +185,43 @@ check "time too old 400" 400 "$(req POST /api/v1/time -d '{"utc_ms":1000,"tz_off
 check "time missing 400" 400 "$(req POST /api/v1/time -d '{"tz_offset_min":0}')"
 check "time GET 405" 405 "$(req GET /api/v1/time)"
 
+echo "== settings"
+req GET /api/v1/info >/dev/null
+contains "caps settings" "$T/body" '"settings":\[{"id":"mode","values":\["photo","video","timelapse","looping"\]}'
+contains "caps record" "$T/body" '"record":true'
+check "settings GET 200" 200 "$(req GET /api/v1/settings)"
+contains "settings defaults" "$T/body" '"mode":"photo","lens":"dual"'
+check "settings POST 200" 200 "$(req POST /api/v1/settings -d '{"lens":"rear","video_size":"2560x1280@30"}')"
+contains "settings applied" "$T/body" '"lens":"rear","photo_size":"dual_large","video_size":"2560x1280@30"'
+check "settings unknown id 400" 400 "$(req POST /api/v1/settings -d '{"iso":"100"}')"
+check "settings bad token 400" 400 "$(req POST /api/v1/settings -d '{"lens":"left","mode":"video"}')"
+req GET /api/v1/settings >/dev/null
+contains "nothing changed on 400" "$T/body" '"mode":"photo"'
+touch "$SIM/SIM_SETTING_FAIL"
+check "settings refused 500" 500 "$(req POST /api/v1/settings -d '{"timer":"5"}')"
+rm -f "$SIM/SIM_SETTING_FAIL"
+check "settings DELETE 405" 405 "$(req DELETE /api/v1/settings)"
+
+echo "== record"
+check "record in photo mode 409" 409 "$(req POST /api/v1/record -d '{"action":"start"}')"
+contains "wrong_mode" "$T/body" '"code":"wrong_mode"'
+check "mode video" 200 "$(req POST /api/v1/settings -d '{"mode":"video"}')"
+check "record start 200" 200 "$(req POST /api/v1/record -d '{"action":"start"}')"
+contains "recording active" "$T/body" '"recording":{"active":true,"elapsed_s":0}'
+check "record again 409" 409 "$(req POST /api/v1/record -d '{"action":"start"}')"
+req GET /api/v1/status >/dev/null
+contains "status recording" "$T/body" '"recording":{"active":true'
+check "settings while recording 409" 409 "$(req POST /api/v1/settings -d '{"lens":"dual"}')"
+check "capture while recording 409" 409 "$(req POST /api/v1/capture -d '{"mode":"photo"}')"
+check "record stop 200" 200 "$(req POST /api/v1/record -d '{"action":"stop"}' --max-time 45)"
+contains "record stop body" "$T/body" '"recording":{"active":false},"files":\[{"path":"DCIM/100VIDEO/360_'
+contains "record file kind" "$T/body" '"kind":"video"'
+check "record stop idle 200" 200 "$(req POST /api/v1/record -d '{"action":"stop"}')"
+check "record bad action 400" 400 "$(req POST /api/v1/record -d '{"action":"pause"}')"
+check "capture switches to photo" 200 "$(req POST /api/v1/capture -d '{"mode":"photo"}' --max-time 45)"
+req GET /api/v1/settings >/dev/null
+contains "mode back to photo" "$T/body" '"mode":"photo"'
+
 echo "== capture timeout (30 s)"
 touch "$SIM/SIM_CAPTURE_TIMEOUT"
 check "capture 504" 504 "$(req POST /api/v1/capture -d '{"mode":"photo"}' --max-time 45)"

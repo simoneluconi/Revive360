@@ -10,7 +10,10 @@
  *
  * Which LEDs show the automatic feedback is chosen by config, because the
  * physical mapping of led.0..4 is not confirmed yet:
- *   led_feedback=all | <comma list of indices>   (default all)
+ *   led_feedback=all | none | <comma list of indices>   (default none;
+ *                                                 "all" = every LED with a
+ *                                                 known role in led_roles,
+ *                                                 never an "unknown" one)
  *   led_error=<comma list of indices>            (default: LEDs whose role is
  *                                                 status_red, else feedback set)
  * LEDs in neither set are never touched while in "auto".
@@ -176,21 +179,31 @@ void leds_set_system_state(int st)
 void leds_start(void)
 {
     unsigned all = (g_srv.ad.n_leds >= 32) ? ~0u : ((1u << g_srv.ad.n_leds) - 1);
+    unsigned mapped = 0;
     const char *err_cfg;
     pthread_t th;
     pthread_attr_t at;
     int i;
 
+    /* "all" never drives an unidentified led.N: one of them may be a GPIO
+     * that is not an LED. Explicit index lists are taken as given. */
+    for (i = 0; i < g_srv.ad.n_leds; i++)
+        if (strcmp(g_srv.ad.leds[i].role, "unknown") != 0)
+            mapped |= 1u << i;
     for (i = 0; i < g_srv.ad.n_leds; i++) {
         memset(&g_led[i], 0, sizeof g_led[i]);
         g_led[i].cur = -1;
         snprintf(g_led[i].bpath, sizeof g_led[i].bpath, "%s/brightness", g_srv.ad.leds[i].dir);
         snprintf(g_led[i].on_str, sizeof g_led[i].on_str, "%d", g_srv.ad.leds[i].max_brightness);
     }
-    g_feedback_mask = parse_mask(config_get(&g_srv.cfg, "led_feedback", "all"), all);
+    g_feedback_mask = parse_mask(config_get(&g_srv.cfg, "led_feedback", "none"), all);
+    if (strcmp(config_get(&g_srv.cfg, "led_feedback", "none"), "all") == 0)
+        g_feedback_mask &= mapped;
     err_cfg = config_get(&g_srv.cfg, "led_error", NULL);
     if (err_cfg) {
         g_error_mask = parse_mask(err_cfg, all);
+        if (strcmp(err_cfg, "all") == 0)
+            g_error_mask &= mapped;
     } else {
         g_error_mask = 0;
         for (i = 0; i < g_srv.ad.n_leds; i++)

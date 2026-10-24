@@ -11,6 +11,9 @@
  * Captures are serialized by an in-process mutex plus an flock() on
  * <run_dir>/capture.lock (so a diagnostic tool can see/hold it too). `busy`
  * in /status reflects it.
+ *
+ * Also POST /api/v1/record (§5.13): start snapshots DCIM, stop waits for the
+ * new video file(s) the same way a capture waits for its photo.
  */
 #include "server.h"
 
@@ -27,6 +30,7 @@
 #define CAPTURE_TIMEOUT_MS 30000
 #define POLL_MS            300
 #define SETTLE_MS          1200
+#define MODE_VIDEO_FILE    0x100   /* track_done: wait for a video file */
 
 static pthread_mutex_t g_cap_mu = PTHREAD_MUTEX_INITIALIZER;
 static int g_lock_fd = -1;
@@ -186,8 +190,56 @@ static int track_done(const track_t *t, int mode)
     case MODE_PHOTO:    return photo;
     case MODE_RAW:      return raw;
     case MODE_RAWPHOTO: return photo && raw;
+    case MODE_VIDEO_FILE:
+        for (i = 0; i < t->n; i++)
+            if (strcmp(file_kind(t->f[i].rel), "video") == 0)
+                return 1;
+        return 0;
     }
     return 0;
+}
+
+/* Poll DCIM for the files new since `before` until track_done(mode) or timeout. */
+static int wait_new_files(const nameset_t *before, track_t *t, int mode, int timeout_ms)
+{
+    int64_t t0 = now_ms_mono();
+    int i;
+    memset(t, 0, sizeof *t);
+    t->before = before;
+    while (now_ms_mono() - t0 < timeout_ms) {
+        sleep_ms(POLL_MS);
+        t->now = now_ms_mono();
+        for (i = 0; i < t->n; i++)
+            t->f[i].seen = 0;
+        scan_dcim(track_cb, t);
+        /* Drop entries that vanished (temporary names renamed by the writer). */
+        for (i = 0; i < t->n;) {
+            if (!t->f[i].seen) {
+                LOGI("capture: %s disappeared", t->f[i].rel);
+                t->f[i] = t->f[--t->n];
+            } else {
+                i++;
+            }
+        }
+        if (track_done(t, mode))
+            return 1;
+    }
+    return 0;
+}
+
+static void files_json(sbuf_t *b, track_t *t)
+{
+    sbuf_puts(b, "[");
+    for (int i = 0; i < t->n; i++) {
+        fentry_t e;
+        e.path = t->f[i].rel;
+        e.size = t->f[i].size;
+        e.mtime = t->f[i].mtime;
+        if (i)
+            sbuf_puts(b, ",");
+        fentry_json(b, &e);
+    }
+    sbuf_puts(b, "]");
 }
 
 /* ------------------------------------------------------------ handler */
@@ -212,7 +264,7 @@ void api_capture(req_t *r)
     char err[256];
     int64_t t0;
     sbuf_t b;
-    int i, ok = 0;
+    int ok = 0;
 
     if (jobj_parse(r->body, r->body_len, &o) < 0) {
         http_send_error(r, 400, "bad_request", "body is not a JSON object");
@@ -260,6 +312,10 @@ void api_capture(req_t *r)
         http_send_error(r, 503, "no_storage", "the SD card is not mounted");
         return;
     }
+    if (g_srv.recording) {
+        http_send_error(r, 409, "busy", "a video recording is in progress");
+        return;
+    }
 
     /* Serialize. */
     if (pthread_mutex_trylock(&g_cap_mu) != 0) {
@@ -272,6 +328,17 @@ void api_capture(req_t *r)
         return;
     }
     g_srv.busy = 1;
+
+    /* In another shooting mode the shutter would start a recording (§5.3) */
+    err[0] = 0;
+    if (settings_ensure_mode("photo", err, sizeof err) < 0) {
+        g_srv.busy = 0;
+        if (g_lock_fd >= 0)
+            flock(g_lock_fd, LOCK_UN);
+        pthread_mutex_unlock(&g_cap_mu);
+        http_send_error(r, 500, "internal", "cannot switch to photo mode: %s", err);
+        return;
+    }
 
     memset(&before, 0, sizeof before);
     scan_dcim(snap_cb, &before);
@@ -293,28 +360,7 @@ void api_capture(req_t *r)
         return;
     }
 
-    memset(&t, 0, sizeof t);
-    t.before = &before;
-    while (now_ms_mono() - t0 < CAPTURE_TIMEOUT_MS) {
-        sleep_ms(POLL_MS);
-        t.now = now_ms_mono();
-        for (i = 0; i < t.n; i++)
-            t.f[i].seen = 0;
-        scan_dcim(track_cb, &t);
-        /* Drop entries that vanished (temporary names renamed by the writer). */
-        for (i = 0; i < t.n;) {
-            if (!t.f[i].seen) {
-                LOGI("capture: %s disappeared", t.f[i].rel);
-                t.f[i] = t.f[--t.n];
-            } else {
-                i++;
-            }
-        }
-        if (track_done(&t, mode)) {
-            ok = 1;
-            break;
-        }
-    }
+    ok = wait_new_files(&before, &t, mode, CAPTURE_TIMEOUT_MS);
     ns_free(&before);
     g_srv.busy = 0;
     if (g_lock_fd >= 0)
@@ -330,17 +376,126 @@ void api_capture(req_t *r)
     LOGI("capture: done in %lld ms, %d file(s)", (long long)(now_ms_mono() - t0), t.n);
 
     sbuf_init(&b);
-    sbuf_puts(&b, "{\"files\":[");
-    for (i = 0; i < t.n; i++) {
-        fentry_t e;
-        e.path = t.f[i].rel;
-        e.size = t.f[i].size;
-        e.mtime = t.f[i].mtime;
-        if (i)
-            sbuf_puts(&b, ",");
-        fentry_json(&b, &e);
-    }
-    sbuf_printf(&b, "],\"duration_ms\":%lld}", (long long)(now_ms_mono() - t0));
+    sbuf_puts(&b, "{\"files\":");
+    files_json(&b, &t);
+    sbuf_printf(&b, ",\"duration_ms\":%lld}", (long long)(now_ms_mono() - t0));
     http_send_json(r, 200, &b);
     sbuf_free(&b);
+}
+
+/* ------------------------------------------------------------ record */
+
+static nameset_t g_rec_before;      /* DCIM names when the recording started */
+
+void recording_json(sbuf_t *b)
+{
+    if (g_srv.recording)
+        sbuf_printf(b, "{\"active\":true,\"elapsed_s\":%lld}",
+                    (long long)((now_ms_mono() - g_srv.rec_started_ms) / 1000));
+    else
+        sbuf_puts(b, "{\"active\":false}");
+}
+
+static void send_recording(req_t *r, track_t *t)
+{
+    sbuf_t b;
+    sbuf_init(&b);
+    sbuf_puts(&b, "{\"recording\":");
+    recording_json(&b);
+    if (t) {
+        sbuf_puts(&b, ",\"files\":");
+        files_json(&b, t);
+    }
+    sbuf_puts(&b, "}");
+    http_send_json(r, 200, &b);
+    sbuf_free(&b);
+}
+
+static void record_start(req_t *r, adapter_t *a)
+{
+    char err[256], mode[64];
+
+    if (g_srv.recording) {
+        http_send_error(r, 409, "busy", "already recording");
+        return;
+    }
+    if (a->get_setting && a->get_setting(a, "mode", mode, sizeof mode) == 0 &&
+        strcmp(mode, "video") != 0 && strcmp(mode, "looping") != 0) {
+        http_send_error(r, 409, "wrong_mode", "recording needs mode video or looping (now %s)", mode);
+        return;
+    }
+    ns_free(&g_rec_before);
+    scan_dcim(snap_cb, &g_rec_before);
+    if (g_rec_before.n > 1)
+        qsort(g_rec_before.names, g_rec_before.n, sizeof *g_rec_before.names, cmp_str);
+    err[0] = 0;
+    if (a->record(a, 1, err, sizeof err) < 0) {
+        http_send_error(r, 500, "internal", "record start failed: %s", err);
+        return;
+    }
+    g_srv.rec_started_ms = now_ms_mono();
+    g_srv.recording = 1;
+    LOGI("record: started");
+    send_recording(r, NULL);
+}
+
+static void record_stop(req_t *r, adapter_t *a)
+{
+    char err[256];
+    track_t t;
+    int ok;
+
+    if (!g_srv.recording) {
+        memset(&t, 0, sizeof t);
+        send_recording(r, &t);
+        return;
+    }
+    err[0] = 0;
+    if (a->record(a, 0, err, sizeof err) < 0) {
+        http_send_error(r, 500, "internal", "record stop failed: %s", err);
+        return;
+    }
+    g_srv.busy = 1;     /* the video is being finalized */
+    ok = wait_new_files(&g_rec_before, &t, MODE_VIDEO_FILE, CAPTURE_TIMEOUT_MS);
+    g_srv.busy = 0;
+    g_srv.recording = 0;
+    ns_free(&g_rec_before);
+    LOGI("record: stopped, %d new file(s)%s", t.n, ok ? "" : " (no finished video seen)");
+    send_recording(r, &t);
+}
+
+void api_record(req_t *r)
+{
+    adapter_t *a = &g_srv.ad;
+    jobj_t o;
+    const char *action;
+    int wrong = 0;
+
+    if (!a->record) {
+        http_send_error(r, 501, "unsupported", "this camera cannot record through the controller");
+        return;
+    }
+    if (jobj_parse(r->body, r->body_len, &o) < 0) {
+        http_send_error(r, 400, "bad_request", "body is not a JSON object");
+        return;
+    }
+    action = jobj_get_str(&o, "action", &wrong);
+    if (!action || wrong || (strcmp(action, "start") != 0 && strcmp(action, "stop") != 0)) {
+        http_send_error(r, 400, "bad_request", "action must be start or stop");
+        return;
+    }
+    if (!adapter_storage_mounted(a)) {
+        http_send_error(r, 503, "no_storage", "the SD card is not mounted");
+        return;
+    }
+    /* Serialized with captures */
+    if (pthread_mutex_trylock(&g_cap_mu) != 0) {
+        http_send_error(r, 409, "busy", "a capture is in progress");
+        return;
+    }
+    if (strcmp(action, "start") == 0)
+        record_start(r, a);
+    else
+        record_stop(r, a);
+    pthread_mutex_unlock(&g_cap_mu);
 }

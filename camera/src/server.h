@@ -23,6 +23,8 @@ typedef struct {
     int         have_battery_temp;
     char        battery_dir[300];   /* chosen power_supply entry */
     volatile int busy;              /* capture in progress */
+    volatile int recording;         /* a video recording runs (started through us) */
+    int64_t rec_started_ms;         /* now_ms_mono() at its start */
     volatile int64_t last_request_ms;
     volatile int net_error;         /* launcher reported a network failure */
 } server_t;
@@ -115,6 +117,16 @@ void api_time(req_t *r);
 void api_debug_dfms(req_t *r);
 void api_debug_st(req_t *r);
 void api_debug_vconf(req_t *r);
-void api_debug_shim(req_t *r);   /* timeset.c */
+void api_debug_shim(req_t *r);
+
+/* settings.c (§5.12) */
+void api_settings(req_t *r);
+void settings_capabilities_json(sbuf_t *b);
+const setting_def_t *settings_find(const char *id);
+int  settings_ensure_mode(const char *mode, char *err, size_t errlen);
+
+/* capture.c: video recording (§5.13) */
+void api_record(req_t *r);
+void recording_json(sbuf_t *b);
 
 #endif

@@ -40,7 +40,7 @@ void api_capabilities_json(sbuf_t *b)
     sbuf_printf(b, ",\"resolution_settable\":%s}", a->resolution_settable ? "true" : "false");
     sbuf_puts(b, ",\"video_modes\":");
     str_list(b, a->video_modes, a->n_video_modes);
-    sbuf_puts(b, ",\"record\":false,\"liveview\":false");
+    sbuf_printf(b, ",\"record\":%s,\"liveview\":false", a->record ? "true" : "false");
     sbuf_printf(b, ",\"files\":{\"list\":true,\"download\":true,\"range\":true,\"delete\":%s,\"thumbnails\":%s}",
                 a->files_delete ? "true" : "false", a->thumbnails ? "true" : "false");
     sbuf_printf(b, ",\"status\":{\"battery\":%s,\"storage\":true,\"battery_temperature\":%s}",
@@ -58,7 +58,9 @@ void api_capabilities_json(sbuf_t *b)
         json_str(b, a->leds[i].role);
         sbuf_puts(b, ",\"states\":[\"off\",\"on\",\"blink\",\"auto\"]}");
     }
-    sbuf_printf(b, "],\"debug_log\":%s,\"time\":true}", log_path() ? "true" : "false");
+    sbuf_printf(b, "],\"debug_log\":%s,\"time\":true,\"settings\":", log_path() ? "true" : "false");
+    settings_capabilities_json(b);
+    sbuf_puts(b, "}");
 }
 
 static void api_info(req_t *r)
@@ -195,6 +197,10 @@ void api_dispatch(req_t *r)
         if (allow(r, "GET")) api_files_list(r);
     } else if (strcmp(p, "/api/v1/led") == 0) {
         if (allow(r, "POST")) api_led(r);
+    } else if (strcmp(p, "/api/v1/settings") == 0) {
+        if (allow(r, "GET, POST")) api_settings(r);
+    } else if (strcmp(p, "/api/v1/record") == 0) {
+        if (allow(r, "POST")) api_record(r);
     } else if (strcmp(p, "/api/v1/time") == 0) {
         if (allow(r, "POST")) api_time(r);
     } else if (strcmp(p, "/api/v1/debug/dfms") == 0) {

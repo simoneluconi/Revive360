@@ -373,8 +373,8 @@ void api_files_delete(req_t *r, const char *rel)
         http_send_error(r, 503, "no_storage", "the SD card is not mounted");
         return;
     }
-    if (g_srv.busy) {
-        http_send_error(r, 409, "busy", "a capture is in progress");
+    if (g_srv.busy || g_srv.recording) {
+        http_send_error(r, 409, "busy", "a capture or a recording is in progress");
         return;
     }
     if (path_resolve(rel, abs, sizeof abs) < 0) {
