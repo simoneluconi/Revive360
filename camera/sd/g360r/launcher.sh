@@ -148,9 +148,6 @@ led_signature() {
         echo 0 > "$d/brightness" 2>/dev/null
     done
     log "LED signature (saved state:$saved)"
-    # "REVIVED" on the status display meanwhile; afterwards the app redraws it
-    "$BIN" oledtext --text REVIVED --ms 1700 >/dev/null 2>&1 &
-    oled_pid=$!
     # Around the camera: charge LED blue, one lens, the other lens; then all twice
     for n in 2 3 4 2 3 4; do
         echo 255 > "$L/led.$n/brightness" 2>/dev/null; sleep 0.12
@@ -167,11 +164,9 @@ led_signature() {
         echo "$t" > "$L/led.$n/trigger" 2>/dev/null
         [ "$t" = none ] && echo "$b" > "$L/led.$n/brightness" 2>/dev/null
     done
-    wait "$oled_pid" 2>/dev/null
-    # The app repaints its status screen only on an attribute change, and the
-    # display cannot be read back to restore it: re-assert photo mode (our
-    # default) so it repaints over REVIVED
-    st_log app mode_360 photo
+    # No text on the status display: the app repaints it only on attribute
+    # changes, through st, which it ignores in normal mode (g360rd oledtext stays
+    # for later)
 }
 
 # st_log ARGS: one st command, killed after 5 s; logs what the app answered in
