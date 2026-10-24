@@ -4,8 +4,9 @@ How to put our files into the stock firmware and get them running on the camera.
 Background and reverse engineering: [docs/firmware/10_firmware_modification.md](../../docs/firmware/10_firmware_modification.md).
 
 The modified image is the stock `C200GLU0AQK1_171121_1257_REV00_user.bin` with files **added** to
-its rootfs (SLP part 6 → eMMC p9). Nothing stock is changed or removed, and every other partition is
-copied unchanged. Recovery is always possible: flash the stock `.bin` the same way.
+its rootfs (SLP part 6 → eMMC p9). Nothing stock is changed or removed, and every other SLP part is
+copied unchanged, including the stock snapshot (SLP part 9 → p8): every flash writes the factory
+snapshot back, so step 3 is needed after each one. Recovery is always possible: flash the stock `.bin` the same way (see Recovery).
 
 ## Contents
 
@@ -51,12 +52,14 @@ decompress it while flashing).
 
 1. SD card root: `smc200.bin` (the built image) + an **empty** `fwupgrade.txt`. **No** `info.tg`.
    Check the copy with a SHA-256 against the build output.
-2. Battery at 3 bars or more out of 5. **USB cable unplugged**: with USB at boot the camera goes to the
-   USB/MTP path and shows no prompt.
-3. Power on while holding **Shutter + Menu** (the Bluetooth/connection button). The power button is
-   Back: do **not** press it while the prompt is on screen (it cancels).
-4. "FW update" appears → press OK → "Check for updates" with a progress bar (3 red LEDs) →
-   "Updated" → the camera restarts by itself.
+2. Battery **charged to near full**. The firmware wants internal level ≥ 3 on a 0–5 scale, and the
+   battery icon does not map 1:1 to it (half or low can fail the check). **USB cable unplugged**: with
+   USB at boot the camera goes to the USB/MTP path and shows no prompt.
+3. Power on while holding **Shutter + Menu** (the Bluetooth/connection button; the firmware calls it
+   "WIFI"). The power button is Back: do **not** press it while the prompt is on screen (it cancels).
+4. "FW update" appears → press OK → "Check for updates" with a progress bar → "Updated" → the camera
+   restarts by itself. The **3 red LEDs** during the update are the normal progress indicator, not an
+   error. Keep the SD card in until the restart is over: the flasher reads `smc200.bin` from it.
 
 There is no version check: AQK1 → modified AQK1 is accepted.
 
@@ -64,8 +67,10 @@ There is no version check: AQK1 → modified AQK1 is accepted.
 
 After the flash the camera still **resumes the stock hibernation snapshot** from p8 on every boot
 (the bootloader does it, kernel `noresume`), so our rootfs is not used yet. The snapshot also holds a
-stale page cache: anything read from p9 while resumed comes from the old cache (use
-`echo 3 > /proc/sys/vm/drop_caches` before reading).
+stale page cache: anything read from p9 while resumed comes from the old cache, files too
+(`/etc/info.ini`, `/fw/log` look stock). Before reading: `echo 3 > /proc/sys/vm/drop_caches`, and
+`blockdev --flushbufs /dev/mmcblk0p9`. Zeroing the first 512 bytes of p8 would **not** invalidate it:
+the swsusp signature is at the end of page 0, hence `mkswap`.
 
 1. Power off, SD to the PC: rename `smc200.bin` → `smc200.bin.flashed`, `fwupgrade.txt` →
    `fwupgrade.txt.done`.
@@ -75,7 +80,10 @@ stale page cache: anything read from p9 while resumed comes from the old cache (
    - `cmd.tg`: `shell script /sdcard/g360r/p8_hook/p8_invalidate.sh`
 3. Power on normally. The factory hook runs the script: **1 beep** = start, **2 beeps** = done
    (`mkswap /dev/mmcblk0p8`), **3 beeps** = error. It logs to the card and disarms itself
-   (`info.tg` → `info.tg.done`).
+   (`info.tg` → `info.tg.done`). It also logs `ls /usr/share/g360r/` after dropping the caches
+   (`g360r/log/p8_invalidate.log`): a quick look that the flash wrote our files. A raw `grep` of p9 has
+   proved unreliable even after dropping caches. The snapshot is invalidated either way: a rootfs the
+   flash did not write just cold-boots stock.
 4. Power off and on again: a cold boot from our rootfs. It is slower than usual (~30 s, no instant-on).
 
 From now on every power-on is a cold boot with our files. Instant-on (a new snapshot with
@@ -93,6 +101,11 @@ Testing: `sdb.conf` at the card root disables the stock idle auto power-off.
 
 ## Recovery
 
-Flash the stock `C200GLU0AQK1_171121_1257_REV00_user.bin` as in step 2. It writes back the stock
-rootfs and snapshot, and instant-on returns. Without a card config, `boot.sh` exits at once, so the
-modified firmware behaves like stock.
+Flash the stock `C200GLU0AQK1_171121_1257_REV00_user.bin` as in step 2, with the same conditions
+(near-full battery, USB unplugged, Shutter + Menu, `fwupgrade.txt`). The board version matches, so it
+writes back the stock rootfs **and** the snapshot, and instant-on returns.
+
+Why this always works: the overlay only adds files and leaves `di-camera-app` stock, so the camera
+boots its normal UI, and the SD update path with it, even if `boot.sh` fails. We only change the rootfs
+(p9): bootloader (boot0), kernel and the recovery kernel (rImage, p12) are never touched. Without a
+card config `boot.sh` exits at once, so the modified firmware behaves like stock.

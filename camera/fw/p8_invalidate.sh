@@ -44,15 +44,16 @@ mv /sdcard/info.tg /sdcard/info.tg.done && log "hook disarmed (info.tg -> info.t
 
 # Is the modified rootfs on the eMMC? The resumed factory snapshot carries the
 # kernel's old page cache for p9, which hid our blocks in earlier runs: drop the
-# caches first, then read the raw partition for a string only our canary has.
+# caches first, then read the raw partition for a string only our overlay has
+# (boot.sh of overlay-controller). The raw grep proved unreliable: see the ls below.
 # Logged only: the snapshot is invalidated either way, because the cold boot
 # that follows is the real test (a stock rootfs simply cold-boots stock).
 ROOTFS=/dev/mmcblk0p9
-MARK="Revive360 canary, first modified-firmware flash"
+MARK="Revive360 - normal-mode entry point"
 sync
 echo 3 > /proc/sys/vm/drop_caches 2>/dev/null && log "page cache dropped"
 command -v blockdev >/dev/null 2>&1 && blockdev --flushbufs "$ROOTFS" 2>/dev/null && log "block buffers flushed"
-log "searching $ROOTFS for the canary marker..."
+log "searching $ROOTFS for the overlay marker..."
 hits=$(grep -a -c "$MARK" "$ROOTFS" 2>/dev/null)
 log "marker hits on $ROOTFS after dropping caches: ${hits:-0}"
 log "info.ini now: $(tr '\n' ' ' < /etc/info.ini 2>/dev/null)"
