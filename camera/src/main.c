@@ -58,16 +58,16 @@ static int mac_from_file(const char *path, char *out, size_t outlen)
     return 0;
 }
 
+/* Never asks the Wi-Fi interface: an ioctl on wlan0 before the dhd firmware is
+ * loaded reset the SM-C200 (Tests 1b-1e all died in `g360rd detect`, whose only
+ * new hardware access was SIOCGIFHWADDR on wlan0). The factory file has the same MAC. */
 static void resolve_mac(void)
 {
     const adapter_t *a = &g_srv.ad;
     if (a->mac_override[0]) {
         snprintf(g_srv.mac, sizeof g_srv.mac, "%s", a->mac_override);
-    } else if (netif_mac_str(a->wifi_if, g_srv.mac, sizeof g_srv.mac) == 0 &&
-               strcmp(g_srv.mac, "00:00:00:00:00:00") != 0) {
-        /* from the interface */
     } else if (mac_from_file("/opt/etc/.mac.info", g_srv.mac, sizeof g_srv.mac) == 0) {
-        LOGW("mac: %s unavailable, using /opt/etc/.mac.info", a->wifi_if);
+        /* from the factory MAC file */
     } else {
         snprintf(g_srv.mac, sizeof g_srv.mac, "00:00:00:00:00:00");
         LOGW("mac: no MAC available");
