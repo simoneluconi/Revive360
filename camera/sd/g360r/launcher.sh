@@ -128,6 +128,44 @@ status_led() {
     st_bg app 360 led status "$on" on
 }
 
+# Firmware signature on the LEDs, normal mode only: led.0-2 = charge LED
+# red/green/blue, led.3 = lens LED on the display side, led.4 = the other lens
+# LED (mapped on the hardware). Run here, with the stock app up: at boot (the
+# firmware's g360r-leds.service, ~8 s) the LEDs light nothing yet. Each LED's
+# trigger and brightness are read first and put back after, so the stock state
+# (lens LEDs red when ready) is not overwritten.
+led_signature() {
+    [ "$MODE" = normal ] || return 0
+    L=/sys/class/leds
+    saved=""
+    for n in 0 1 2 3 4; do
+        d=$L/led.$n
+        [ -w "$d/brightness" ] || continue
+        t=$(sed -n 's/.*\[\([^]]*\)\].*/\1/p' "$d/trigger" 2>/dev/null)
+        b=$(cat "$d/brightness" 2>/dev/null)
+        saved="$saved $n:${t:-none}:${b:-0}"
+        echo none > "$d/trigger" 2>/dev/null
+        echo 0 > "$d/brightness" 2>/dev/null
+    done
+    log "LED signature (saved state:$saved)"
+    # Around the camera: charge LED blue, one lens, the other lens; then all twice
+    for n in 2 3 4 2 3 4; do
+        echo 255 > "$L/led.$n/brightness" 2>/dev/null; sleep 0.12
+        echo 0 > "$L/led.$n/brightness" 2>/dev/null
+    done
+    for flash in 1 2; do
+        for n in 1 3 4; do echo 255 > "$L/led.$n/brightness" 2>/dev/null; done
+        sleep 0.15
+        for n in 1 3 4; do echo 0 > "$L/led.$n/brightness" 2>/dev/null; done
+        sleep 0.1
+    done
+    for e in $saved; do
+        n=${e%%:*}; r=${e#*:}; t=${r%%:*}; b=${r#*:}
+        echo "$t" > "$L/led.$n/trigger" 2>/dev/null
+        [ "$t" = none ] && echo "$b" > "$L/led.$n/brightness" 2>/dev/null
+    done
+}
+
 vconf_reset() {
     [ "$MODE" = factory ] || return 0
     cur=$(vconftool get "$VCONF_KEY" 2>&1)
@@ -161,6 +199,7 @@ log "cgroup: $(tr '\n' ' ' < /proc/self/cgroup)"
 
 vconf_reset
 status_led starting
+led_signature
 beep 1 "$WAV_OK"
 
 logrun ls -la /sys/class/leds/
