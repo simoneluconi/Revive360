@@ -1,0 +1,12 @@
+* text=auto
+# Files that run on the camera must keep LF line endings (bash on the device chokes on CRLF)
+*.sh text eol=lf
+*.tg text eol=lf
+camera/** text eol=lf
+tools/sd_probe*/** text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew text eol=lf
+*.jar binary
+*.png binary
+*.ttf binary
