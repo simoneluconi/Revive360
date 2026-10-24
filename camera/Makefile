@@ -75,5 +75,4 @@ shim: $(OUT)/libg360r_shim.so
 $(OUT)/libg360r_shim.so: shim/g360r_shim.c
 	@mkdir -p $(OUT)
 	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -o $@ $< -nostdlib -Wl,--no-undefined 		$(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2 $(SYSROOT)/lib/libpthread.so.0 $(SYSROOT)/lib/librt.so.1
-	@$(CROSS)readelf -V $@ | grep -oE "GLIBC_[0-9.]+" | sort -uV | tr '
-' ' '; echo "<- glibc versions needed (camera has 2.13)"
+	@$(CROSS)readelf -V $@ | grep -oE "GLIBC_[0-9.]+" | sort -uV | tr '\n' ' '; echo "<- glibc versions needed (camera has 2.13)"
