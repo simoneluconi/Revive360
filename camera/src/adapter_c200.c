@@ -86,7 +86,6 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
                         const char *resolution, char *err, size_t errlen)
 {
     char q[32];
-    (void)a;
     (void)resolution; /* not settable in v1 */
 
     if (access(ST_BIN, X_OK) != 0) {
@@ -101,6 +100,25 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
     else
         snprintf(q, sizeof q, "%s", quality ? quality : "sfine");
 
+    /* dfms `capture still` only fires if the capture pipeline is live, which
+     * factory mode does not start by itself (Test 2: no file). Put the app in
+     * 360 photo mode first, and ask once for the live view. */
+    {
+        /* A marker file, not a static: each request runs in a forked child, and
+         * `show liveview` toggles, so it must be sent once per controller run. */
+        char marker[300];
+        char *mode_argv[] = { ST_BIN, "app", "mode_360", "photo", NULL };
+        char *lv_argv[] = { ST_BIN, "app", "show", "liveview", NULL };
+        snprintf(marker, sizeof marker, "%s/liveview_asked", a->run_dir);
+        if (st_call(mode_argv, "mode_360 photo", err, errlen) < 0)
+            return -1;
+        if (!file_exists(marker)) {
+            write_text_file(marker, "1\n");
+            if (st_call(lv_argv, "show liveview", err, errlen) < 0)
+                return -1;
+            sleep_ms(1000);
+        }
+    }
     {
         char *argv[] = { ST_BIN, "app", "nx", "capture", "quality", q, NULL };
         if (st_call(argv, "capture quality", err, errlen) < 0)

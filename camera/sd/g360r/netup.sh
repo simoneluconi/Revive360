@@ -65,21 +65,31 @@ _netup_load_apsta_fw() {
     logrun ls /sys/class/net
 }
 
-# privcmd wrapper. $2="mask" logs a copy with KEY=******** (never log the PSK) and
-# runs the real command WITHOUT logrun so the passphrase never reaches the SD log.
+# privcmd wrapper. The stock mobileap-agent issues these as SIOCSIWPRIV (0x8B0C) with a
+# struct iwreq / iw_point (pointer=cmd, length=buf), i.e. g360rd's "iwpoint" style — NOT
+# the android_wifi_priv_cmd struct (style 0), which returned EOPNOTSUPP in Test 2.
+# $2="mask" logs a copy with KEY=******** (never log the PSK) and masks the reply echo too.
 _netup_privcmd() {
     cmd=$1
     if [ "$2" = mask ]; then
         masked=$(printf %s "$cmd" | sed 's/KEY=[^,]*/KEY=********/')
-        log "netup: \$ privcmd $G360R_STA_IF $masked"
+        log "netup: \$ privcmd $G360R_STA_IF $masked 0x8B0C iwpoint"
     else
-        log "netup: \$ privcmd $G360R_STA_IF $cmd"
+        log "netup: \$ privcmd $G360R_STA_IF $cmd 0x8B0C iwpoint"
     fi
-    out=$("$BIN" privcmd "$G360R_STA_IF" "$cmd" 2>&1); rc=$?
+    out=$("$BIN" privcmd "$G360R_STA_IF" "$cmd" 0x8B0C iwpoint 2>&1); rc=$?
     # g360rd privcmd echoes reply=[<buf>]; dhd may leave the AP_CFG (with KEY=) in it.
     [ "$2" = mask ] && out=$(printf %s "$out" | sed 's/KEY=[^,]*/KEY=********/')
     log "netup: privcmd rc=$rc${out:+ $out}"
+    _netup_dmesg_tail
     return $rc
+}
+
+# Diagnostics for the Wi-Fi bring-up (what private ioctls the driver really exposes, etc.).
+_netup_dmesg_tail() { logrun sh -c 'dmesg 2>/dev/null | tail -n 8'; }
+_netup_wifi_diag() {
+    [ -x /usr/bin/iwpriv ]  && logrun /usr/bin/iwpriv "$G360R_STA_IF"
+    [ -x /usr/bin/wl ]      && { logrun /usr/bin/wl ap; logrun /usr/bin/wl status; }
 }
 
 netup() {
@@ -99,6 +109,7 @@ netup() {
     HIDE=0
 
     _netup_load_apsta_fw
+    _netup_wifi_diag   # iwpriv/wl: what the driver exposes before we try AP_CFG
 
     # AP_CFG then AP_BSS_START over the dhd private ioctl (AP_CFG masked in the log).
     sl=$(printf %s "$AP_SSID" | wc -c | tr -d ' ')
@@ -106,13 +117,15 @@ netup() {
     _netup_privcmd "ASCII_CMD=AP_CFG,SSID_LEN=$sl,SSID=$AP_SSID,SEC=$SEC,KEY_LEN=$kl,KEY=$PSK,CHANNEL=$CH,PREAMBLE=0,MAX_SCB=10,HIDE=$HIDE,END" mask
     _netup_privcmd "ASCII_CMD=AP_BSS_START"
 
-    # The AP BSS iface (wl0.1) usually appears after AP_BSS_START; fall back to wlan0.
-    if "$BIN" waitif "$G360R_AP_IF" 5; then
-        AP_IF="$G360R_AP_IF"
-    else
-        AP_IF="$G360R_STA_IF"
-        log "netup: $G360R_AP_IF did not appear; using $G360R_STA_IF"
+    # The AP BSS iface wl0.1 must appear after AP_BSS_START. Do NOT fall back to wlan0:
+    # wlan0 is UP in STA mode and would give a false "AP up". No wl0.1 => AP failed.
+    if ! "$BIN" waitif "$G360R_AP_IF" 8; then
+        log "netup: FAIL - $G360R_AP_IF never appeared (AP_CFG/AP_BSS_START did not bring up the AP)"
+        logrun ls /sys/class/net
+        _netup_wifi_diag
+        return 1
     fi
+    AP_IF="$G360R_AP_IF"
 
     "$BIN" ifaddr "$AP_IF" "$G360R_AP_IP" "$G360R_AP_MASK"
     "$BIN" ifup   "$AP_IF"

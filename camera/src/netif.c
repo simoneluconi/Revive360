@@ -188,7 +188,8 @@ int netif_priv_cmd(const char *ifname, unsigned long req, int style,
         /* struct iwreq overlays ifreq: name, then the iw_point union member. */
         iwp = (struct g_iw_point *)&ifr.ifr_ifru;
         iwp->pointer = buf;
-        iwp->length = (uint16_t)(n + 1);
+        /* The whole buffer, as mobileap-agent passes it (not just the command) */
+        iwp->length = (uint16_t)PRIV_BUF_LEN;
         iwp->flags = 0;
     }
     usleep(250000); /* the stock wrapper sleeps 250 ms before each command */
