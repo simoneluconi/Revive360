@@ -101,6 +101,8 @@
     <string name="info_network">Wi-Fi</string>
     <string name="info_adapter">Supporto fotocamera</string>
     <string name="info_server">Server della fotocamera</string>
+    <string name="camera_in_use">In uso: %1$s</string>
+    <string name="settings_add_camera">Aggiungi una fotocamera</string>
     <string name="settings_repair">Riconfigura</string>
     <string name="settings_forget">Dimentica</string>
     <string name="forget_title">Dimenticare la fotocamera?</string>

@@ -37,6 +37,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.security.MessageDigest
+import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
 /** Where the link to the camera stands. */
@@ -249,22 +250,41 @@ class CameraController(
 
     // ---- pairing ----
 
-    fun pair(passphrase: String, found: CompanionWifi.Found?) {
+    /** Pairs a new camera, or sets up [replaceId] again, and switches to it. */
+    fun pair(passphrase: String, found: CompanionWifi.Found?, replaceId: String? = null) {
         EventLog.log("Pairing: ${found?.ssid ?: "any ${Protocol.SSID_PREFIX} network"}${found?.bssid?.let { " ($it)" } ?: ""}")
-        store.save(PairedCamera(passphrase = passphrase, ssid = found?.ssid, bssid = found?.bssid))
+        val camera = PairedCamera(id = UUID.randomUUID().toString(), passphrase = passphrase, ssid = found?.ssid, bssid = found?.bssid)
+        store.add(camera, replaceId)
+        resetCameraState()
         connect()
     }
 
+    /** Switches to another paired camera. */
+    fun select(id: String) {
+        if (store.camera.value?.id == id) return
+        EventLog.log("Switching camera")
+        store.select(id)
+        resetCameraState()
+        connect()
+    }
+
+    /** Forgets the camera in use; the next paired camera, if any, takes its place. */
     fun forget() {
-        EventLog.log("Forgetting the camera")
+        val camera = store.camera.value ?: return
+        EventLog.log("Forgetting ${camera.label}")
+        camera.bssid?.let { CompanionWifi.forget(context, it) }
+        store.forget(camera.id)
+        resetCameraState()
+        if (store.camera.value != null) connect() else disconnect(LinkState.NotPaired)
+    }
+
+    /** What belonged to the previous camera: transfers, listing, last shot. */
+    private fun resetCameraState() {
         downloadJobs.values.forEach { it.cancel() }
         downloadJobs.clear()
         _downloads.value = emptyMap()
-        CompanionWifi.forgetAll(context)
-        store.forget()
         _files.value = null
         _lastCapture.value = null
-        disconnect(LinkState.NotPaired)
     }
 
     // ---- commands ----

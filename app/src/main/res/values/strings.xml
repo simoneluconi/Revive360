@@ -103,6 +103,8 @@
     <string name="info_network">Wi-Fi</string>
     <string name="info_adapter">Camera support</string>
     <string name="info_server">Camera server</string>
+    <string name="camera_in_use">In use: %1$s</string>
+    <string name="settings_add_camera">Add a camera</string>
     <string name="settings_repair">Set up again</string>
     <string name="settings_forget">Forget</string>
     <string name="forget_title">Forget the camera?</string>

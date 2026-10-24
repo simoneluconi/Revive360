@@ -60,6 +60,7 @@ fun HomeScreen() {
     val controller = nav.app.controller
     val state by controller.state.collectAsStateWithLifecycle()
     val camera by nav.app.store.camera.collectAsStateWithLifecycle()
+    val cameras by nav.app.store.cameras.collectAsStateWithLifecycle()
     val status by controller.status.collectAsStateWithLifecycle()
     val files by controller.files.collectAsStateWithLifecycle()
 
@@ -74,7 +75,15 @@ fun HomeScreen() {
             WelcomeCard()
             return@ScreenScaffold
         }
-        ConnectionCard(state, camera?.name ?: camera?.model)
+        if (cameras.size > 1) {
+            // More than one camera paired: switch with a tap
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                cameras.forEach { c ->
+                    Chip(c.label, selected = c.id == camera?.id) { controller.select(c.id) }
+                }
+            }
+        }
+        ConnectionCard(state, camera?.label)
         val info = (state as? LinkState.Connected)?.info ?: return@ScreenScaffold
         val caps = info.capabilities
         if (info.adapterStatus != "supported") {
@@ -120,7 +129,7 @@ private fun WelcomeCard() {
         Label(stringResource(R.string.welcome_text), color = colors.text2)
         Spacer(Modifier.height(18.dp))
         PillButton(stringResource(R.string.welcome_action), icon = AppIcons.Wifi, style = ButtonStyle.PRIMARY) {
-            nav.navigate(Screen.Pair)
+            nav.navigate(Screen.Pair())
         }
     }
 }

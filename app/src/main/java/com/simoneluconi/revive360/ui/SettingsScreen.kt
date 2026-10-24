@@ -52,20 +52,38 @@ fun SettingsScreen() {
     val accent by app.settings.accent.collectAsStateWithLifecycle()
     val haptics by app.settings.haptics.collectAsStateWithLifecycle()
     val camera by app.store.camera.collectAsStateWithLifecycle()
+    val cameras by app.store.cameras.collectAsStateWithLifecycle()
     val state by app.controller.state.collectAsStateWithLifecycle()
     val info = (state as? LinkState.Connected)?.info
     var confirmForget by remember { mutableStateOf(false) }
 
     ScreenScaffold(title = stringResource(R.string.settings_title)) {
         SectionTitle(stringResource(R.string.settings_camera))
+        val others = cameras.filter { it.id != camera?.id }
+        if (others.isNotEmpty()) {
+            // The other paired cameras: tap one to use it
+            Card(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+                others.forEachIndexed { i, other ->
+                    if (i > 0) Hairline()
+                    SettingRow(
+                        title = other.label,
+                        subtitle = listOfNotNull(other.model, other.ssid).joinToString(" · ").ifEmpty { null },
+                        icon = AppIcons.Camera360,
+                        onClick = { app.controller.select(other.id) },
+                    )
+                }
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
             if (camera == null) {
                 SettingRow(
                     title = stringResource(R.string.welcome_action),
                     icon = AppIcons.Wifi,
-                    onClick = { nav.navigate(Screen.Pair) },
+                    onClick = { nav.navigate(Screen.Pair()) },
                 )
             } else {
+                Label(stringResource(R.string.camera_in_use, camera!!.label), weight = FontWeight.ExtraBold, size = 17.sp)
+                Spacer(Modifier.height(6.dp))
                 InfoRow(stringResource(R.string.info_model), info?.model ?: camera?.model ?: "—")
                 Hairline()
                 InfoRow(stringResource(R.string.info_firmware), info?.firmware ?: camera?.firmware ?: "—", mono = true)
@@ -79,11 +97,20 @@ fun SettingsScreen() {
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PillButton(stringResource(R.string.settings_repair), icon = AppIcons.Key) { nav.navigate(Screen.Pair) }
+                    PillButton(stringResource(R.string.settings_repair), icon = AppIcons.Key) { nav.navigate(Screen.Pair(camera!!.id)) }
                     PillButton(stringResource(R.string.settings_forget), icon = AppIcons.Trash, style = ButtonStyle.DANGER) {
                         confirmForget = true
                     }
                 }
+            }
+        }
+        if (camera != null) {
+            Card(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+                SettingRow(
+                    title = stringResource(R.string.settings_add_camera),
+                    icon = AppIcons.Wifi,
+                    onClick = { nav.navigate(Screen.Pair()) },
+                )
             }
         }
 

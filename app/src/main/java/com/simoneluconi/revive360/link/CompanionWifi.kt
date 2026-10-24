@@ -73,13 +73,18 @@ object CompanionWifi {
         return null
     }
 
-    fun forgetAll(context: Context) {
+    /** Removes the association with the access point [bssid] (other cameras keep theirs). */
+    fun forget(context: Context, bssid: String) {
         val cdm = cdm(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            cdm.myAssociations.forEach { runCatching { cdm.disassociate(it.id) } }
+            cdm.myAssociations
+                .filter { it.deviceMacAddress?.toString().equals(bssid, ignoreCase = true) }
+                .forEach { runCatching { cdm.disassociate(it.id) } }
         } else {
             @Suppress("DEPRECATION")
-            cdm.associations.forEach { runCatching { cdm.disassociate(it) } }
+            cdm.associations
+                .filter { it.equals(bssid, ignoreCase = true) }
+                .forEach { runCatching { cdm.disassociate(it) } }
         }
     }
 

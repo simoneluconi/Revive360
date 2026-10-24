@@ -35,11 +35,11 @@ import com.simoneluconi.revive360.ui.theme.LocalAppColors
  * system's chooser for the camera's network. After that the app joins by itself.
  */
 @Composable
-fun PairScreen() {
+fun PairScreen(replaceId: String? = null) {
     val nav = LocalActions.current
     val colors = LocalAppColors.current
     val resources = LocalResources.current
-    val existing = nav.app.store.camera.value
+    val existing = nav.app.store.cameras.value.firstOrNull { it.id == replaceId }
     var code by rememberSaveable { mutableStateOf(existing?.passphrase ?: "") }
     var searching by rememberSaveable { mutableStateOf(false) }
     // Offered after the chooser failed: join by the SSID prefix, the system asks each time
@@ -47,7 +47,7 @@ fun PairScreen() {
     val valid = Protocol.isValidPassphrase(code)
 
     fun paired(found: com.simoneluconi.revive360.link.CompanionWifi.Found?) {
-        nav.app.controller.pair(code, found)
+        nav.app.controller.pair(code, found, replaceId)
         nav.message(resources.getString(R.string.pair_done), MessageKind.GOOD)
         nav.home()
     }
