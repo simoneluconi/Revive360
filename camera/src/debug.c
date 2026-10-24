@@ -6,8 +6,9 @@
  *
  * Body {"script": "+SCAMCAPT,0,0,0", "wait_ms": 8000}. The script is passed as
  * one argv element to dfmstool (no shell) and limited to [A-Za-z0-9 +,._-].
- * After wait_ms the answer lists every file newer than the request under the
- * card and the RAM disks.
+ * After wait_ms the answer lists the files that appeared under the card and the
+ * RAM disks (listings before and after, compared: mtimes are no use, the clock
+ * jumps when the app sets the time).
  */
 #include "server.h"
 
@@ -18,7 +19,7 @@
 #include <unistd.h>
 
 #define DFMSTOOL "/usr/bin/dfmstool"
-#define MARKER   "/tmp/g360r/dfms_marker"
+#define LIST_CMD "find /mnt/mmc /opt/storage /tmp /dev/shm -xdev -type f ! -path '/tmp/g360r/*' 2>/dev/null | sort"
 
 void api_debug_dfms(req_t *r)
 {
@@ -28,9 +29,11 @@ void api_debug_dfms(req_t *r)
     int wrong = 0, rc;
     char out[4096], found[16384];
     char *dargv[] = { DFMSTOOL, "--script", NULL, NULL };
+    char *before[] = { "/bin/sh", "-c", LIST_CMD " > /tmp/g360r/files_before", NULL };
     char *fargv[] = { "/bin/sh", "-c",
-        "find /mnt/mmc /opt/storage /tmp /dev/shm -xdev -type f -newer " MARKER
-        " ! -path '/tmp/g360r/*' -exec ls -la {} \\; 2>/dev/null | head -n 60", NULL };
+        LIST_CMD " > /tmp/g360r/files_after;"
+        " grep -vxF -f /tmp/g360r/files_before /tmp/g360r/files_after | head -n 60 |"
+        " while read -r f; do ls -la \"$f\"; done", NULL };
     sbuf_t b;
 
     if (jobj_parse(r->body, r->body_len, &o) < 0) {
@@ -56,8 +59,7 @@ void api_debug_dfms(req_t *r)
         return;
     }
 
-    write_text_file(MARKER, "1\n");
-    sleep_ms(1100); /* mtime granularity: files written after this are newer */
+    run_cmd(before, 15000, NULL, 0);
     dargv[2] = (char *)script;
     rc = run_cmd(dargv, 15000, out, sizeof out);
     LOGI("debug: dfmstool --script \"%s\" -> rc=%d out=[%s]", script, rc, out);
