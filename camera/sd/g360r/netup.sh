@@ -8,27 +8,37 @@
 #   - This file is SOURCED. No top-level actions, no `set -u`, no `exit`.
 #   - Do NOT redefine log()/logrun()/milestone()/cfg(); call them (provided by launcher).
 #   - netup(): return 0 on success and set AP_SSID AP_IF AP_IP AP_STRATEGY.
-#   - dhcp_check(): called every 5 s by the supervisor; keep the DHCP server alive.
+#   - dhcp_check(): called every 5 s by the supervisor; keep DHCP (and hostapd) alive.
 #   - Write only under /tmp/g360r and the SD. Nothing under /opt.
 #
-# Strategy "dhd-privcmd": the Broadcom dhd brings up the softAP via a wireless-ext
-# private ioctl (0x8B0C = SIOCSIWPRIV) carrying ASCII AP commands. g360rd exposes
-# the primitives (privcmd/ifaddr/ifup/waitif). The AP/STA firmware must be loaded
-# first (direct sysfs). The HW watchdog is handled by the launcher, not here.
-# Never touch wlan0 before the firmware is loaded; the SSID suffix comes from the
-# MAC file, not from an ioctl on wlan0.
+# Strategy "hostapd": the stock softAP on this build is /usr/sbin/hostapd with
+# driver=nl80211 (mobileap-agent _mh_core_enable_softap backend 2). The older WEXT
+# private-ioctl path (SIOCSIWPRIV 0x8B0C, ASCII_CMD=AP_CFG/AP_BSS_START) returns
+# EOPNOTSUPP on this cfg80211 bcmdhd build, so it is NOT used here. The loaded STA
+# firmware is a combo image; nl80211 switches wlan0 to the AP iftype internally, so we
+# do NOT write /sys/module/dhd/parameters/firmware_path. Before hostapd can own wlan0 we
+# must release it from the STA stack (connman/wpa_supplicant), unblock rfkill, and take
+# the iface down. The passphrase is never logged in clear: the conf stays under /tmp and
+# hostapd's own debug log is masked when copied to the SD.
 
 # Config (overridable in g360r.conf via the launcher's cfg()):
-G360R_STA_IF=wlan0           # primary Broadcom iface (STA firmware name)
-G360R_AP_IF=wl0.1            # softAP virtual iface that AP_BSS_START creates
+G360R_STA_IF=wlan0           # the single Broadcom iface; nl80211 makes it the AP iface
+G360R_AP_IF=wlan0            # AP runs on wlan0 itself (no wl0.1 with nl80211)
 G360R_AP_IP=192.168.107.1
 G360R_AP_MASK=255.255.255.0
 G360R_DHCP_LO=192.168.107.10
 G360R_DHCP_HI=192.168.107.50
 G360R_MAC_FILE=/opt/etc/.mac.info
+# STA-stack units that may own wlan0 and must be stopped before hostapd takes it.
+G360R_STA_UNITS="connman wpa_supplicant net-config"
+
+_netup_dir=/tmp/g360r
+_netup_hostapd_conf=$_netup_dir/hostapd.conf
+_netup_hostapd_pid=$_netup_dir/hostapd.pid
+_netup_hostapd_log=$_netup_dir/hostapd.log
+_netup_hostapd_ctrl=$_netup_dir/hostapd        # hostapd ctrl_interface dir (RW, /tmp)
 
 # SSID: cfg override, else G360R-<last 3 MAC bytes, upper> from the MAC file.
-# Never query wlan0 for the MAC (ioctl on wlan0 before firmware is loaded is unsafe).
 _netup_ssid() {
     s=$(cfg ssid "")
     if [ -n "$s" ]; then echo "$s"; return; fi
@@ -37,105 +47,177 @@ _netup_ssid() {
     if [ -n "$suf" ]; then echo "G360R-$suf"; else echo "G360R-000000"; fi
 }
 
-# --- firmware: load the concurrent AP/STA dhd image (mirrors stock wlan.sh softap,
-#     but direct-sysfs so nothing is written under /opt). ---
-_netup_load_apsta_fw() {
-    fwp=/sys/module/dhd/parameters/firmware_path
-    nvp=/sys/module/dhd/parameters/nvram_path
-    chip=bcm4354
-    rev=$(cat /sys/devices/platform/dw_mmc_sdio.0/board_revision 2>/dev/null)
-    [ "$rev" = "0" ] && chip=bcm4339
-    fw="/lib/firmware/wlan_apsta_${chip}.bin"
-    nv="/opt/etc/nvram/nvram_net_${chip}.txt"
-    log "netup: AP/STA firmware $fw (chip $chip, board_rev=${rev:-?})"
-    logrun cat "$fwp"
-    if [ -f "$fw" ] && [ -w "$fwp" ]; then
-        echo "$fw" > "$fwp" 2>/dev/null
-        [ -f "$nv" ] && echo "$nv" > "$nvp" 2>/dev/null
-        # firmware_path only takes effect on a down->up cycle
-        "$BIN" ifdown "$G360R_STA_IF" 2>/dev/null
-        "$BIN" ifup   "$G360R_STA_IF" 2>/dev/null
-    else
-        log "netup: WARN cannot set firmware_path ($fw present? $( [ -f "$fw" ] && echo y || echo n ))"
+# --- (1) release wlan0 from the STA stack ------------------------------------------
+# Stock keeps wlan0 in STA mode via connman + wpa_supplicant (+ net-config). hostapd
+# cannot drive the iface while they hold it, so stop whichever units are present.
+_netup_release_sta() {
+    logrun sh -c "systemctl list-units 2>/dev/null | grep -iE 'connman|supplicant|wifi|mobileap|net-config' || true"
+    for u in $G360R_STA_UNITS; do
+        if systemctl list-units --all 2>/dev/null | grep -q "$u"; then
+            log "netup: stopping STA-stack unit $u"
+            logrun systemctl stop "$u"
+        fi
+    done
+    # connman may have spawned a wpa_supplicant that outlives the unit; note any left.
+    if pgrep -f wpa_supplicant >/dev/null 2>&1; then
+        log "netup: WARN wpa_supplicant still running after unit stop"
+        logrun sh -c 'pgrep -af wpa_supplicant 2>/dev/null || true'
     fi
-    "$BIN" waitif "$G360R_STA_IF" 10
-    # evidence that the firmware switch took and which ifaces exist
-    logrun cat "$fwp"
-    logrun "$BIN" ifflags "$G360R_STA_IF"
-    logrun ls /sys/class/net
 }
 
-# privcmd wrapper. The stock mobileap-agent issues these as SIOCSIWPRIV (0x8B0C) with a
-# struct iwreq / iw_point (pointer=cmd, length=buf), i.e. g360rd's "iwpoint" style — NOT
-# the android_wifi_priv_cmd struct (style 0), which returned EOPNOTSUPP in Test 2.
-# $2="mask" logs a copy with KEY=******** (never log the PSK) and masks the reply echo too.
-_netup_privcmd() {
-    cmd=$1
-    if [ "$2" = mask ]; then
-        masked=$(printf %s "$cmd" | sed 's/KEY=[^,]*/KEY=********/')
-        log "netup: \$ privcmd $G360R_STA_IF $masked 0x8B0C iwpoint"
+# --- (2) rfkill ---------------------------------------------------------------------
+_netup_rfkill() {
+    rf=$(command -v rfkill 2>/dev/null); [ -n "$rf" ] || { [ -x /usr/sbin/rfkill ] && rf=/usr/sbin/rfkill; }
+    if [ -n "$rf" ]; then
+        logrun "$rf" list
+        logrun "$rf" unblock wifi
     else
-        log "netup: \$ privcmd $G360R_STA_IF $cmd 0x8B0C iwpoint"
+        log "netup: rfkill not present (skipping unblock)"
     fi
-    out=$("$BIN" privcmd "$G360R_STA_IF" "$cmd" 0x8B0C iwpoint 2>&1); rc=$?
-    # g360rd privcmd echoes reply=[<buf>]; dhd may leave the AP_CFG (with KEY=) in it.
-    [ "$2" = mask ] && out=$(printf %s "$out" | sed 's/KEY=[^,]*/KEY=********/')
-    log "netup: privcmd rc=$rc${out:+ $out}"
-    _netup_dmesg_tail
-    return $rc
 }
 
-# Diagnostics for the Wi-Fi bring-up (what private ioctls the driver really exposes, etc.).
-_netup_dmesg_tail() { logrun sh -c 'dmesg 2>/dev/null | tail -n 8'; }
-_netup_wifi_diag() {
-    [ -x /usr/bin/iwpriv ]  && logrun /usr/bin/iwpriv "$G360R_STA_IF"
-    [ -x /usr/bin/wl ]      && { logrun /usr/bin/wl ap; logrun /usr/bin/wl status; }
+# --- (4) hostapd.conf (passphrase only on disk under /tmp, never logged) ------------
+_netup_write_hostapd_conf() {
+    mkdir -p "$_netup_dir" "$_netup_hostapd_ctrl" 2>/dev/null
+    HIDE=$(cfg hide 0)
+    # A 64-hex secret is a pre-computed PMK (wpa_psk=); anything else is a passphrase.
+    case "$PSK" in
+        *[!0-9A-Fa-f]* ) key_line="wpa_passphrase=$PSK" ;;
+        ????????????????????????????????????????????????????????????????) key_line="wpa_psk=$PSK" ;;
+        * ) key_line="wpa_passphrase=$PSK" ;;
+    esac
+    {
+        echo "interface=$G360R_AP_IF"
+        echo "driver=nl80211"
+        echo "ctrl_interface=$_netup_hostapd_ctrl"
+        echo "ssid=$AP_SSID"
+        echo "channel=$CH"
+        echo "hw_mode=g"
+        echo "ieee80211n=1"
+        echo "max_num_sta=1"
+        echo "ignore_broadcast_ssid=$HIDE"
+        echo "wpa=2"
+        echo "wpa_key_mgmt=WPA-PSK"
+        echo "rsn_pairwise=CCMP"
+        echo "$key_line"
+    } > "$_netup_hostapd_conf" 2>/dev/null
+    chmod 600 "$_netup_hostapd_conf" 2>/dev/null
+    log "netup: wrote $_netup_hostapd_conf (ssid=$AP_SSID ch=$CH hide=$HIDE, key masked)"
+}
+
+# Copy hostapd's -dd log into the SD log, masking the passphrase (literal) AND any
+# line that could carry derived key material (PSK/PMK/PTK/GTK/nonce/...).
+_netup_import_hostapd_log() {
+    [ -f "$_netup_hostapd_log" ] || return 0
+    log "netup: --- hostapd.log (masked, tail) ---"
+    tail -n 160 "$_netup_hostapd_log" 2>/dev/null | awk -v p="$PSK" '
+    {
+        line=$0
+        if (p != "") {                      # literal (regex-safe) redaction of the secret
+            out=""; rest=line
+            while ((i=index(rest,p))>0) { out=out substr(rest,1,i-1) "********"; rest=substr(rest,i+length(p)) }
+            line=out rest
+        }
+        if (line ~ /[Pp]assphrase|PSK|PMK|PTK|GTK|GMK|[Nn]once|pairwise|master key|wpa_psk/) line="    [redacted: key material]"
+        print "    " line
+    }' | while IFS= read -r l; do log "$l"; done
+    log "netup: --- end hostapd.log ---"
+}
+
+_netup_hostapd_running() {
+    if [ -f "$_netup_hostapd_pid" ]; then
+        p=$(cat "$_netup_hostapd_pid" 2>/dev/null)
+        [ -n "$p" ] && [ -d "/proc/$p" ] && return 0
+    fi
+    pgrep -f "hostapd .*$_netup_hostapd_conf" >/dev/null 2>&1
+}
+
+_netup_hostapd_up_in_log() {
+    grep -qE "AP-ENABLED|Setup of interface done|Using interface $G360R_AP_IF" \
+        "$_netup_hostapd_log" 2>/dev/null
+}
+
+_netup_start_hostapd() {
+    [ -x /usr/sbin/hostapd ] || { log "netup: /usr/sbin/hostapd not present"; return 1; }
+    # -dd for diagnostics while we validate AP bring-up; log is masked on import. If a
+    # build is found to dump the passphrase in clear despite the mask, lower to -d here.
+    log "netup: \$ /usr/sbin/hostapd -B -P $_netup_hostapd_pid -f $_netup_hostapd_log -dd $_netup_hostapd_conf"
+    /usr/sbin/hostapd -B -P "$_netup_hostapd_pid" -f "$_netup_hostapd_log" -dd "$_netup_hostapd_conf" 2>/dev/null
+    i=0
+    while [ "$i" -lt 8 ]; do
+        _netup_hostapd_running || { log "netup: hostapd exited during startup"; return 1; }
+        _netup_hostapd_up_in_log && return 0
+        sleep 1
+        i=$((i + 1))
+    done
+    log "netup: hostapd did not report AP-ENABLED within ~8 s"
+    _netup_hostapd_running   # alive but unconfirmed -> let caller decide via wl
+}
+
+# --- (6) confirm AP mode via the wl tool (authoritative on this driver) -------------
+# Returns: 0 = confirmed AP, 1 = confirmed NOT AP, 2 = wl unavailable (unknown).
+_netup_wl_is_ap() {
+    [ -x /usr/bin/wl ] || return 2
+    logrun /usr/bin/wl ap
+    logrun /usr/bin/wl status
+    ap=$(/usr/bin/wl ap 2>/dev/null | tr -cd '0-9')
+    [ "$ap" = "1" ] && return 0
+    /usr/bin/wl status 2>/dev/null | grep -qiE "BSS .*(up|started)|AP .*up|SSID.*$AP_SSID" && return 0
+    return 1
 }
 
 netup() {
-    AP_STRATEGY="dhd-privcmd"
+    AP_STRATEGY="hostapd"
     AP_IF="$G360R_AP_IF"
     AP_IP="$G360R_AP_IP"
 
     AP_SSID=$(_netup_ssid)
     PSK=$(cfg psk "")
     CH=$(cfg channel 6)
-    # Refuse to bring up an unprotected AP: it would expose camera control to anyone.
+    # Refuse an unprotected AP: it would expose camera control to anyone in range.
     if [ -z "$PSK" ]; then
         log "netup: no psk in g360r.conf - refusing to start an open AP"
         return 1
     fi
-    SEC=wpa2-psk
-    HIDE=0
 
-    _netup_load_apsta_fw
-    _netup_wifi_diag   # iwpriv/wl: what the driver exposes before we try AP_CFG
+    mkdir -p "$_netup_dir" 2>/dev/null
 
-    # AP_CFG then AP_BSS_START over the dhd private ioctl (AP_CFG masked in the log).
-    sl=$(printf %s "$AP_SSID" | wc -c | tr -d ' ')
-    kl=$(printf %s "$PSK"     | wc -c | tr -d ' ')
-    _netup_privcmd "ASCII_CMD=AP_CFG,SSID_LEN=$sl,SSID=$AP_SSID,SEC=$SEC,KEY_LEN=$kl,KEY=$PSK,CHANNEL=$CH,PREAMBLE=0,MAX_SCB=10,HIDE=$HIDE,END" mask
-    _netup_privcmd "ASCII_CMD=AP_BSS_START"
+    _netup_release_sta            # (1) free wlan0 from connman/wpa_supplicant
+    _netup_rfkill                 # (2) unblock the radio
+    logrun "$BIN" ifdown "$G360R_STA_IF"   # (3) iface down; hostapd re-ups it in AP mode
 
-    # The AP BSS iface wl0.1 must appear after AP_BSS_START. Do NOT fall back to wlan0:
-    # wlan0 is UP in STA mode and would give a false "AP up". No wl0.1 => AP failed.
-    if ! "$BIN" waitif "$G360R_AP_IF" 8; then
-        log "netup: FAIL - $G360R_AP_IF never appeared (AP_CFG/AP_BSS_START did not bring up the AP)"
+    _netup_write_hostapd_conf     # (4) conf under /tmp (key not logged)
+    _netup_start_hostapd
+    hostapd_rc=$?
+    _netup_import_hostapd_log     # copy masked hostapd log regardless of outcome
+
+    # (6) success requires hostapd alive AND AP mode confirmed (wl, or hostapd's own
+    # AP-ENABLED when wl is unavailable).
+    if ! _netup_hostapd_running; then
+        log "netup: FAIL - hostapd not running"
         logrun ls /sys/class/net
-        _netup_wifi_diag
         return 1
     fi
-    AP_IF="$G360R_AP_IF"
+    _netup_wl_is_ap; wl_rc=$?
+    case "$wl_rc" in
+        0) log "netup: AP confirmed by wl" ;;
+        1) log "netup: FAIL - hostapd up but wl reports NOT in AP mode"; return 1 ;;
+        2) if _netup_hostapd_up_in_log; then
+               log "netup: wl unavailable; accepting hostapd AP-ENABLED as confirmation"
+           else
+               log "netup: FAIL - wl unavailable and hostapd never reported AP-ENABLED"
+               return 1
+           fi ;;
+    esac
 
-    "$BIN" ifaddr "$AP_IF" "$G360R_AP_IP" "$G360R_AP_MASK"
-    "$BIN" ifup   "$AP_IF"
+    # (5) address + DHCP on wlan0
+    logrun "$BIN" ifaddr "$AP_IF" "$G360R_AP_IP" "$G360R_AP_MASK"
+    logrun "$BIN" ifup   "$AP_IF"
     logrun "$BIN" ifflags "$AP_IF"
-
     _netup_start_dhcp || { log "netup: DHCP failed to start"; return 1; }
 
-    # sanity: the AP iface must be UP with our IP
     case "$("$BIN" ifflags "$AP_IF" 2>/dev/null)" in
-        *UP*) log "netup: AP up ssid=$AP_SSID if=$AP_IF ip=$AP_IP"; return 0 ;;
+        *UP*) log "netup: AP up ssid=$AP_SSID if=$AP_IF ip=$AP_IP (hostapd/nl80211)"; return 0 ;;
         *)    log "netup: $AP_IF not UP after bring-up"; return 1 ;;
     esac
 }
@@ -175,14 +257,20 @@ _netup_start_dhcp() {
     if [ -x /usr/bin/dnsmasq ]; then
         logrun /usr/bin/dnsmasq -C "$_netup_dhcp_conf"
         _netup_dhcp_running && return 0
-        # some builds background differently; accept if the binary launched
         pgrep -f "dnsmasq -C $_netup_dhcp_conf" >/dev/null 2>&1 && return 0
     fi
     log "netup: /usr/bin/dnsmasq not usable"
     return 1
 }
 
+# Supervisor tick: keep BOTH hostapd and dnsmasq alive (hostapd runs the AP, dnsmasq
+# the DHCP server). If hostapd died, the AP is gone, so restart it first.
 dhcp_check() {
+    if ! _netup_hostapd_running; then
+        log "netup: hostapd not running, restarting"
+        _netup_start_hostapd
+        _netup_import_hostapd_log
+    fi
     _netup_dhcp_running && return 0
     pgrep -f "dnsmasq -C $_netup_dhcp_conf" >/dev/null 2>&1 && return 0
     log "netup: dnsmasq not running, restarting"
