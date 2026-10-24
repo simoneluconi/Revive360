@@ -40,7 +40,12 @@ mkdir -p "$RUN" "$LOGDIR" 2>/dev/null
 echo $$ > "$RUN/launcher.pid"
 
 # Keep the previous boot's log, start a fresh one.
-[ -f "$LOG" ] && mv -f "$LOG" "$LOGDIR/g360r.prev.log" 2>/dev/null
+# rm first: the camera's exFAT driver leaves two entries with the same name when
+# mv replaces an existing file
+if [ -f "$LOG" ]; then
+    rm -f "$LOGDIR/g360r.prev.log"
+    mv -f "$LOG" "$LOGDIR/g360r.prev.log" 2>/dev/null
+fi
 
 # ------------------------------------------------------------ helpers
 
