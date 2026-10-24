@@ -1,0 +1,23 @@
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Camera-side build outputs and toolchain caches
+/camera/build/
+/camera/out/
+/camera/.toolchain/
+
+# Generated SD config holds the softAP passphrase
+g360r.conf
+!/camera/sd/g360r/g360r.conf.example
+
+# Logs pulled from the camera or the phone
+/logs/
