@@ -2,11 +2,14 @@
  * Adapter "c200": Samsung Gear 360 (2016), SM-C200, firmware APE4 and AQK1.
  *
  * Mechanisms (docs/firmware/03, 08, 09) - all by name/path, no addresses:
- *  - capture: the factory `st` CLI (SysV queue 0x8828 serviced by the running
- *    di-camera-app):  st app nx capture quality <q>;  st app nx capture run count 1
- *    The shot is injected as key events and is ASYNC: st returns before the
- *    file exists, the caller polls DCIM. st writes its integer result to
- *    /tmp/app_result. Every call has a hard timeout.
+ *  - capture: quality through the factory `st` CLI (SysV queue 0x8828 serviced
+ *    by the running di-camera-app): st app nx capture quality <q>. The shot itself
+ *    goes through dfms: dfmstool --script "capture still" sets the vconf key
+ *    memory/dfms/script_cmd, which the dfmsd that ran our SD hook keeps watching
+ *    and forwards to di-camera-app's dfms_app_cmd_capture. (`st app nx capture run`
+ *    only injects shutter keys into the normal UI, which does not run in factory
+ *    mode: Test 1h produced no file.) Both are ASYNC: the caller polls DCIM.
+ *    Every call has a hard timeout.
  *  - storage: exFAT card mounted at /opt/storage/sdcard (/sdcard -> /mnt/mmc ->
  *    /opt/storage/sdcard). Files: DCIM/<nnn>PHOTO/360_XXXX.JPG (+ .SRW beside
  *    the JPG in the raw quality modes).
@@ -19,6 +22,8 @@
  */
 #include "adapter.h"
 
+#include <ctype.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -26,6 +31,8 @@
 #define C200_STATUS "experimental"
 #define ST_BIN      "/usr/bin/st"
 #define ST_TIMEOUT_MS 10000
+#define DFMSTOOL_BIN  "/usr/bin/dfmstool"
+#define VCONFTOOL_BIN "/usr/bin/vconftool"
 
 static void log_app_result(const char *what, int rc, const char *out)
 {
@@ -55,6 +62,26 @@ static int st_call(char *const argv[], const char *what, char *err, size_t errle
     return 0;
 }
 
+/* Whether a dfmsd is running: it must be, to receive the dfms capture command. */
+static int dfmsd_running(void)
+{
+    DIR *d = opendir("/proc");
+    struct dirent *de;
+    int found = 0;
+    if (!d)
+        return 0;
+    while (!found && (de = readdir(d)) != NULL) {
+        char p[64], comm[32];
+        if (!isdigit((unsigned char)de->d_name[0]))
+            continue;
+        snprintf(p, sizeof p, "/proc/%s/comm", de->d_name);
+        if (read_text_file(p, comm, sizeof comm) > 0 && strcmp(comm, "dfmsd") == 0)
+            found = 1;
+    }
+    closedir(d);
+    return found;
+}
+
 static int c200_capture(adapter_t *a, int mode, const char *quality,
                         const char *resolution, char *err, size_t errlen)
 {
@@ -81,9 +108,26 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
     }
     sleep_ms(300);
     {
-        char *argv[] = { ST_BIN, "app", "nx", "capture", "run", "count", "1", NULL };
-        if (st_call(argv, "capture run", err, errlen) < 0)
+        char out[256];
+        char *vargv[] = { VCONFTOOL_BIN, "get", "memory/dfms/script_cmd", NULL };
+        char *argv[] = { DFMSTOOL_BIN, "--script", "capture still", NULL };
+        int rc;
+        if (access(DFMSTOOL_BIN, X_OK) != 0) {
+            snprintf(err, errlen, "%s not found", DFMSTOOL_BIN);
             return -1;
+        }
+        if (!dfmsd_running()) {
+            snprintf(err, errlen, "no dfmsd running to take the capture command");
+            return -1;
+        }
+        rc = run_cmd(vargv, ST_TIMEOUT_MS, out, sizeof out);
+        LOGI("c200: dfmsd listening, %s (rc=%d)", out, rc);
+        rc = run_cmd(argv, ST_TIMEOUT_MS, out, sizeof out);
+        LOGI("c200: dfmstool --script \"capture still\" -> rc=%d out=[%s]", rc, out);
+        if (rc == -1) {
+            snprintf(err, errlen, "cannot run %s", DFMSTOOL_BIN);
+            return -1;
+        }
     }
     return 0;
 }
