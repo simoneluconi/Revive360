@@ -77,7 +77,8 @@ Every non-2xx response with a JSON-capable endpoint has this body:
 | 404 | `not_found` | unknown endpoint or file |
 | 404 | `no_thumbnail` | the file exists but has no embedded thumbnail |
 | 405 | `method_not_allowed` | wrong method for the endpoint |
-| 409 | `busy` | a capture is in progress (capture, delete) |
+| 409 | `busy` | a capture or recording is in progress (capture, delete, settings, record) |
+| 409 | `wrong_mode` | the request needs another shooting mode (§5.3 needs `photo`, §5.13 `video`/`looping`) |
 | 413 | `too_large` | headers or body over the limit |
 | 416 | `range_not_satisfiable` | bad `Range` on a download |
 | 500 | `internal` | unexpected failure; `message` says what |
@@ -117,7 +118,12 @@ A missing key means "not supported" (`false`, empty list).
     { "id": "front",    "label": "Front",          "role": "front",        "states": ["off", "on", "blink", "auto"] }
   ],
   "debug_log": true,
-  "time": true
+  "time": true,
+  "settings": [
+    { "id": "mode",       "values": ["photo", "video", "timelapse", "looping"] },
+    { "id": "lens",       "values": ["dual", "rear", "front"] },
+    { "id": "video_size", "values": ["3840x1920@30", "2560x1280@30", "1920x960@30"] }
+  ]
 }
 ```
 
@@ -127,14 +133,27 @@ A missing key means "not supported" (`false`, empty list).
 | `capture.photo_qualities` | list of opaque strings | Accepted values of `quality` in §5.3; the first is the default. Empty = not settable. |
 | `capture.photo_resolutions` | list of `WxH` | Resolutions the camera produces; the first is the default/current. Informational unless `resolution_settable`. |
 | `capture.resolution_settable` | bool | If true, `resolution` in §5.3 accepts a value from `photo_resolutions`. |
-| `video_modes` | list of `WxH@fps` | Informational in v1 (no record endpoint). |
-| `record` | bool | Reserved; always `false` in v1. |
+| `video_modes` | list of `WxH@fps` | Informational (the settable list is the `video_size` setting). |
+| `record` | bool | §5.13 is available (start/stop a video recording). |
 | `liveview` | bool | Reserved; always `false` in v1. |
 | `files.*` | bool | Gates the file endpoints of §5.4–§5.7. `range` = downloads honour `Range`. |
 | `status.battery` / `status.storage` / `status.battery_temperature` | bool | Which parts of §5.2 are filled in. |
 | `leds` | list of LED channel objects | One entry per independently controllable LED. `id` is opaque (used in §5.8); `label` is for display; `role` is one of `status_red`, `status_green`, `status_blue`, `front`, `rear`, `charge`, `unknown`; `states` lists what §5.8 accepts for it. Empty = no LED control. |
 | `debug_log` | bool | §5.9 is available. |
 | `time` | bool | §5.10 is available: the app may set the camera clock. |
+| `settings` | list of `{id, values}` | Camera settings of §5.12, in display order. `id` is one of the ids below (an app ignores ids it does not know); `values` are the accepted tokens. Empty = none. |
+
+Setting ids and their tokens (an adapter offers a subset):
+
+| `id` | Tokens | Meaning |
+|---|---|---|
+| `mode` | `photo`, `video`, `timelapse`, `looping`, `burst`, `slowmo` | Shooting mode. §5.3 needs `photo`, §5.13 `video`/`looping`. |
+| `lens` | `dual`, `rear`, `front` | Both lenses (360°) or a single one (180°). |
+| `photo_size` | `WxH` or adapter tokens (`dual_large`, `dual_small`, `single_large`, `single_wide`) | Still image size. |
+| `video_size` | `WxH@fps` | Movie size and frame rate. |
+| `timer` | `off`, `on`, or seconds (`2`, `5`, `10`) | Self-timer before a still. |
+| `timelapse_interval` | seconds (`0.5` … `60`) | Interval between time-lapse frames. |
+| `loop_time` | minutes (`5` … `120`) or `max` | Length of a looping-video segment. |
 
 Values above are illustrative; each camera adapter reports its own. A not-yet-confirmed hardware
 mapping is reported honestly (e.g. `role: "unknown"`, `label: "LED 3"`).
@@ -203,6 +222,8 @@ Polled by the app (suggested every 5 s while the home screen is visible).
   are 0. Sizes come from `statvfs` (`used = total - free`, where `free` = space available to
   non-root, i.e. `f_bavail`).
 - `busy`: a capture is in progress.
+- `recording` (when `capabilities.record`): `{ "active": true, "elapsed_s": 42 }`; `elapsed_s` is
+  absent when unknown.
 - `uptime_s`: seconds since the controller started (lets the app detect a camera reboot).
 
 ### 5.3 `POST /api/v1/capture`
@@ -223,7 +244,11 @@ Semantics:
 - **Synchronous.** The server triggers the capture and responds once the new file(s) are complete
   on the card (size stable), or after its timeout (30 s) with `504 capture_timeout`. The client uses
   a read timeout of at least 45 s.
-- Captures are serialized: a second capture while one runs gets `409 busy`.
+- Captures are serialized: a second capture while one runs gets `409 busy`; so does a capture during
+  a recording (§5.13).
+- If the camera has a `mode` setting (§5.12) and it is not `photo`, the server switches it to `photo`
+  first (in another mode the shutter would start a recording, say). The answer of a later
+  `GET /api/v1/settings` shows the change.
 - `mode` `raw+photo` yields two files (SRW + JPG); the response lists every new file.
 - Unsupported `mode`/`quality`/`resolution` → `501 unsupported`. No card → `503 no_storage`.
 
@@ -367,6 +392,34 @@ Arguments are limited to letters, digits, space and `+,._-` (`/=` too for st/vco
 - `POST /api/v1/debug/st` / `POST /api/v1/debug/vconf` `{"args": "app nx capture quality"}`: runs
   `st` / `vconftool` with those arguments, answers `{"rc", "out", "app_result", "system_log"}`
   (st's `/tmp/app_result` and the last 40 system log lines).
+
+### 5.12 `GET /api/v1/settings`, `POST /api/v1/settings`
+
+Only when `capabilities.settings` is not empty. `GET` answers the current value of every setting:
+
+```json
+{ "settings": { "mode": "photo", "lens": "dual", "video_size": "3840x1920@30" } }
+```
+
+A value the camera cannot report is `null`. `POST` changes one or more settings and answers like
+`GET` with the values after the change:
+
+```json
+{ "mode": "video", "video_size": "2560x1280@30" }
+```
+
+`400 bad_request` for an unknown id or a token not in its `values` (nothing is changed);
+`409 busy` while a capture or a recording runs; `500 internal` if the camera refused a setting
+(the others may have been applied: read the answer). The camera's own buttons can change settings
+too, so the app re-reads them (on connection and when it shows them).
+
+### 5.13 `POST /api/v1/record`
+
+Only when `capabilities.record`. `{"action": "start"}` starts a video recording in the current
+`mode` (`video` or `looping`; `409 wrong_mode` otherwise), `{"action": "stop"}` stops it. Answers
+`{ "recording": { "active": true, "elapsed_s": 0 } }` (as in §5.2); stopping answers the new files
+too, like §5.3: `{ "recording": { "active": false }, "files": [ ... ] }`. `409 busy` to start while
+recording or capturing; stopping when nothing records answers `200` with `active: false`.
 
 ## 6. Camera-side behaviour (informative)
 
