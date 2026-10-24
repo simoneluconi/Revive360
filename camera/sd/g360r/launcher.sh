@@ -253,7 +253,8 @@ status_led starting
 led_signature
 prefs_dump
 raw_probe
-beep 1 "$WAV_OK"
+# Normal mode: no start beep (the LED signature says it), one beep when ready
+[ "$MODE" = factory ] && beep 1 "$WAV_OK"
 
 logrun ls -la /sys/class/leds/
 logrun ls /sys/class/power_supply/
@@ -317,7 +318,7 @@ if kill -0 "$SERVER_PID" 2>/dev/null; then
     if [ -z "$NET_ERROR" ]; then
         milestone "READY: join Wi-Fi '$AP_SSID' and open http://$AP_IP:$PORT/api/v1/info"
         status_led ready
-        beep 2 "$WAV_OK"
+        if [ "$MODE" = factory ]; then beep 2 "$WAV_OK"; else beep 1 "$WAV_OK"; fi
     else
         status_led error
         beep 3 "$WAV_ERR"
