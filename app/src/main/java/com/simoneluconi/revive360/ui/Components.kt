@@ -309,14 +309,16 @@ fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = M
 @Composable
 fun Chip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalAppColors.current
+    // Selected = solid accent: a soft tint alone was too close to the unselected chips
     Box(
         modifier
             .clip(CircleShape)
-            .background(if (selected) colors.accentSoft else colors.surface2)
+            .background(if (selected) colors.accent else colors.surface2)
+            .border(1.dp, if (selected) colors.accent else colors.line, CircleShape)
             .pressable(label = text, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Label(text, color = if (selected) colors.accent else colors.text, weight = FontWeight.Bold, maxLines = 1)
+        Label(text, color = if (selected) colors.onAccent else colors.text, weight = FontWeight.Bold, maxLines = 1)
     }
 }
 
