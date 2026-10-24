@@ -29,6 +29,21 @@ log "page 0 tail before: $(page0_tail)"
 # Disarm first: whatever happens next, the following boot is a normal one
 mv /sdcard/info.tg /sdcard/info.tg.done && log "hook disarmed (info.tg -> info.tg.done)"
 
+# Only invalidate if the modified rootfs really is on the eMMC: read the raw
+# partition (fresh blocks, not the snapshot's cached view) for a string that
+# exists only in our canary script. Otherwise the flash did not take: stop.
+ROOTFS=/dev/mmcblk0p9
+MARK="Revive360 canary, first modified-firmware flash"
+log "searching $ROOTFS for the canary marker..."
+hits=$(grep -a -c "$MARK" "$ROOTFS" 2>/dev/null)
+log "marker hits on $ROOTFS: ${hits:-0}"
+if [ "${hits:-0}" -lt 1 ]; then
+    log "ABORT: modified rootfs not found on $ROOTFS; p8 left untouched"
+    echo "aborted: rootfs marker not found" > /sdcard/g360r/p8_invalidate.done
+    sync
+    exit 0
+fi
+
 if [ -b "$SNAP" ] && command -v mkswap >/dev/null 2>&1; then
     mkswap "$SNAP" >> "$LOG" 2>&1
     log "mkswap exit $?"
