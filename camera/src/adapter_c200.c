@@ -8,8 +8,8 @@
  *    memory/dfms/script_cmd, which the dfmsd that ran our SD hook keeps watching
  *    and forwards to di-camera-app's dfms_app_cmd_capture. (`st app nx capture run`
  *    only injects shutter keys into the normal UI, which does not run in factory
- *    mode: Test 1h produced no file.) In normal mode (modified firmware, no
- *    dfmsd) the live UI is up and `st app nx capture run count 1` is the shot.
+ *    mode: Test 1h produced no file, nor in normal mode on the modified
+ *    firmware.) dfmsd runs in normal mode too, so dfms is the shot in both.
  *    Both are ASYNC: the caller polls DCIM.
  *    Every call has a hard timeout.
  *  - storage: exFAT card mounted at /opt/storage/sdcard (/sdcard -> /mnt/mmc ->
@@ -89,10 +89,11 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
                         const char *resolution, char *err, size_t errlen)
 {
     char q[32];
-    /* Factory mode (SD hook) has no live capture UI; normal mode (modified
-     * firmware, boot.sh exports G360R_MODE=normal) has it. Not dfmsd: it runs
-     * in both modes (first normal-mode boot took the dfms path, and its
-     * capture ignored the raw quality). */
+    /* The shot always goes through dfms: dfmsd runs in normal mode too, and
+     * there `capture still` works (8.9 s) while `st app nx capture run` writes
+     * nothing (both tested on the modified firmware). Factory mode (SD hook)
+     * also needs the live view asked once; normal mode (boot.sh exports
+     * G360R_MODE=normal) has it already. */
     const char *run_mode = getenv("G360R_MODE");
     int factory = !(run_mode && strcmp(run_mode, "normal") == 0);
     (void)resolution; /* not settable in v1 */
@@ -109,7 +110,7 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
     else
         snprintf(q, sizeof q, "%s", quality ? quality : "sfine");
 
-    LOGI("c200: capture via %s", factory ? "dfms (factory mode)" : "st shutter keys (normal mode)");
+    LOGI("c200: capture via dfms (%s mode)", factory ? "factory" : "normal");
     /* Put the app in 360 photo mode first. In factory mode also ask once for
      * the live view: dfms `capture still` needs a live pipeline (Test 2). */
     {
@@ -134,11 +135,6 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
             return -1;
     }
     sleep_ms(300);
-    if (!factory) {
-        /* Normal mode: the shutter key sequence into the live capture UI */
-        char *argv[] = { ST_BIN, "app", "nx", "capture", "run", "count", "1", NULL };
-        return st_call(argv, "capture run", err, errlen);
-    }
     {
         char out[256];
         char *vargv[] = { VCONFTOOL_BIN, "get", "memory/dfms/script_cmd", NULL };
