@@ -13,6 +13,7 @@
 #include "server.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -161,8 +162,12 @@ void api_debug_shim(req_t *r)
     jobj_t o;
     const char *req;
     int wrong = 0, s;
-    char reply[1024] = "", logtail[16384] = "";
-    char *tail[] = { "/bin/sh", "-c", "tail -n 60 /tmp/g360r/shim.log 2>/dev/null", NULL };
+    char reply[1024] = "", logtail[16384] = "", files[4096] = "";
+    char *tail[] = { "/bin/sh", "-c", "tail -n 60 /tmp/g360r/shim.log 2>&1", NULL };
+    char *lsdir[] = { "/bin/sh", "-c",
+        "ls -la /tmp/g360r/; cat /proc/self/attr/current 2>/dev/null; echo;"
+        " for p in $(pgrep -f di-camera-app); do echo \"app $p: $(cat /proc/$p/attr/current 2>/dev/null)"
+        " maps: $(grep -c g360r_shim /proc/$p/maps 2>/dev/null)\"; done", NULL };
     struct sockaddr_un sa;
     sbuf_t b;
     ssize_t n;
@@ -181,33 +186,42 @@ void api_debug_shim(req_t *r)
             http_send_error(r, 400, "bad_request", "req may only hold letters, digits, spaces and /._-");
             return;
         }
+    /* Every step reports its errno, and the shim's log and files come back
+     * whatever happened: on the first try connect worked and write failed. */
     s = socket(AF_UNIX, SOCK_STREAM, 0);
     memset(&sa, 0, sizeof sa);
     sa.sun_family = AF_UNIX;
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", SHIM_SOCK);
-    if (s < 0 || connect(s, (struct sockaddr *)&sa, sizeof sa) < 0) {
-        if (s >= 0)
-            close(s);
-        http_send_error(r, 503, "unavailable", "shim not running (no %s)", SHIM_SOCK);
-        return;
+    if (s < 0) {
+        snprintf(reply, sizeof reply, "error socket: %s", strerror(errno));
+    } else if (connect(s, (struct sockaddr *)&sa, sizeof sa) < 0) {
+        snprintf(reply, sizeof reply, "error connect %s: %s", SHIM_SOCK, strerror(errno));
+    } else {
+        char line[256];
+        snprintf(line, sizeof line, "%s\n", req);
+        if (send(s, line, strlen(line), MSG_NOSIGNAL) < 0) {
+            snprintf(reply, sizeof reply, "error send: %s", strerror(errno));
+        } else {
+            n = read(s, reply, sizeof reply - 1); /* the shim answers within ~10 s */
+            if (n > 0)
+                reply[n] = 0;
+            else
+                snprintf(reply, sizeof reply, "error read: %s", n < 0 ? strerror(errno) : "connection closed, no answer");
+        }
     }
-    if (write(s, req, strlen(req)) < 0 || write(s, "\n", 1) < 0) {
+    if (s >= 0)
         close(s);
-        http_send_error(r, 503, "unavailable", "cannot talk to the shim");
-        return;
-    }
-    n = read(s, reply, sizeof reply - 1); /* the shim answers within ~10 s */
-    if (n > 0)
-        reply[n] = 0;
-    close(s);
     LOGI("debug: shim \"%s\" -> %s", req, reply);
     run_cmd(tail, 5000, logtail, sizeof logtail);
+    run_cmd(lsdir, 5000, files, sizeof files);
 
     sbuf_init(&b);
     sbuf_puts(&b, "{\"reply\":");
     json_str(&b, reply);
     sbuf_puts(&b, ",\"shim_log\":");
     json_str(&b, logtail);
+    sbuf_puts(&b, ",\"files\":");
+    json_str(&b, files);
     sbuf_puts(&b, "}");
     http_send_json(r, 200, &b);
     sbuf_free(&b);
