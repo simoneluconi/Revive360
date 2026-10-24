@@ -178,6 +178,13 @@ check "log 5 lines" 5 "$(wc -l < "$T/body" | tr -d ' ')"
 check "log type" "text/plain; charset=utf-8" "$(hdr Content-Type)"
 check "log bad lines 400" 400 "$(req GET '/api/v1/log?lines=abc')"
 
+echo "== time"
+check "time 200" 200 "$(req POST /api/v1/time -d '{"utc_ms":1729780000000,"tz":"Europe/Rome","tz_offset_min":120}')"
+check "time body" 1 "$(grep -c '"applied":\[\]' "$T/body")"
+check "time too old 400" 400 "$(req POST /api/v1/time -d '{"utc_ms":1000,"tz_offset_min":0}')"
+check "time missing 400" 400 "$(req POST /api/v1/time -d '{"tz_offset_min":0}')"
+check "time GET 405" 405 "$(req GET /api/v1/time)"
+
 echo "== capture timeout (30 s)"
 touch "$SIM/SIM_CAPTURE_TIMEOUT"
 check "capture 504" 504 "$(req POST /api/v1/capture -d '{"mode":"photo"}' --max-time 45)"

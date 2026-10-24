@@ -58,7 +58,7 @@ void api_capabilities_json(sbuf_t *b)
         json_str(b, a->leds[i].role);
         sbuf_puts(b, ",\"states\":[\"off\",\"on\",\"blink\",\"auto\"]}");
     }
-    sbuf_printf(b, "],\"debug_log\":%s}", log_path() ? "true" : "false");
+    sbuf_printf(b, "],\"debug_log\":%s,\"time\":true}", log_path() ? "true" : "false");
 }
 
 static void api_info(req_t *r)
@@ -155,6 +155,8 @@ void api_dispatch(req_t *r)
         if (allow(r, "GET")) api_files_list(r);
     } else if (strcmp(p, "/api/v1/led") == 0) {
         if (allow(r, "POST")) api_led(r);
+    } else if (strcmp(p, "/api/v1/time") == 0) {
+        if (allow(r, "POST")) api_time(r);
     } else if (strcmp(p, "/api/v1/log") == 0) {
         if (allow(r, "GET")) api_log(r);
     } else if (prefix(p, "/api/v1/thumb/")) {
