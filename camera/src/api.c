@@ -203,6 +203,8 @@ void api_dispatch(req_t *r)
         if (allow(r, "POST")) api_debug_st(r);
     } else if (strcmp(p, "/api/v1/debug/vconf") == 0) {
         if (allow(r, "POST")) api_debug_vconf(r);
+    } else if (strcmp(p, "/api/v1/debug/shim") == 0) {
+        if (allow(r, "POST")) api_debug_shim(r);
     } else if (strcmp(p, "/api/v1/log") == 0) {
         if (allow(r, "GET")) api_log(r);
     } else if (prefix(p, "/api/v1/thumb/")) {

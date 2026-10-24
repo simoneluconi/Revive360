@@ -12,7 +12,7 @@ snapshot back, so step 3 is needed after each one. Recovery is always possible: 
 
 | Path | What |
 |---|---|
-| `overlay-controller/` | The real controller: `g360r.service` + `boot.sh`; the build adds `g360rd`, `launcher.sh`, `netup.sh`. Plus `g360r-leds.service` + `boot_leds.sh`: the boot signature (led.0–4 one at a time, then two flashes, under a second, before the stock app takes the LEDs) |
+| `overlay-controller/` | The real controller: `g360r.service` + `boot.sh`; the build adds `g360rd`, `launcher.sh`, `netup.sh`. Plus the shim: `di-camera-app.service.d/g360r-shim.conf` sets `LD_PRELOAD=/usr/lib/libg360r_shim.so` (built with `make shim`) for the stock camera app |
 | `overlay-canary/` | First test overlay: a unit that only logs a heartbeat to the SD (`/sdcard/g360r.on`) |
 | `p8_invalidate.sh` | One-shot SD hook that runs once after a flash: `mkswap /dev/mmcblk0p8` (see step 3) |
 | `flash_diag.sh` | Read-only SD hook: searches every eMMC partition for a marker, logs the partition table |
@@ -88,10 +88,12 @@ the swsusp signature is at the end of page 0, hence `mkswap`.
 4. Power off and on again: a cold boot from our rootfs. It is slower than usual (~30 s, no instant-on).
 
 **What a cold boot looks like** (every power-on from now on, so tell users): press power and
-**nothing happens for a while**; then our **LED signature** (the LEDs one at a time, then two quick
-flashes: this is how you know our firmware is running); then another wait; then the stock start-up
-(the charge LED blinks blue twice, the two LEDs by the lenses turn red) and the camera comes on. This is normal: without the snapshot the camera loads the kernel and the system from
-scratch. Don't press power again while you wait, or you may switch it off again.
+**nothing happens for a while**; then the stock start-up (the charge LED blinks blue twice, the two
+LEDs by the lenses turn red) and the camera comes on; a few seconds later, if the card holds
+`g360r/g360r.conf`, our **LED signature** (around the camera twice: charge LED blue, one lens LED,
+the other; then two flashes) and **one beep** when the Wi-Fi is ready (three beeps = error). This
+is normal: without the snapshot the camera loads the kernel and the system from scratch. Don't
+press power again while you wait, or you may switch it off again.
 
 From now on every power-on is a cold boot with our files. Instant-on (a new snapshot with
 `/etc/snapshot`) is deferred.

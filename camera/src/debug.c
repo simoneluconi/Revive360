@@ -145,3 +145,70 @@ void api_debug_vconf(req_t *r)
 {
     debug_run(r, "/usr/bin/vconftool");
 }
+
+/*
+ * POST /api/v1/debug/shim {"req": "usr 0x10 1"}: one request to the shim loaded
+ * into di-camera-app (shim/g360r_shim.c) over /tmp/g360r/shim.sock; answers its
+ * reply and the tail of /tmp/g360r/shim.log (what the app itself set).
+ */
+#include <sys/socket.h>
+#include <sys/un.h>
+
+#define SHIM_SOCK "/tmp/g360r/shim.sock"
+
+void api_debug_shim(req_t *r)
+{
+    jobj_t o;
+    const char *req;
+    int wrong = 0, s;
+    char reply[1024] = "", logtail[16384] = "";
+    char *tail[] = { "/bin/sh", "-c", "tail -n 60 /tmp/g360r/shim.log 2>/dev/null", NULL };
+    struct sockaddr_un sa;
+    sbuf_t b;
+    ssize_t n;
+
+    if (jobj_parse(r->body, r->body_len, &o) < 0) {
+        http_send_error(r, 400, "bad_request", "body is not a JSON object");
+        return;
+    }
+    req = jobj_get_str(&o, "req", &wrong);
+    if (!req || wrong || !*req || strlen(req) > 200) {
+        http_send_error(r, 400, "bad_request", "req must be a non-empty string");
+        return;
+    }
+    for (const char *c = req; *c; c++)
+        if (!isalnum((unsigned char)*c) && *c != ' ') {
+            http_send_error(r, 400, "bad_request", "req may only hold letters, digits and spaces");
+            return;
+        }
+    s = socket(AF_UNIX, SOCK_STREAM, 0);
+    memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", SHIM_SOCK);
+    if (s < 0 || connect(s, (struct sockaddr *)&sa, sizeof sa) < 0) {
+        if (s >= 0)
+            close(s);
+        http_send_error(r, 503, "unavailable", "shim not running (no %s)", SHIM_SOCK);
+        return;
+    }
+    if (write(s, req, strlen(req)) < 0 || write(s, "\n", 1) < 0) {
+        close(s);
+        http_send_error(r, 503, "unavailable", "cannot talk to the shim");
+        return;
+    }
+    n = read(s, reply, sizeof reply - 1); /* the shim answers within ~10 s */
+    if (n > 0)
+        reply[n] = 0;
+    close(s);
+    LOGI("debug: shim \"%s\" -> %s", req, reply);
+    run_cmd(tail, 5000, logtail, sizeof logtail);
+
+    sbuf_init(&b);
+    sbuf_puts(&b, "{\"reply\":");
+    json_str(&b, reply);
+    sbuf_puts(&b, ",\"shim_log\":");
+    json_str(&b, logtail);
+    sbuf_puts(&b, "}");
+    http_send_json(r, 200, &b);
+    sbuf_free(&b);
+}

@@ -10,8 +10,7 @@
 # (g360r/bin/g360rd, g360r/launcher.sh, g360r/netup.sh) wins over the copy
 # built into the firmware, so a new controller needs only a card, not a flash.
 #
-# The firmware's boot signature on the LEDs is a separate unit that runs
-# before the stock app: boot_leds.sh (g360r-leds.service).
+# The LED signature is played by the launcher once the stock app is up.
 
 SD_DIR=/sdcard/g360r
 SYS_DIR=/usr/share/g360r
@@ -49,7 +48,6 @@ src_netup=$(pick "$SD_DIR/netup.sh" "$SYS_DIR/netup.sh")
 {
     echo "=== boot.sh (normal mode) $(date '+%Y-%m-%d %H:%M:%S') uptime $(cut -d' ' -f1 /proc/uptime) pid $$"
     echo "card ready after ${i}s, di-camera-app after ${i_app}s more"
-    [ -f /run/g360r-leds.log ] && cat /run/g360r-leds.log
     echo "firmware: $(cat "$SYS_DIR/VERSION" 2>/dev/null || echo unknown)"
     echo "payload: $src_bin $src_launcher $src_netup"
 } > "$BOOTLOG" 2>&1

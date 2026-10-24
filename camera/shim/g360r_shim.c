@@ -4,8 +4,12 @@
  * through the app's own camera handles. Never loaded by the factory SD hook.
  *
  * - Does nothing in any process other than di-camera-app.
- * - Interposes mmf_camcorder_create / mm_camera_create to remember the app's
- *   handles (the real functions run unchanged, via dlsym(RTLD_NEXT)).
+ * - Interposes mm_camera_create (libcapture-fw-prod) to remember the app's
+ *   still-capture handle, and logs the app's own mm_camera_set_usr_attributes /
+ *   set_var_attributes / set_userspec calls; the real functions run unchanged
+ *   (dlsym(RTLD_NEXT)). The still capture (dfms `capture still` too) goes
+ *   through mm_camera_capture_still on that handle; the RTOS capture settings,
+ *   RAW ones included, are SetUserDataMCB ids set by mm_camera_set_usr_attributes.
  * - Listens on /tmp/g360r/shim.sock, one line per request, one line answered.
  *   Requests that touch the camera are posted to the app's main loop
  *   (ecore_main_loop_thread_safe_call_async) and run there, serialized with
@@ -37,8 +41,7 @@
 typedef void *handle_t;
 
 static int g_active;
-static handle_t g_camcorder;    /* mmf_camcorder handle of the app */
-static handle_t g_camera;       /* mm_camera handle of the app */
+static handle_t g_camera;       /* mm_camera handle of the app (still capture) */
 static pthread_mutex_t g_log_mu = PTHREAD_MUTEX_INITIALIZER;
 
 static void slog(const char *fmt, ...)
@@ -63,37 +66,74 @@ static void slog(const char *fmt, ...)
 
 /* ------------------------------------------------------------ interposers */
 
-int mmf_camcorder_create(handle_t *camcorder, void *info)
-{
-    static int (*real)(handle_t *, void *);
-    int rc;
+typedef int (*set3_fn)(handle_t, int, int);
+typedef int (*set4_fn)(handle_t, int, int, int);
 
-    if (!real)
-        real = (int (*)(handle_t *, void *))dlsym(RTLD_NEXT, "mmf_camcorder_create");
-    if (!real)
-        return -1;
-    rc = real(camcorder, info);
-    if (g_active && camcorder) {
-        g_camcorder = *camcorder;
-        slog("mmf_camcorder_create -> rc=%d handle=%p", rc, g_camcorder);
-    }
-    return rc;
+static void *real_fn(const char *name)
+{
+    void *f = dlsym(RTLD_NEXT, name);
+    if (!f)
+        slog("dlsym(%s): %s", name, dlerror());
+    return f;
 }
 
-int mm_camera_create(handle_t *camera, void *info)
+int mm_camera_create(handle_t *camera)
 {
-    static int (*real)(handle_t *, void *);
+    static int (*real)(handle_t *);
     int rc;
 
     if (!real)
-        real = (int (*)(handle_t *, void *))dlsym(RTLD_NEXT, "mm_camera_create");
+        real = (int (*)(handle_t *))real_fn("mm_camera_create");
     if (!real)
         return -1;
-    rc = real(camera, info);
+    rc = real(camera);
     if (g_active && camera) {
         g_camera = *camera;
         slog("mm_camera_create -> rc=%d handle=%p", rc, g_camera);
     }
+    return rc;
+}
+
+/* The app's own settings, logged to learn which ids a normal shot uses */
+int mm_camera_set_usr_attributes(handle_t h, int id, int val)
+{
+    static set3_fn real;
+    int rc;
+    if (!real)
+        real = (set3_fn)real_fn("mm_camera_set_usr_attributes");
+    if (!real)
+        return -1;
+    rc = real(h, id, val);
+    if (g_active)
+        slog("app: set_usr_attributes(id=%d 0x%x, val=%d 0x%x) -> %d", id, id, val, val, rc);
+    return rc;
+}
+
+int mm_camera_set_var_attributes(handle_t h, int cmd, int val, int size)
+{
+    static set4_fn real;
+    int rc;
+    if (!real)
+        real = (set4_fn)real_fn("mm_camera_set_var_attributes");
+    if (!real)
+        return -1;
+    rc = real(h, cmd, val, size);
+    if (g_active)
+        slog("app: set_var_attributes(cmd=0x%x, val=%d, size=%d) -> %d", cmd, val, size, rc);
+    return rc;
+}
+
+int mm_camera_set_userspec(handle_t h, int item, int flag)
+{
+    static set3_fn real;
+    int rc;
+    if (!real)
+        real = (set3_fn)real_fn("mm_camera_set_userspec");
+    if (!real)
+        return -1;
+    rc = real(h, item, flag);
+    if (g_active)
+        slog("app: set_userspec(item=%d 0x%x, flag=%d) -> %d", item, item, flag, rc);
     return rc;
 }
 
@@ -108,15 +148,42 @@ struct job {
     pthread_cond_t cv;
 };
 
+/* Requests: ping | handle | usr <id> <val> | var <cmd> <val> | userspec <item> <flag>
+ * (numbers in decimal or 0x hex). The set requests go through the same
+ * interposers, so they are logged like the app's own calls. */
 static void run_on_main(struct job *j)
 {
-    if (strcmp(j->req, "ping") == 0) {
+    char verb[16];
+    long a = 0, b = 0;
+    int n = sscanf(j->req, "%15s %li %li", verb, &a, &b), rc;
+
+    if (n >= 1 && strcmp(verb, "ping") == 0) {
         snprintf(j->resp, sizeof j->resp, "ok pong (main loop)");
-    } else if (strcmp(j->req, "handles") == 0) {
-        snprintf(j->resp, sizeof j->resp, "ok camcorder=%p camera=%p", g_camcorder, g_camera);
-    } else {
-        snprintf(j->resp, sizeof j->resp, "error unknown request");
+        return;
     }
+    if (n >= 1 && strcmp(verb, "handle") == 0) {
+        snprintf(j->resp, sizeof j->resp, "ok camera=%p", g_camera);
+        return;
+    }
+    if (n != 3) {
+        snprintf(j->resp, sizeof j->resp, "error usage: ping | handle | usr ID VAL | var CMD VAL | userspec ITEM FLAG");
+        return;
+    }
+    if (!g_camera) {
+        snprintf(j->resp, sizeof j->resp, "error no mm_camera handle yet");
+        return;
+    }
+    if (strcmp(verb, "usr") == 0)
+        rc = mm_camera_set_usr_attributes(g_camera, (int)a, (int)b);
+    else if (strcmp(verb, "var") == 0)
+        rc = mm_camera_set_var_attributes(g_camera, (int)a, (int)b, 4);
+    else if (strcmp(verb, "userspec") == 0)
+        rc = mm_camera_set_userspec(g_camera, (int)a, (int)b);
+    else {
+        snprintf(j->resp, sizeof j->resp, "error unknown request");
+        return;
+    }
+    snprintf(j->resp, sizeof j->resp, "ok %s %ld %ld -> rc=%d", verb, a, b, rc);
 }
 
 static void main_cb(void *data)

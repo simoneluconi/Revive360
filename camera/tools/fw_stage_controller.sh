@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stage the controller overlay for fw_build.sh: fw/overlay-controller plus the
-# built payload (out/sd/g360r: g360rd, launcher.sh, netup.sh) in /usr/share/g360r.
-# Run build.sh first. Usage: sh camera/tools/fw_stage_controller.sh <stage dir>
+# built payload (out/sd/g360r: g360rd, launcher.sh, netup.sh) in /usr/share/g360r
+# and the shim (out/libg360r_shim.so) in /usr/lib. Run build.sh and make shim first. Usage: sh camera/tools/fw_stage_controller.sh <stage dir>
 set -eu
 
 CAMERA=$(cd "$(dirname "$0")/.." && pwd)
@@ -13,6 +13,8 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp -R "$CAMERA/fw/overlay-controller/." "$STAGE/"
 cp "$SRC/bin/g360rd" "$SRC/launcher.sh" "$SRC/netup.sh" "$STAGE/usr/share/g360r/"
+[ -f "$CAMERA/out/libg360r_shim.so" ] || { echo "no out/libg360r_shim.so: make shim first" >&2; exit 1; }
+cp "$CAMERA/out/libg360r_shim.so" "$STAGE/usr/lib/"
 # Which build this firmware is: logged by boot.sh to g360r/log/start.log
 echo "g360r $(git -C "$CAMERA" describe --always --dirty 2>/dev/null || echo nogit) built $(date -u '+%Y-%m-%d %H:%M UTC')"     > "$STAGE/usr/share/g360r/VERSION"
 # The camera's shell rejects CRLF

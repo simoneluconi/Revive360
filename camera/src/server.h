@@ -114,6 +114,7 @@ void api_led(req_t *r);
 void api_time(req_t *r);
 void api_debug_dfms(req_t *r);
 void api_debug_st(req_t *r);
-void api_debug_vconf(req_t *r);   /* timeset.c */
+void api_debug_vconf(req_t *r);
+void api_debug_shim(req_t *r);   /* timeset.c */
 
 #endif

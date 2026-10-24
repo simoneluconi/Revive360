@@ -1,2 +1,1 @@
 ../g360r.service /usr/lib/systemd/system/default.target.wants/g360r.service
-../g360r-leds.service /usr/lib/systemd/system/default.target.wants/g360r-leds.service
