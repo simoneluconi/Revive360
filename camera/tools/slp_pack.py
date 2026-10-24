@@ -72,8 +72,9 @@ def cmd_info(path):
         ok = slp_crc(blob) == e['crc']
         bad += not ok
         kind = 'lzop' if blob[:4] == b'\x89LZO' else blob[:4].hex()
+        tag = e['tag'].rstrip(b'\0').decode('latin1')
         print(f'[{i}] size {e["size"]:>10} crc {"OK " if ok else "BAD"} progress 0x{e["progress"]:08x} '
-              f'tag {e["tag"].rstrip(b"\0").decode("latin1")!r:12} {kind}')
+              f'tag {tag!r:12} {kind}')
     return 1 if bad else 0
 
 
