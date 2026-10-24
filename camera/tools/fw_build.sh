@@ -15,7 +15,7 @@
 set -eu
 
 STOCK=$1
-OVERLAY=$2
+OVERLAY=$(cd "$2" && pwd)
 OUT=$3
 WORK=${4:-/tmp/fwbuild}
 PART=6
@@ -28,15 +28,21 @@ lzop -d -c "$WORK/rootfs.lzo" > "$WORK/rootfs.img"
 cp "$WORK/rootfs.img" "$WORK/rootfs.stock.img"
 echo "rootfs image: $(wc -c < "$WORK/rootfs.img") bytes"
 
+# debugfs exits 0 even when a path is missing: look at what it prints instead
+exists() {
+    ! debugfs -R "stat $1" "$WORK/rootfs.img" </dev/null 2>&1 | grep -q "File not found"
+}
+
 # debugfs needs every parent directory to exist first: create them top-down
 add_dirs() {
-    rel=$1
+    # sh has no locals: these names must not clash with the callers' loop variables
+    ad_dir=$1
     path=""
-    for part in $(echo "$rel" | tr '/' ' '); do
+    for part in $(echo "$ad_dir" | tr '/' ' '); do
         path="$path/$part"
-        if ! debugfs -R "stat $path" "$WORK/rootfs.img" >/dev/null 2>&1; then
-            debugfs -w -R "mkdir $path" "$WORK/rootfs.img" >/dev/null
-            debugfs -w -R "sif $path mode 040755" "$WORK/rootfs.img" >/dev/null
+        if ! exists "$path"; then
+            debugfs -w -R "mkdir $path" "$WORK/rootfs.img" </dev/null >/dev/null
+            debugfs -w -R "sif $path mode 040755" "$WORK/rootfs.img" </dev/null >/dev/null
             echo "  mkdir $path"
         fi
     done
@@ -51,25 +57,32 @@ echo "== add overlay files"
 ( cd "$OVERLAY" && find . -type f ! -name MODES ! -name LINKS | sed 's|^\./||' | sort ) | while read -r rel; do
     dst="/$rel"
     add_dirs "$(dirname "$rel")"
-    if debugfs -R "stat $dst" "$WORK/rootfs.img" >/dev/null 2>&1; then
+    if exists "$dst"; then
         echo "REFUSING to overwrite stock file $dst" >&2
         exit 1
     fi
-    debugfs -w -R "write $OVERLAY/$rel $dst" "$WORK/rootfs.img" >/dev/null
-    debugfs -w -R "sif $dst mode 0100$(mode_of "$dst" | sed 's/^0//')" "$WORK/rootfs.img" >/dev/null
-    debugfs -w -R "sif $dst uid 0" "$WORK/rootfs.img" >/dev/null
-    debugfs -w -R "sif $dst gid 0" "$WORK/rootfs.img" >/dev/null
-    echo "  add $dst ($(mode_of "$dst"))"
+    debugfs -w -R "write $OVERLAY/$rel $dst" "$WORK/rootfs.img" </dev/null
+    debugfs -w -R "sif $dst mode 0100$(mode_of "$dst" | sed 's/^0//')" "$WORK/rootfs.img" </dev/null >/dev/null
+    debugfs -w -R "sif $dst uid 0" "$WORK/rootfs.img" </dev/null >/dev/null
+    debugfs -w -R "sif $dst gid 0" "$WORK/rootfs.img" </dev/null >/dev/null
+    # Read it back: the image must hold exactly the source bytes
+    rm -f "$WORK/readback"
+    debugfs -R "dump $dst $WORK/readback" "$WORK/rootfs.img" </dev/null >/dev/null 2>&1
+    if ! cmp -s "$WORK/readback" "$OVERLAY/$rel"; then
+        echo "READBACK MISMATCH for $dst ($(wc -c < "$WORK/readback" 2>/dev/null) bytes vs $(wc -c < "$OVERLAY/$rel"))" >&2
+        exit 1
+    fi
+    echo "  add $dst ($(mode_of "$dst"), $(wc -c < "$OVERLAY/$rel") bytes, verified)"
 done
 if [ -f "$OVERLAY/LINKS" ]; then
     while read -r target link; do
         [ -n "$link" ] || continue
         add_dirs "$(dirname "${link#/}")"
-        if debugfs -R "stat $link" "$WORK/rootfs.img" >/dev/null 2>&1; then
+        if exists "$link"; then
             echo "REFUSING to overwrite stock path $link" >&2
             exit 1
         fi
-        debugfs -w -R "symlink $link $target" "$WORK/rootfs.img" >/dev/null
+        debugfs -w -R "symlink $link $target" "$WORK/rootfs.img" </dev/null >/dev/null
         echo "  link $link -> $target"
     done < "$OVERLAY/LINKS"
 fi
