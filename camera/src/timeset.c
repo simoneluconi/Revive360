@@ -4,9 +4,11 @@
  * The camera has no network time and a firmware flash resets its RTC, so the
  * app sends UTC on every connection. We set the system clock (settimeofday)
  * and the battery-backed RTC (/dev/rtc0), and report what was applied. On an
- * adapter with clock_local (C200: no zoneinfo, OSD/EXIF = RTC + an offset left
- * at 0) both hold the phone's local wall-clock time: utc + tz_offset_min. The
- * IANA id is only logged. The sim adapter never touches the host clock.
+ * adapter with clock_local the camera shows local time through its own fixed
+ * zone (C200 AQK1: +9 h, seen in EXIF and in libc localtime), so the clock is
+ * set to utc + tz_offset_min - <camera zone offset>: the camera then shows the
+ * phone's local time. The IANA id is only logged. The sim adapter never
+ * touches the host clock.
  */
 #include "server.h"
 
@@ -84,7 +86,15 @@ void api_time(req_t *r)
         http_send_error(r, 400, "bad_request", "implausible tz_offset_min");
         return;
     }
-    shift_ms = g_srv.ad.clock_local ? (int64_t)offset_min * 60000 : 0;
+    if (g_srv.ad.clock_local) {
+        time_t now = time(NULL);
+        struct tm lt;
+        long cam_off_s = localtime_r(&now, &lt) ? lt.tm_gmtoff : 0;
+        shift_ms = ((int64_t)offset_min * 60 - cam_off_s) * 1000;
+        LOGI("time: camera zone %+ld min, phone %+.0f min", cam_off_s / 60, offset_min);
+    } else {
+        shift_ms = 0;
+    }
 
     if (strcmp(g_srv.ad.id, "sim") != 0) {
         int64_t wall_ms = (int64_t)utc_ms + shift_ms;

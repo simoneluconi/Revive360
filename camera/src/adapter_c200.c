@@ -27,6 +27,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -88,9 +89,12 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
                         const char *resolution, char *err, size_t errlen)
 {
     char q[32];
-    /* Factory mode (SD hook) has a dfmsd listening and no live capture UI;
-     * normal mode (modified firmware) has the live UI and no dfmsd. */
-    int factory = dfmsd_running();
+    /* Factory mode (SD hook) has no live capture UI; normal mode (modified
+     * firmware, boot.sh exports G360R_MODE=normal) has it. Not dfmsd: it runs
+     * in both modes (first normal-mode boot took the dfms path, and its
+     * capture ignored the raw quality). */
+    const char *run_mode = getenv("G360R_MODE");
+    int factory = !(run_mode && strcmp(run_mode, "normal") == 0);
     (void)resolution; /* not settable in v1 */
 
     if (access(ST_BIN, X_OK) != 0) {
@@ -144,6 +148,10 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
             snprintf(err, errlen, "%s not found", DFMSTOOL_BIN);
             return -1;
         }
+        if (!dfmsd_running()) {
+            snprintf(err, errlen, "no dfmsd running to take the capture command");
+            return -1;
+        }
         rc = run_cmd(vargv, ST_TIMEOUT_MS, out, sizeof out);
         LOGI("c200: dfmsd listening, %s (rc=%d)", out, rc);
         rc = run_cmd(argv, ST_TIMEOUT_MS, out, sizeof out);
@@ -184,9 +192,9 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
     a->n_video_modes = 3;
     a->files_delete = 1;
     a->thumbnails = 1;
-    /* di-camera-app has no zoneinfo: OSD and EXIF show RTC + its own time zone
-     * offset (User_Spec DB 0x234), which stays 0 (London/GMT) unless the stock
-     * app sets it. So the clock is set to the phone's local wall-clock time. */
+    /* The camera shows its clock through a fixed zone of its own (AQK1: +9 h
+     * in EXIF and libc localtime, first normal-mode test): timeset.c sets the
+     * clock so that the camera shows the phone's local time. */
     a->clock_local = 1;
     a->trigger_capture = c200_capture;
     adapter_discover_leds(a, "/sys/class/leds", 5, cfg);
