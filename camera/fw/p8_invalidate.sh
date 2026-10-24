@@ -26,6 +26,12 @@ log "=== p8 invalidate start (uptime $(cut -d' ' -f1 /proc/uptime))"
 log "device: $(ls -la $SNAP 2>&1)"
 log "page 0 tail before: $(page0_tail)"
 
+# fw_upgrade's own report of the last flash (read-only)
+log "fw_upgrade log (/fw/log/upgrade.txt), last lines:"
+tail -n 40 /fw/log/upgrade.txt >> "$LOG" 2>&1
+ls -la /fw/log/ >> "$LOG" 2>&1
+sync
+
 # Disarm first: whatever happens next, the following boot is a normal one
 mv /sdcard/info.tg /sdcard/info.tg.done && log "hook disarmed (info.tg -> info.tg.done)"
 
