@@ -2,8 +2,9 @@
 # Revive360 - firmware boot signature (g360r-leds.service, oneshot).
 #
 # Runs before di-camera-app, so the stock app sets its own LED state on top
-# afterwards: nothing of the stock indication is overwritten. ~2.5 s: led.0 to
-# led.4 light one at a time, twice round, then all flash twice. No signature =
+# afterwards: nothing of the stock indication is overwritten. Under a second, as
+# it holds back the app: led.0 to led.4 light one at a time, then all flash
+# twice. No signature =
 # the stock rootfs is running. Every LED gets its trigger back at the end.
 #
 # Only led.0-4 (status RGB, front, rear). Not af (the bright AF assist lamp),
@@ -31,16 +32,14 @@ led() {   # led.N on|off
     echo "$v" > "$L/$1/brightness" 2>/dev/null
 }
 
-for round in 1 2; do
-    for l in $LEDS; do
-        led "$l" on; sleep 0.15; led "$l" off
-    done
+for l in $LEDS; do
+    led "$l" on; sleep 0.08; led "$l" off
 done
 for flash in 1 2; do
     for l in $LEDS; do led "$l" on; done
-    sleep 0.2
+    sleep 0.12
     for l in $LEDS; do led "$l" off; done
-    sleep 0.2
+    sleep 0.08
 done
 
 for l in $LEDS; do
