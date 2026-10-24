@@ -201,6 +201,22 @@ raw_probe() {
     milestone "RAW probe done"
 }
 
+# prefs_dump (normal mode, prefsdump=1): copy the camera's settings files to the
+# card at every boot, to compare with the ones raw_seed.sh saved in factory mode
+# (where is the photo quality kept, did RAW+fine survive the power-off?)
+prefs_dump() {
+    [ "$MODE" = normal ] && [ "$(cfg prefsdump 0)" = "1" ] || return 0
+    d=$LOGDIR/prefs_boot
+    rm -rf "$d"
+    mkdir -p "$d"
+    find /opt -xdev -type f \( -iname '*pref*' -o -iname '*user_spec*' -o -iname '*setting*' \) -size -2048k 2>/dev/null |
+    while read -r f; do
+        md5sum "$f" >> "$d/md5.txt" 2>/dev/null
+        cp "$f" "$d/$(echo "$f" | tr '/' '_')" 2>/dev/null
+    done
+    log "prefs dump: $(wc -l < "$d/md5.txt" 2>/dev/null) files in $d"
+}
+
 vconf_reset() {
     [ "$MODE" = factory ] || return 0
     cur=$(vconftool get "$VCONF_KEY" 2>&1)
@@ -235,6 +251,7 @@ log "cgroup: $(tr '\n' ' ' < /proc/self/cgroup)"
 vconf_reset
 status_led starting
 led_signature
+prefs_dump
 raw_probe
 beep 1 "$WAV_OK"
 
