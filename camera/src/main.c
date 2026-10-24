@@ -311,6 +311,88 @@ int cmd_oledtest(int argc, char **argv)
     return 0;
 }
 
+/* ------------------------------------------------------------ oledtext */
+
+/* Only the letters of the firmware signature; 5x7 (I is 3 wide), MSB = left. */
+struct glyph {
+    char c;
+    int w;
+    uint8_t rows[7];
+};
+
+static const struct glyph g_font[] = {
+    { 'R', 5, { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 } },
+    { 'E', 5, { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F } },
+    { 'V', 5, { 0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04 } },
+    { 'I', 3, { 0x07, 0x02, 0x02, 0x02, 0x02, 0x02, 0x07 } },
+    { 'D', 5, { 0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E } },
+};
+
+static const struct glyph *glyph_of(char c)
+{
+    for (size_t i = 0; i < sizeof g_font / sizeof g_font[0]; i++)
+        if (g_font[i].c == c)
+            return &g_font[i];
+    return NULL;
+}
+
+/* Text at scale 2, 1-dot gaps, centred: "REVIVED" is exactly 72 dots wide. */
+static void oled_text(struct oled_frame *f, const char *text)
+{
+    const int scale = 2;
+    int width = 0, x, top = (OLED_A - 7 * scale) / 2;
+    const char *p;
+
+    memset(f->dots, 0, sizeof f->dots);
+    for (p = text; *p; p++) {
+        const struct glyph *g = glyph_of(*p);
+        width += (g ? g->w : 3) * scale + (p[1] ? 1 : 0);
+    }
+    x = width < OLED_B ? (OLED_B - width) / 2 : 0;
+    for (p = text; *p; p++) {
+        const struct glyph *g = glyph_of(*p);
+        int w = g ? g->w : 3;
+        for (int r = 0; g && r < 7 * scale; r++)
+            for (int c = 0; c < w * scale; c++)
+                if ((g->rows[r / scale] >> (w - 1 - c / scale)) & 1) {
+                    int a = top + r, b = x + c;
+                    if (a < OLED_A && b < OLED_B)
+                        f->dots[a * OLED_B + b] = 0xFF;
+                }
+        x += w * scale + 1;
+    }
+}
+
+/* Show a text on the status display for --ms, redrawn every 100 ms (the app is
+ * the other writer), then stop: the app's status screen takes over again. */
+int cmd_oledtext(int argc, char **argv)
+{
+    const char *text = opt(argc, argv, "--text", "REVIVED");
+    int ms = atoi(opt(argc, argv, "--ms", "1500"));
+    struct oled_frame f;
+    int fd, one = 1, zero = 0;
+    int64_t until;
+
+    fd = open(OLED_DEV, O_RDWR | O_CLOEXEC);
+    if (fd < 0)
+        return 1;
+    ioctl(fd, OLED_INIT, &zero);
+    ioctl(fd, OLED_ON, &one);
+    f.a_start = 0;
+    f.a_end = OLED_A - 1;
+    f.b_start = 0;
+    f.b_end = OLED_B - 1;
+    oled_text(&f, text);
+    until = now_ms_mono() + ms;
+    while (now_ms_mono() < until) {
+        ioctl(fd, OLED_DRAW, &f);
+        ioctl(fd, OLED_UPDATE, &f);
+        sleep_ms(100);
+    }
+    close(fd);
+    return 0;
+}
+
 /* ------------------------------------------------------------ ledtest */
 
 static void beep(const char *wav)
@@ -456,7 +538,7 @@ static int usage(void)
 {
     fprintf(stderr,
             "g360rd %s - Revive360 camera controller\n"
-            "usage: g360rd serve|detect|ledtest|keytest|oledtest|thumb|version|mac|ssid|ifflags|ifup|ifdown|ifaddr|waitif|privcmd ...\n",
+            "usage: g360rd serve|detect|ledtest|keytest|oledtest|oledtext|thumb|version|mac|ssid|ifflags|ifup|ifdown|ifaddr|waitif|privcmd ...\n",
             G360RD_VERSION);
     return 2;
 }
@@ -472,6 +554,7 @@ int main(int argc, char **argv)
     if (strcmp(sub, "ledtest") == 0) return cmd_ledtest(argc - 1, argv + 1);
     if (strcmp(sub, "keytest") == 0) return cmd_keytest(argc - 1, argv + 1);
     if (strcmp(sub, "oledtest") == 0) return cmd_oledtest(argc - 1, argv + 1);
+    if (strcmp(sub, "oledtext") == 0) return cmd_oledtext(argc - 1, argv + 1);
     if (strcmp(sub, "thumb") == 0)   return cmd_thumb(argc - 1, argv + 1);
     if (strcmp(sub, "version") == 0) {
         printf("%s %s (protocol %d)\n", G360RD_NAME, G360RD_VERSION, PROTOCOL_VERSION);

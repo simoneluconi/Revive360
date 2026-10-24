@@ -148,6 +148,9 @@ led_signature() {
         echo 0 > "$d/brightness" 2>/dev/null
     done
     log "LED signature (saved state:$saved)"
+    # "REVIVED" on the status display meanwhile; afterwards the app redraws it
+    "$BIN" oledtext --text REVIVED --ms 1700 >/dev/null 2>&1 &
+    oled_pid=$!
     # Around the camera: charge LED blue, one lens, the other lens; then all twice
     for n in 2 3 4 2 3 4; do
         echo 255 > "$L/led.$n/brightness" 2>/dev/null; sleep 0.12
@@ -164,6 +167,39 @@ led_signature() {
         echo "$t" > "$L/led.$n/trigger" 2>/dev/null
         [ "$t" = none ] && echo "$b" > "$L/led.$n/brightness" 2>/dev/null
     done
+    wait "$oled_pid" 2>/dev/null
+}
+
+# st_log ARGS: one st command, killed after 5 s; logs what the app answered in
+# /tmp/app_result (where st getters print, e.g. eUS_IQ_FINE_RAW)
+st_log() {
+    rm -f /tmp/app_result
+    /usr/bin/st "$@" >"$RUN/st.out" 2>&1 &
+    p=$!
+    n=0
+    while kill -0 "$p" 2>/dev/null && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    kill "$p" 2>/dev/null
+    log "st $*: out=[$(tr '\n' ' ' < "$RUN/st.out" 2>/dev/null)] app_result=[$(tr '\n' ' ' < /tmp/app_result 2>/dev/null)]"
+}
+
+# RAW diagnostic (normal mode, rawprobe=1 in g360r.conf): does the quality menu
+# (0xd0) accept a raw value? Set raw+fine, read it back two ways and from dlog,
+# then put sfine back. A *_RAW read-back = not gated: then shoot RAW from the app
+# and look for a .SRW. See docs/firmware/08_control_protocol.md.
+raw_probe() {
+    [ "$MODE" = normal ] && [ "$(cfg rawprobe 0)" = "1" ] || return 0
+    milestone "RAW probe"
+    st_log app nx capture quality
+    st_log app nx capture quality raw+fine
+    st_log app nx capture quality
+    st_log app nx menu capture
+    if command -v dlogutil >/dev/null 2>&1; then
+        log "dlog (quality lines):"
+        dlogutil -d 2>/dev/null | grep -iE "qual|IQ_|raw" | tail -n 20 | sed 's/^/    /' >> "$LOG"
+    fi
+    st_log app nx capture quality sfine
+    st_log app nx capture quality
+    milestone "RAW probe done"
 }
 
 vconf_reset() {
@@ -200,6 +236,7 @@ log "cgroup: $(tr '\n' ' ' < /proc/self/cgroup)"
 vconf_reset
 status_led starting
 led_signature
+raw_probe
 beep 1 "$WAV_OK"
 
 logrun ls -la /sys/class/leds/
