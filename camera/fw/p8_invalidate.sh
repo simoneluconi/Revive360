@@ -19,9 +19,16 @@ if [ "$1" != "__detached" ]; then
 fi
 
 mkdir -p /sdcard/g360r/log
+# Audible progress: 1 beep = started, 2 = done (safe to power off), 3 cancel = aborted
+SND=/usr/apps/com.samsung.di-camera-app/res/sounds/camera
+beep() {
+    n=$1; w=$SND/$2; i=0
+    while [ "$i" -lt "$n" ]; do paplay "$w" >/dev/null 2>&1; i=$((i + 1)); sleep 0.3; done
+}
 log() { echo "$(date '+%H:%M:%S') $*" >> "$LOG"; sync; }
 page0_tail() { dd if="$SNAP" bs=4096 count=1 2>/dev/null | tail -c 16 | od -An -c | tr -s ' '; }
 
+beep 1 04_N_OK.wav
 log "=== p8 invalidate start (uptime $(cut -d' ' -f1 /proc/uptime))"
 log "device: $(ls -la $SNAP 2>&1)"
 log "page 0 tail before: $(page0_tail)"
@@ -47,6 +54,7 @@ if [ "${hits:-0}" -lt 1 ]; then
     log "ABORT: modified rootfs not found on $ROOTFS; p8 left untouched"
     echo "aborted: rootfs marker not found" > /sdcard/g360r/p8_invalidate.done
     sync
+    beep 3 05_N_Cancel.wav
     exit 0
 fi
 
@@ -61,3 +69,4 @@ log "page 0 tail after: $(page0_tail)"
 log "=== done: power off, then power on without info.tg for a cold boot"
 echo done > /sdcard/g360r/p8_invalidate.done
 sync
+beep 2 04_N_OK.wav
