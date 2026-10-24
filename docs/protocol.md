@@ -269,8 +269,9 @@ group them for display.
 ### 5.5 `GET /api/v1/thumb/<path>`
 
 Returns a small JPEG (`Content-Type: image/jpeg`) for a `photo` or `raw` file: the embedded EXIF
-thumbnail of a JPEG, or the embedded preview JPEG of a RAW file. The server does not decode or
-re-encode images.
+thumbnail of a JPEG, or the embedded preview JPEG of a RAW file. A RAW file without an embedded preview
+falls back to the EXIF thumbnail of the sibling JPEG with the same base name. The server does not decode
+or re-encode images.
 
 - `404 no_thumbnail` when none is embedded (always the case for `video`/`other` in v1). The app shows
   a placeholder.

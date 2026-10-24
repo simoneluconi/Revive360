@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Revive360</string>
+
+    <!-- Generic -->
+    <string name="back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_retry">Try again</string>
+    <string name="camera_generic">Gear 360</string>
+
+    <!-- Home -->
+    <string name="welcome_title">Set up your camera</string>
+    <string name="welcome_text">Prepare the camera\'s SD card once with the Revive360 files, then let the app find the camera\'s Wi-Fi. From then on it connects by itself and your phone keeps its internet.</string>
+    <string name="welcome_action">Set up the camera</string>
+    <string name="adapter_not_supported">This camera is not fully supported yet (%1$s): only what it reports is shown.</string>
+    <string name="status_battery">Battery</string>
+    <string name="status_storage">SD card</string>
+    <string name="battery_charging">Charging</string>
+    <string name="battery_full">Full</string>
+    <string name="battery_temperature">%1$.0f °C</string>
+    <string name="storage_no_card">No card</string>
+    <string name="storage_free_of">free of %1$s</string>
+
+    <!-- Link states -->
+    <string name="state_not_paired">Not set up</string>
+    <string name="state_idle">Not connected</string>
+    <string name="state_joining">Looking for the camera\'s Wi-Fi…</string>
+    <string name="state_handshake">On the camera\'s Wi-Fi, waiting for it…</string>
+    <string name="state_connected">Connected</string>
+    <string name="state_not_found">Camera not found. Is it on, with the SD card in?</string>
+    <string name="state_no_server">The camera doesn\'t answer</string>
+    <string name="state_unsupported_version">The camera speaks protocol %1$s: update the app</string>
+
+    <!-- Capture -->
+    <string name="capture_title">SHOOT</string>
+    <string name="capture_action">Shoot</string>
+    <string name="capture_hint">Tap to take a picture</string>
+    <string name="capture_busy">The camera is shooting…</string>
+    <string name="capture_done">Done: %1$d new file(s)</string>
+    <string name="capture_last">Last shot</string>
+    <string name="mode_photo">JPG</string>
+    <string name="mode_raw">RAW</string>
+    <string name="mode_raw_photo">RAW + JPG</string>
+    <string name="quality_sfine">Super fine</string>
+    <string name="quality_fine">Fine</string>
+    <string name="quality_norm">Normal</string>
+
+    <!-- Errors -->
+    <string name="error_busy">The camera is busy, try again in a moment</string>
+    <string name="error_no_storage">No SD card in the camera</string>
+    <string name="error_capture_timeout">The camera took too long; the picture may still appear in the gallery</string>
+    <string name="error_unsupported">This camera can\'t do that</string>
+    <string name="error_not_found">The file is no longer on the camera</string>
+    <string name="error_link">Lost contact with the camera</string>
+    <string name="error_camera">The camera refused (%1$s)</string>
+
+    <!-- Pairing -->
+    <string name="pair_title">Set up</string>
+    <string name="pair_step_sd">Copy the Revive360 files to the camera\'s SD card (see camera/README.md). The preparation tool prints an 8-digit code.</string>
+    <string name="pair_step_power">Put the card in the camera and turn it on. Wait about a minute, until its Wi-Fi is up.</string>
+    <string name="pair_step_code">Enter the code here and find the camera. Android shows its own window once: pick the G360R network.</string>
+    <string name="pair_code_label">CAMERA CODE</string>
+    <string name="pair_code_placeholder">8-digit code</string>
+    <string name="pair_code_invalid">At least %1$d characters</string>
+    <string name="pair_find">Find the camera</string>
+    <string name="pair_not_found">The camera\'s Wi-Fi wasn\'t picked</string>
+    <string name="pair_fallback_text">If Android can\'t show the camera in its window, the app can still connect by the network name. Android then asks you each time.</string>
+    <string name="pair_fallback_action">Connect without remembering</string>
+    <string name="pair_done">Camera saved, connecting…</string>
+
+    <!-- Gallery and files -->
+    <string name="gallery_title">Gallery</string>
+    <string name="gallery_count">%1$d files on the card</string>
+    <string name="gallery_loading">Reading the card…</string>
+    <string name="gallery_empty">No pictures or videos on the card yet</string>
+    <string name="gallery_not_connected">Connect to the camera to see its files</string>
+    <string name="file_gone">This file is no longer on the camera</string>
+    <string name="file_kind">Type</string>
+    <string name="file_size">Size</string>
+    <string name="file_date">Date (camera clock)</string>
+    <string name="file_path">On the card</string>
+    <string name="kind_photo">360° photo (dual fisheye)</string>
+    <string name="kind_raw">RAW</string>
+    <string name="kind_video">Video</string>
+    <string name="kind_other">Other file</string>
+    <string name="download_action">Save to phone</string>
+    <string name="download_again">Save again</string>
+    <string name="download_resume">Resume</string>
+    <string name="download_running">Saving… %1$d%%</string>
+    <string name="download_failed">The transfer stopped. Resume picks up where it was.</string>
+    <string name="download_saved">On the phone, in the %1$s folder</string>
+    <string name="delete_action">Delete</string>
+    <string name="delete_title">Delete from the camera?</string>
+    <string name="delete_message">%1$s will be removed from the SD card. Copies on the phone stay.</string>
+    <string name="delete_done">%1$s deleted</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_camera">Camera</string>
+    <string name="info_model">Model</string>
+    <string name="info_firmware">Firmware</string>
+    <string name="info_network">Wi-Fi</string>
+    <string name="info_adapter">Camera support</string>
+    <string name="info_server">Camera server</string>
+    <string name="settings_repair">Set up again</string>
+    <string name="settings_forget">Forget</string>
+    <string name="forget_title">Forget the camera?</string>
+    <string name="forget_message">The app stops connecting to it. To use it again, set it up with its code.</string>
+    <string name="settings_leds">Camera LEDs</string>
+    <string name="led_off">Off</string>
+    <string name="led_on">On</string>
+    <string name="led_blink">Blink</string>
+    <string name="led_auto">Automatic</string>
+    <string name="settings_look">Look</string>
+    <string name="settings_theme">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="settings_accent">Accent</string>
+    <string name="settings_haptics">Vibration on touch</string>
+    <string name="settings_support">Support</string>
+    <string name="settings_developer">Developer</string>
+    <string name="dev_host_text">Talk to a camera server on this network (the PC simulator) instead of the camera\'s Wi-Fi.</string>
+    <string name="dev_host_use">Use</string>
+    <string name="dev_host_clear">Back to the camera</string>
+    <string name="settings_version">Version %1$s</string>
+
+    <!-- Log -->
+    <string name="log_title">Log</string>
+    <string name="log_phone">Phone</string>
+    <string name="log_camera">Camera</string>
+    <string name="log_clear">Clear</string>
+    <string name="log_copy">Copy</string>
+    <string name="log_copied">Log copied</string>
+    <string name="log_empty">Nothing yet</string>
+</resources>

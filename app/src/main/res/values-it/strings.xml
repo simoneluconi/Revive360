@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Generic -->
+    <string name="back">Indietro</string>
+    <string name="action_cancel">Annulla</string>
+    <string name="action_refresh">Aggiorna</string>
+    <string name="action_retry">Riprova</string>
+    <string name="camera_generic">Gear 360</string>
+
+    <!-- Home -->
+    <string name="welcome_title">Configura la fotocamera</string>
+    <string name="welcome_text">Prepara una volta la scheda SD della fotocamera con i file di Revive360, poi lascia che l\'app trovi il Wi-Fi della fotocamera. Da lì in poi si collega da sola e il telefono resta connesso a internet.</string>
+    <string name="welcome_action">Configura la fotocamera</string>
+    <string name="adapter_not_supported">Questa fotocamera non è ancora supportata del tutto (%1$s): vedi solo quello che dichiara.</string>
+    <string name="status_battery">Batteria</string>
+    <string name="status_storage">Scheda SD</string>
+    <string name="battery_charging">In carica</string>
+    <string name="battery_full">Carica</string>
+    <string name="battery_temperature">%1$.0f °C</string>
+    <string name="storage_no_card">Nessuna scheda</string>
+    <string name="storage_free_of">liberi su %1$s</string>
+
+    <!-- Link states -->
+    <string name="state_not_paired">Non configurata</string>
+    <string name="state_idle">Non connessa</string>
+    <string name="state_joining">Cerco il Wi-Fi della fotocamera…</string>
+    <string name="state_handshake">Sul Wi-Fi della fotocamera, in attesa…</string>
+    <string name="state_connected">Connessa</string>
+    <string name="state_not_found">Fotocamera non trovata. È accesa, con la scheda SD inserita?</string>
+    <string name="state_no_server">La fotocamera non risponde</string>
+    <string name="state_unsupported_version">La fotocamera usa il protocollo %1$s: aggiorna l\'app</string>
+
+    <!-- Capture -->
+    <string name="capture_title">SCATTA</string>
+    <string name="capture_action">Scatta</string>
+    <string name="capture_hint">Tocca per scattare una foto</string>
+    <string name="capture_busy">La fotocamera sta scattando…</string>
+    <string name="capture_done">Fatto: %1$d nuovi file</string>
+    <string name="capture_last">Ultimo scatto</string>
+    <string name="mode_photo">JPG</string>
+    <string name="mode_raw">RAW</string>
+    <string name="mode_raw_photo">RAW + JPG</string>
+    <string name="quality_sfine">Super fine</string>
+    <string name="quality_fine">Fine</string>
+    <string name="quality_norm">Normale</string>
+
+    <!-- Errors -->
+    <string name="error_busy">La fotocamera è occupata, riprova tra un attimo</string>
+    <string name="error_no_storage">Nessuna scheda SD nella fotocamera</string>
+    <string name="error_capture_timeout">La fotocamera ci ha messo troppo; la foto potrebbe comparire comunque in galleria</string>
+    <string name="error_unsupported">Questa fotocamera non lo supporta</string>
+    <string name="error_not_found">Il file non è più sulla fotocamera</string>
+    <string name="error_link">Contatto con la fotocamera perso</string>
+    <string name="error_camera">La fotocamera ha rifiutato (%1$s)</string>
+
+    <!-- Pairing -->
+    <string name="pair_title">Configurazione</string>
+    <string name="pair_step_sd">Copia i file di Revive360 sulla scheda SD della fotocamera (vedi camera/README.md). Lo strumento di preparazione stampa un codice di 8 cifre.</string>
+    <string name="pair_step_power">Inserisci la scheda nella fotocamera e accendila. Aspetta circa un minuto, finché il suo Wi-Fi non è attivo.</string>
+    <string name="pair_step_code">Inserisci qui il codice e cerca la fotocamera. Android mostra una sua finestra una sola volta: scegli la rete G360R.</string>
+    <string name="pair_code_label">CODICE DELLA FOTOCAMERA</string>
+    <string name="pair_code_placeholder">Codice di 8 cifre</string>
+    <string name="pair_code_invalid">Almeno %1$d caratteri</string>
+    <string name="pair_find">Cerca la fotocamera</string>
+    <string name="pair_not_found">Il Wi-Fi della fotocamera non è stato scelto</string>
+    <string name="pair_fallback_text">Se Android non riesce a mostrare la fotocamera nella sua finestra, l\'app può comunque collegarsi tramite il nome della rete. In quel caso Android te lo chiede ogni volta.</string>
+    <string name="pair_fallback_action">Collegati senza memorizzare</string>
+    <string name="pair_done">Fotocamera salvata, mi collego…</string>
+
+    <!-- Gallery and files -->
+    <string name="gallery_title">Galleria</string>
+    <string name="gallery_count">%1$d file sulla scheda</string>
+    <string name="gallery_loading">Leggo la scheda…</string>
+    <string name="gallery_empty">Nessuna foto o video sulla scheda per ora</string>
+    <string name="gallery_not_connected">Collegati alla fotocamera per vederne i file</string>
+    <string name="file_gone">Questo file non è più sulla fotocamera</string>
+    <string name="file_kind">Tipo</string>
+    <string name="file_size">Dimensione</string>
+    <string name="file_date">Data (orologio della fotocamera)</string>
+    <string name="file_path">Sulla scheda</string>
+    <string name="kind_photo">Foto 360° (doppio fisheye)</string>
+    <string name="kind_raw">RAW</string>
+    <string name="kind_video">Video</string>
+    <string name="kind_other">Altro file</string>
+    <string name="download_action">Salva sul telefono</string>
+    <string name="download_again">Salva di nuovo</string>
+    <string name="download_resume">Riprendi</string>
+    <string name="download_running">Salvataggio… %1$d%%</string>
+    <string name="download_failed">Il trasferimento si è interrotto. Riprendi continua da dove era arrivato.</string>
+    <string name="download_saved">Sul telefono, nella cartella %1$s</string>
+    <string name="delete_action">Elimina</string>
+    <string name="delete_title">Eliminare dalla fotocamera?</string>
+    <string name="delete_message">%1$s verrà rimosso dalla scheda SD. Le copie sul telefono restano.</string>
+    <string name="delete_done">%1$s eliminato</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Impostazioni</string>
+    <string name="settings_camera">Fotocamera</string>
+    <string name="info_model">Modello</string>
+    <string name="info_firmware">Firmware</string>
+    <string name="info_network">Wi-Fi</string>
+    <string name="info_adapter">Supporto fotocamera</string>
+    <string name="info_server">Server della fotocamera</string>
+    <string name="settings_repair">Riconfigura</string>
+    <string name="settings_forget">Dimentica</string>
+    <string name="forget_title">Dimenticare la fotocamera?</string>
+    <string name="forget_message">L\'app smette di collegarsi. Per usarla di nuovo, configurala con il suo codice.</string>
+    <string name="settings_leds">LED della fotocamera</string>
+    <string name="led_off">Spento</string>
+    <string name="led_on">Acceso</string>
+    <string name="led_blink">Lampeggio</string>
+    <string name="led_auto">Automatico</string>
+    <string name="settings_look">Aspetto</string>
+    <string name="settings_theme">Tema</string>
+    <string name="theme_system">Sistema</string>
+    <string name="theme_light">Chiaro</string>
+    <string name="theme_dark">Scuro</string>
+    <string name="settings_accent">Colore</string>
+    <string name="settings_haptics">Vibrazione al tocco</string>
+    <string name="settings_support">Assistenza</string>
+    <string name="settings_developer">Sviluppo</string>
+    <string name="dev_host_text">Parla con un server fotocamera su questa rete (il simulatore sul PC) invece che con il Wi-Fi della fotocamera.</string>
+    <string name="dev_host_use">Usa</string>
+    <string name="dev_host_clear">Torna alla fotocamera</string>
+    <string name="settings_version">Versione %1$s</string>
+
+    <!-- Log -->
+    <string name="log_title">Log</string>
+    <string name="log_phone">Telefono</string>
+    <string name="log_camera">Fotocamera</string>
+    <string name="log_clear">Svuota</string>
+    <string name="log_copy">Copia</string>
+    <string name="log_copied">Log copiato</string>
+    <string name="log_empty">Ancora niente</string>
+</resources>
