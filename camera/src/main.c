@@ -14,10 +14,14 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 server_t g_srv;
@@ -162,6 +166,67 @@ int cmd_detect(int argc, char **argv)
     fputs(b.buf, stdout);
     sbuf_free(&b);
     trace_note("step", "detect done");
+    return 0;
+}
+
+/* ------------------------------------------------------------ keytest */
+
+/* Holds the camera's buttons (EVIOCGRAB on the GPIO keyboard) for a while and
+ * logs every key event, so a hardware test shows the key codes and whether the
+ * factory UI stops reacting while we own them. The grab ends with the command. */
+int cmd_keytest(int argc, char **argv)
+{
+    const char *dev = opt(argc, argv, "--dev", "/dev/input/event0");
+    int seconds = atoi(opt(argc, argv, "--seconds", "40"));
+    int grab = !flag(argc, argv, "--no-grab");
+    char name[80] = "";
+    int fd, events = 0;
+    int64_t deadline;
+
+    log_open(opt(argc, argv, "--log", NULL), 1);
+    fd = open(dev, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        LOGE("KEYTEST cannot open %s: %s", dev, strerror(errno));
+        return 1;
+    }
+    if (ioctl(fd, EVIOCGNAME(sizeof name - 1), name) < 0)
+        snprintf(name, sizeof name, "?");
+    LOGI("KEYTEST %s (%s) for %d s, grab=%d", dev, name, seconds, grab);
+    if (grab) {
+        if (ioctl(fd, EVIOCGRAB, 1) < 0)
+            LOGW("KEYTEST EVIOCGRAB failed: %s (reading in parallel)", strerror(errno));
+        else
+            LOGI("KEYTEST buttons grabbed: the factory UI should not see them now");
+    }
+    log_flush_sync();
+    deadline = now_ms_mono() + (int64_t)seconds * 1000;
+    for (;;) {
+        int64_t left = deadline - now_ms_mono();
+        struct pollfd p = { fd, POLLIN, 0 };
+        struct input_event ev[16];
+        ssize_t n;
+        int i;
+        if (left <= 0)
+            break;
+        if (poll(&p, 1, (int)left) <= 0)
+            continue;
+        n = read(fd, ev, sizeof ev);
+        if (n <= 0)
+            break;
+        for (i = 0; i < (int)(n / (ssize_t)sizeof ev[0]); i++) {
+            if (ev[i].type != EV_KEY)
+                continue;
+            events++;
+            LOGI("KEYTEST key 0x%02x %s", ev[i].code,
+                 ev[i].value == 1 ? "down" : ev[i].value == 0 ? "up" : "repeat");
+        }
+        log_flush_sync();
+    }
+    if (grab)
+        ioctl(fd, EVIOCGRAB, 0);
+    close(fd);
+    LOGI("KEYTEST done: %d key events, buttons released", events);
+    log_flush_sync();
     return 0;
 }
 
@@ -310,7 +375,7 @@ static int usage(void)
 {
     fprintf(stderr,
             "g360rd %s - Revive360 camera controller\n"
-            "usage: g360rd serve|detect|ledtest|thumb|version|mac|ssid|ifflags|ifup|ifdown|ifaddr|waitif|privcmd ...\n",
+            "usage: g360rd serve|detect|ledtest|keytest|thumb|version|mac|ssid|ifflags|ifup|ifdown|ifaddr|waitif|privcmd ...\n",
             G360RD_VERSION);
     return 2;
 }
@@ -324,6 +389,7 @@ int main(int argc, char **argv)
     if (strcmp(sub, "serve") == 0)   return cmd_serve(argc - 1, argv + 1);
     if (strcmp(sub, "detect") == 0)  return cmd_detect(argc - 1, argv + 1);
     if (strcmp(sub, "ledtest") == 0) return cmd_ledtest(argc - 1, argv + 1);
+    if (strcmp(sub, "keytest") == 0) return cmd_keytest(argc - 1, argv + 1);
     if (strcmp(sub, "thumb") == 0)   return cmd_thumb(argc - 1, argv + 1);
     if (strcmp(sub, "version") == 0) {
         printf("%s %s (protocol %d)\n", G360RD_NAME, G360RD_VERSION, PROTOCOL_VERSION);
