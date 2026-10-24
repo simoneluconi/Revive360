@@ -1,0 +1,44 @@
+# Revive360 - controller configuration (on the SD card: /g360r/g360r.conf)
+#
+# Format: KEY=VALUE, one per line, no inline comments. Lines starting with '#'
+# are ignored. The SD preparation script (camera/tools/prepare_sd.ps1 or
+# prepare_sd.sh) creates g360r.conf from this file with a random passphrase.
+
+# softAP passphrase (WPA2-PSK): 8-63 printable ASCII characters, no commas.
+psk=CHANGE_ME
+
+# SSID override. Empty = G360R-<last 3 bytes of the wlan0 MAC> (protocol.md §1).
+ssid=
+
+# 2.4 GHz channel.
+channel=6
+
+# HTTP port (protocol.md §2).
+port=8360
+
+# LED roles by sysfs index led.0..led.4, comma separated. Allowed:
+# status_red status_green status_blue front rear charge unknown.
+# Fill in after running the LED diagnostic (ledtest=1).
+led_roles=unknown,unknown,unknown,unknown,unknown
+
+# Which LEDs show the controller's own feedback: all | none | list of indices.
+led_feedback=all
+
+# Which LEDs blink on error (list of indices). Empty = the status_red LED if
+# mapped, else the feedback LEDs.
+led_error=
+
+# 1 = run the LED mapping diagnostic at boot (about 75 s) before starting.
+ledtest=0
+
+# 1 = after the server starts, run the on-camera API self-test: info, status,
+# files, capture photo / raw+photo / raw, thumbnails. Responses are saved in
+# g360r/log/selftest/. Works without Wi-Fi. Takes the shots for real.
+selftest=0
+
+# Advanced (leave as is unless told otherwise):
+# adapter=c200            force an adapter (c200 | r210 | generic)
+# storage_root=/opt/storage/sdcard
+# storage_mount=/opt/storage/sdcard
+# battery_supply=battery  force the power_supply entry used for status
+# capture_enable=1
