@@ -58,9 +58,10 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun requiredPermissions(): List<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        listOf(Manifest.permission.NEARBY_WIFI_DEVICES)
-    } else {
-        listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    private fun requiredPermissions(): List<String> = when {
+        // Local network protection: the camera's LAN address is unreachable without it
+        Build.VERSION.SDK_INT >= 37 -> listOf(Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_LOCAL_NETWORK)
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> listOf(Manifest.permission.NEARBY_WIFI_DEVICES)
+        else -> listOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 }
