@@ -88,7 +88,8 @@ the swsusp signature is at the end of page 0, hence `mkswap`.
 4. Power off and on again: a cold boot from our rootfs. It is slower than usual (~30 s, no instant-on).
 
 **What a cold boot looks like** (every power-on from now on, so tell users): press power and
-**nothing happens for a while**; then the stock start-up (the charge LED blinks blue twice, the two
+**nothing happens for a while**: no screen, no LED, no sound, for long enough that the camera
+**looks dead or broken. It is not: just wait** (about 30 s), and don't press anything. Then the stock start-up (the charge LED blinks blue twice, the two
 LEDs by the lenses turn red) and the camera comes on; a few seconds later, if the card holds
 `g360r/g360r.conf`, our **LED signature** (around the camera twice: charge LED blue, one lens LED,
 the other; then two flashes) and **one beep** when the Wi-Fi is ready (three beeps = error). This
