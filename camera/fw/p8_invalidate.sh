@@ -39,7 +39,10 @@ tail -n 40 /fw/log/upgrade.txt >> "$LOG" 2>&1
 ls -la /fw/log/ >> "$LOG" 2>&1
 sync
 
-# Disarm first: whatever happens next, the following boot is a normal one
+# Disarm first: whatever happens next, the following boot is a normal one.
+# Remove an old info.tg.done first: on the camera's exFAT driver mv onto an
+# existing name left two directory entries with the same name.
+rm -f /sdcard/info.tg.done
 mv /sdcard/info.tg /sdcard/info.tg.done && log "hook disarmed (info.tg -> info.tg.done)"
 
 # Is the modified rootfs on the eMMC? The resumed factory snapshot carries the
