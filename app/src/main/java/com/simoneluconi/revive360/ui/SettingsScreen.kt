@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -57,7 +58,7 @@ fun SettingsScreen() {
 
     ScreenScaffold(title = stringResource(R.string.settings_title)) {
         SectionTitle(stringResource(R.string.settings_camera))
-        Card {
+        Card(Modifier.fillMaxWidth()) {
             if (camera == null) {
                 SettingRow(
                     title = stringResource(R.string.welcome_action),
