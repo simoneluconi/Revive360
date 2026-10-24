@@ -139,6 +139,7 @@ int thumb_extract(const char *path, unsigned char **out, size_t *outlen);
 int cmd_serve(int argc, char **argv);
 int cmd_ledtest(int argc, char **argv);
 int cmd_keytest(int argc, char **argv);
+int cmd_oledtest(int argc, char **argv);
 int cmd_detect(int argc, char **argv);
 
 #endif /* G360RD_H */

@@ -18,6 +18,7 @@
 #include <linux/input.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -230,6 +231,86 @@ int cmd_keytest(int argc, char **argv)
     return 0;
 }
 
+/* ------------------------------------------------------------ oledtest */
+
+/* Status display (SSD1309 behind /dev/ssd1309-ctrl, libmicom-node's ioctls):
+ * a 32 x 72 dot grid, one byte per dot. The app keeps drawing its own status,
+ * so the last writer wins: the test redraws every 200 ms. */
+#define OLED_DEV      "/dev/ssd1309-ctrl"
+#define OLED_A        32      /* first axis, clamped [0,31] by the driver */
+#define OLED_B        72      /* second axis, clamped [0,71] */
+#define OLED_INIT     0x40045300UL
+#define OLED_ON       0x40045305UL
+#define OLED_DRAW     0x49105302UL
+#define OLED_UPDATE   0x40105304UL
+
+struct oled_frame {
+    int32_t a_start, a_end, b_start, b_end;
+    uint8_t dots[OLED_A * OLED_B];
+};
+
+static void oled_pattern(struct oled_frame *f, int kind)
+{
+    int a, b;
+    for (a = 0; a < OLED_A; a++) {
+        for (b = 0; b < OLED_B; b++) {
+            int on;
+            if (kind == 0)
+                on = 1;                                         /* everything */
+            else if (kind == 1)
+                on = ((a / 4) + (b / 4)) % 2;                   /* 4x4 checkerboard */
+            else                                                /* frame + diagonal + a mark at a=0,b=0 */
+                on = a == 0 || b == 0 || a == OLED_A - 1 || b == OLED_B - 1 ||
+                     b == a * (OLED_B - 1) / (OLED_A - 1) || (a < 8 && b < 8);
+            f->dots[a * OLED_B + b] = on ? 0xFF : 0x00;
+        }
+    }
+}
+
+int cmd_oledtest(int argc, char **argv)
+{
+    static const char *const names[] = { "ALL ON", "CHECKERBOARD", "FRAME + DIAGONAL + corner block" };
+    int secs = atoi(opt(argc, argv, "--seconds-each", "6"));
+    struct oled_frame f;
+    int fd, kind, one = 1, zero = 0;
+
+    log_open(opt(argc, argv, "--log", NULL), 1);
+    fd = open(OLED_DEV, O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+        LOGE("OLEDTEST cannot open %s: %s", OLED_DEV, strerror(errno));
+        return 1;
+    }
+    LOGI("OLEDTEST init -> %d", ioctl(fd, OLED_INIT, &zero));
+    LOGI("OLEDTEST display on -> %d", ioctl(fd, OLED_ON, &one));
+    log_flush_sync();
+    memset(&f, 0, sizeof f);
+    f.a_start = 0;
+    f.a_end = OLED_A - 1;
+    f.b_start = 0;
+    f.b_end = OLED_B - 1;
+    for (kind = 0; kind < 3; kind++) {
+        int64_t until = now_ms_mono() + (int64_t)secs * 1000;
+        int rc, draws = 0, fails = 0;
+        oled_pattern(&f, kind);
+        LOGI("OLEDTEST pattern %d: %s for %d s", kind + 1, names[kind], secs);
+        log_flush_sync();
+        while (now_ms_mono() < until) {
+            rc = ioctl(fd, OLED_DRAW, &f);
+            if (rc < 0 && fails++ == 0)
+                LOGW("OLEDTEST draw failed: %s", strerror(errno));
+            ioctl(fd, OLED_UPDATE, &f);   /* the rectangle header doubles as the update arg */
+            draws++;
+            sleep_ms(200);
+        }
+        LOGI("OLEDTEST pattern %d: %d draws, %d failed", kind + 1, draws, fails);
+        log_flush_sync();
+    }
+    close(fd);
+    LOGI("OLEDTEST done: the app's status screen takes over again");
+    log_flush_sync();
+    return 0;
+}
+
 /* ------------------------------------------------------------ ledtest */
 
 static void beep(const char *wav)
@@ -375,7 +456,7 @@ static int usage(void)
 {
     fprintf(stderr,
             "g360rd %s - Revive360 camera controller\n"
-            "usage: g360rd serve|detect|ledtest|keytest|thumb|version|mac|ssid|ifflags|ifup|ifdown|ifaddr|waitif|privcmd ...\n",
+            "usage: g360rd serve|detect|ledtest|keytest|oledtest|thumb|version|mac|ssid|ifflags|ifup|ifdown|ifaddr|waitif|privcmd ...\n",
             G360RD_VERSION);
     return 2;
 }
@@ -390,6 +471,7 @@ int main(int argc, char **argv)
     if (strcmp(sub, "detect") == 0)  return cmd_detect(argc - 1, argv + 1);
     if (strcmp(sub, "ledtest") == 0) return cmd_ledtest(argc - 1, argv + 1);
     if (strcmp(sub, "keytest") == 0) return cmd_keytest(argc - 1, argv + 1);
+    if (strcmp(sub, "oledtest") == 0) return cmd_oledtest(argc - 1, argv + 1);
     if (strcmp(sub, "thumb") == 0)   return cmd_thumb(argc - 1, argv + 1);
     if (strcmp(sub, "version") == 0) {
         printf("%s %s (protocol %d)\n", G360RD_NAME, G360RD_VERSION, PROTOCOL_VERSION);
