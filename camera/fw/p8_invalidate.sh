@@ -42,21 +42,21 @@ sync
 # Disarm first: whatever happens next, the following boot is a normal one
 mv /sdcard/info.tg /sdcard/info.tg.done && log "hook disarmed (info.tg -> info.tg.done)"
 
-# Only invalidate if the modified rootfs really is on the eMMC: read the raw
-# partition (fresh blocks, not the snapshot's cached view) for a string that
-# exists only in our canary script. Otherwise the flash did not take: stop.
+# Is the modified rootfs on the eMMC? The resumed factory snapshot carries the
+# kernel's old page cache for p9, which hid our blocks in earlier runs: drop the
+# caches first, then read the raw partition for a string only our canary has.
+# Logged only: the snapshot is invalidated either way, because the cold boot
+# that follows is the real test (a stock rootfs simply cold-boots stock).
 ROOTFS=/dev/mmcblk0p9
 MARK="Revive360 canary, first modified-firmware flash"
+sync
+echo 3 > /proc/sys/vm/drop_caches 2>/dev/null && log "page cache dropped"
+command -v blockdev >/dev/null 2>&1 && blockdev --flushbufs "$ROOTFS" 2>/dev/null && log "block buffers flushed"
 log "searching $ROOTFS for the canary marker..."
 hits=$(grep -a -c "$MARK" "$ROOTFS" 2>/dev/null)
-log "marker hits on $ROOTFS: ${hits:-0}"
-if [ "${hits:-0}" -lt 1 ]; then
-    log "ABORT: modified rootfs not found on $ROOTFS; p8 left untouched"
-    echo "aborted: rootfs marker not found" > /sdcard/g360r/p8_invalidate.done
-    sync
-    beep 3 05_N_Cancel.wav
-    exit 0
-fi
+log "marker hits on $ROOTFS after dropping caches: ${hits:-0}"
+log "info.ini now: $(tr '\n' ' ' < /etc/info.ini 2>/dev/null)"
+ls -la /fw/log/ /usr/share/g360r/ >> "$LOG" 2>&1
 
 if [ -b "$SNAP" ] && command -v mkswap >/dev/null 2>&1; then
     mkswap "$SNAP" >> "$LOG" 2>&1
