@@ -23,8 +23,10 @@ static int read_attr(const char *dir, const char *name, char *out, size_t len)
  * hardware test; the exact sec-battery attribute set is unconfirmed). */
 static void log_supplies(const char *base)
 {
-    DIR *d = opendir(base), *ad;
+    DIR *d, *ad;
     struct dirent *de, *ae;
+    trace_note("opendir", base);
+    d = opendir(base);
     if (!d) {
         LOGW("status: no %s", base);
         return;
@@ -35,6 +37,7 @@ static void log_supplies(const char *base)
         if (de->d_name[0] == '.')
             continue;
         snprintf(dir, sizeof dir, "%s/%s", base, de->d_name);
+        trace_note("opendir", dir);
         ad = opendir(dir);
         if (!ad)
             continue;
@@ -62,6 +65,7 @@ void status_init(void)
     int best_score = -1;
 
     log_supplies(base);
+    trace_note("opendir", base);
     d = opendir(base);
     if (d) {
         while ((de = readdir(d)) != NULL) {

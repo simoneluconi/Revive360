@@ -58,6 +58,10 @@ void    sleep_ms(int ms);
 /* Read a whole small file (sysfs, ini). Returns length or -1. Trailing
  * whitespace/newlines are stripped; out is always NUL-terminated. */
 int  read_text_file(const char *path, char *out, size_t outlen);
+/* Access trace for hardware debugging: trace_start(file) once, then
+ * trace_note("read"/"opendir"/"step", path) before each access (fsync'd). */
+void trace_start(const char *path);
+void trace_note(const char *what, const char *path);
 /* Write a string to a file (sysfs). Returns 0 on success, -1 on error. */
 int  write_text_file(const char *path, const char *s);
 int  file_exists(const char *path);

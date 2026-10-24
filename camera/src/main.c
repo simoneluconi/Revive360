@@ -83,6 +83,9 @@ static int setup_common(int argc, char **argv)
 
     if (conf && config_load(&g_srv.cfg, conf) < 0)
         LOGW("config: %s not readable, using defaults", conf);
+    trace_start(config_get(&g_srv.cfg, "trace", NULL));
+    trace_note("step", argv[0]);
+    trace_note("step", "adapter_detect");
     if (!forced)
         forced = config_get(&g_srv.cfg, "adapter", NULL);
     if (adapter_detect(&g_srv.ad, forced, sim, &g_srv.cfg) < 0) {
@@ -95,8 +98,11 @@ static int setup_common(int argc, char **argv)
             snprintf(g_srv.ad.run_dir, sizeof g_srv.ad.run_dir, "%s", rd);
     }
     g_srv.start_ms = now_ms_mono();
+    trace_note("step", "resolve_mac");
     resolve_mac();
+    trace_note("step", "status_init");
     status_init();
+    trace_note("step", "setup done");
     return 0;
 }
 
@@ -148,12 +154,14 @@ int cmd_detect(int argc, char **argv)
     json_str(&b, g_srv.mac);
     sbuf_puts(&b, ",\"storage_root\":");
     json_str(&b, g_srv.ad.storage_root);
+    trace_note("step", "storage_mounted + capabilities");
     sbuf_printf(&b, ",\"storage_mounted\":%s,\"capabilities\":",
                 adapter_storage_mounted(&g_srv.ad) ? "true" : "false");
     api_capabilities_json(&b);
     sbuf_puts(&b, "}\n");
     fputs(b.buf, stdout);
     sbuf_free(&b);
+    trace_note("step", "detect done");
     return 0;
 }
 

@@ -124,6 +124,32 @@ void trim(char *s)
         memmove(s, s + i, n - i + 1);
 }
 
+/* Optional access trace (trace=<file> in the config): one line per step or
+ * file access, written and fsync'd BEFORE the access, so a hardware reset
+ * still leaves the last attempted access on the card. */
+static int g_trace_fd = -1;
+
+void trace_start(const char *path)
+{
+    if (g_trace_fd < 0 && path && *path)
+        g_trace_fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+}
+
+void trace_note(const char *what, const char *path)
+{
+    char line[600];
+    int n;
+    ssize_t w;
+    if (g_trace_fd < 0)
+        return;
+    n = snprintf(line, sizeof line, "%lld %s %s\n", (long long)now_ms_mono(), what, path ? path : "");
+    if (n > (int)sizeof line - 1)
+        n = (int)sizeof line - 1;
+    w = write(g_trace_fd, line, (size_t)n);
+    (void)w;
+    fsync(g_trace_fd);
+}
+
 int read_text_file(const char *path, char *out, size_t outlen)
 {
     int fd;
@@ -133,6 +159,7 @@ int read_text_file(const char *path, char *out, size_t outlen)
     if (outlen == 0)
         return -1;
     out[0] = 0;
+    trace_note("read", path);
     fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0)
         return -1;

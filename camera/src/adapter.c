@@ -30,8 +30,10 @@ int mode_from_name(const char *s)
 /* info.ini lines look like "Model=SMC200;" and "Build=C200GLU0AQK1;". */
 void adapter_read_info_ini(const char *path, char *model_raw, size_t mlen, char *build, size_t blen)
 {
-    FILE *fp = fopen(path, "r");
+    FILE *fp;
     char line[256];
+    trace_note("fopen", path);
+    fp = fopen(path, "r");
     model_raw[0] = 0;
     build[0] = 0;
     if (!fp)
@@ -125,6 +127,7 @@ int adapter_storage_mounted(const adapter_t *a)
     if (!dir_exists(a->storage_root))
         return 0;
     if (a->mount_point[0]) {
+        trace_note("fopen", "/proc/mounts");
         fp = fopen("/proc/mounts", "r");
         if (!fp)
             return 0;
