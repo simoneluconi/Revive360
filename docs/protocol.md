@@ -355,6 +355,19 @@ own, left at 0) keep the **local wall-clock time** in the system clock and RTC: 
 to `utc_ms + tz_offset_min` and reports `timezone` in `applied`. EXIF dates are then local, as on
 any camera. The app re-sends the time on every connection, so a DST change or a trip is picked up.
 
+### 5.11 Debug endpoints (development only)
+
+Not used by the app; for exploring the stock camera software from a PC through the phone.
+Arguments are limited to letters, digits, space and `+,._-` (`/=` too for st/vconf), else
+`400 bad_request`; no shell is involved.
+
+- `POST /api/v1/debug/dfms` `{"script": "capture still", "wait_ms": 5000}`: runs
+  `dfmstool --script <script>`, waits, answers `{"rc", "out", "new_files"}` (`ls -la` of files
+  newer than the request on the card and the RAM disks).
+- `POST /api/v1/debug/st` / `POST /api/v1/debug/vconf` `{"args": "app nx capture quality"}`: runs
+  `st` / `vconftool` with those arguments, answers `{"rc", "out", "app_result", "system_log"}`
+  (st's `/tmp/app_result` and the last 40 system log lines).
+
 ## 6. Camera-side behaviour (informative)
 
 Not part of the wire contract, documented so both sides agree on what the user sees:

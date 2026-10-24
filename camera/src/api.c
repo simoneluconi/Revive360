@@ -197,6 +197,12 @@ void api_dispatch(req_t *r)
         if (allow(r, "POST")) api_led(r);
     } else if (strcmp(p, "/api/v1/time") == 0) {
         if (allow(r, "POST")) api_time(r);
+    } else if (strcmp(p, "/api/v1/debug/dfms") == 0) {
+        if (allow(r, "POST")) api_debug_dfms(r);
+    } else if (strcmp(p, "/api/v1/debug/st") == 0) {
+        if (allow(r, "POST")) api_debug_st(r);
+    } else if (strcmp(p, "/api/v1/debug/vconf") == 0) {
+        if (allow(r, "POST")) api_debug_vconf(r);
     } else if (strcmp(p, "/api/v1/log") == 0) {
         if (allow(r, "GET")) api_log(r);
     } else if (prefix(p, "/api/v1/thumb/")) {

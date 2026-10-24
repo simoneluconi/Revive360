@@ -111,6 +111,9 @@ void leds_set_system_state(int st);
 int  leds_manual(const char *id, const char *state, int on_ms, int off_ms); /* 0 ok, -1 unknown id */
 void leds_all_off(void);
 void api_led(req_t *r);
-void api_time(req_t *r);   /* timeset.c */
+void api_time(req_t *r);
+void api_debug_dfms(req_t *r);
+void api_debug_st(req_t *r);
+void api_debug_vconf(req_t *r);   /* timeset.c */
 
 #endif
