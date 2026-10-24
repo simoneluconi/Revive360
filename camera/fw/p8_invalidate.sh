@@ -63,6 +63,10 @@ if [ -b "$SNAP" ] && command -v mkswap >/dev/null 2>&1; then
     log "mkswap exit $?"
 else
     log "ERROR: $SNAP or mkswap missing; nothing written"
+    echo "error: nothing written" > /sdcard/g360r/p8_invalidate.done
+    sync
+    beep 3 05_N_Cancel.wav
+    exit 0
 fi
 sync
 log "page 0 tail after: $(page0_tail)"
