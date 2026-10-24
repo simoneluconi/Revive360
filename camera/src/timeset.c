@@ -3,9 +3,10 @@
  *
  * The camera has no network time and a firmware flash resets its RTC, so the
  * app sends UTC on every connection. We set the system clock (settimeofday)
- * and the battery-backed RTC (/dev/rtc0, kept in UTC), and report what was
- * applied. The time zone is accepted but not applied yet: where the firmware
- * keeps it is still being checked. The sim adapter never touches the host clock.
+ * and the battery-backed RTC (/dev/rtc0), and report what was applied. On an
+ * adapter with clock_local (C200: no zoneinfo, OSD/EXIF = RTC + an offset left
+ * at 0) both hold the phone's local wall-clock time: utc + tz_offset_min. The
+ * IANA id is only logged. The sim adapter never touches the host clock.
  */
 #include "server.h"
 
@@ -59,6 +60,7 @@ void api_time(req_t *r)
     double utc_ms, offset_min = 0;
     const char *tz;
     int wrong = 0, n = 0;
+    int64_t shift_ms;
     struct timeval tv;
     sbuf_t b;
     const char *applied[3];
@@ -78,20 +80,29 @@ void api_time(req_t *r)
     tz = jobj_get_str(&o, "tz", &wrong);
     LOGI("time: request utc_ms=%.0f tz=%s offset=%+.0f min", utc_ms, tz && !wrong ? tz : "-", offset_min);
 
+    if (offset_min < -14 * 60 || offset_min > 14 * 60) {
+        http_send_error(r, 400, "bad_request", "implausible tz_offset_min");
+        return;
+    }
+    shift_ms = g_srv.ad.clock_local ? (int64_t)offset_min * 60000 : 0;
+
     if (strcmp(g_srv.ad.id, "sim") != 0) {
-        tv.tv_sec = (time_t)(utc_ms / 1000);
-        tv.tv_usec = (suseconds_t)(((int64_t)utc_ms % 1000) * 1000);
+        int64_t wall_ms = (int64_t)utc_ms + shift_ms;
+        tv.tv_sec = (time_t)(wall_ms / 1000);
+        tv.tv_usec = (suseconds_t)((wall_ms % 1000) * 1000);
         if (settimeofday(&tv, NULL) == 0)
             applied[n++] = "system";
         else
             LOGW("time: settimeofday: %s", strerror(errno));
         if (rtc_write(tv.tv_sec) == 0)
             applied[n++] = "rtc";
+        if (shift_ms && n)
+            applied[n++] = "timezone";
     }
 
     gettimeofday(&tv, NULL);
     sbuf_init(&b);
-    sbuf_printf(&b, "{\"utc_ms\":%lld,\"applied\":[", (long long)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+    sbuf_printf(&b, "{\"utc_ms\":%lld,\"applied\":[", (long long)tv.tv_sec * 1000 + tv.tv_usec / 1000 - (long long)shift_ms);
     for (int i = 0; i < n; i++) {
         if (i)
             sbuf_puts(&b, ",");

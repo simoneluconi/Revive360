@@ -260,7 +260,7 @@ File object:
 | `path` | relative path (see §2 Paths) — the file's identity |
 | `name` | last path segment |
 | `size` | bytes |
-| `mtime` | Unix seconds, camera clock (may be wrong if the camera RTC is unset) |
+| `mtime` | Unix seconds, camera clock (may be wrong if the camera RTC is unset; on a local-clock camera, §5.10, it is the local wall-clock time counted as if it were UTC) |
 | `kind` | `photo` (`.JPG`/`.JPEG`), `raw` (`.SRW`/`.DNG`), `video` (`.MP4`/`.MOV`), `other` — by extension, case-insensitive |
 
 Files sharing a base name (`SAM_0042.JPG` + `SAM_0042.SRW`) are separate entries; the app may
@@ -333,8 +333,8 @@ sends it right after `info` on every connection.
 | Field | Required | Meaning |
 |---|---|---|
 | `utc_ms` | yes | Current UTC time, Unix milliseconds. |
-| `tz` | no | IANA time zone id of the phone. The camera applies it if it knows the zone. |
-| `tz_offset_min` | yes | The phone's current offset from UTC in minutes (DST included), used when `tz` is unknown or not applied. |
+| `tz` | no | IANA time zone id of the phone. Informative: the camera may log it. |
+| `tz_offset_min` | yes | The phone's current offset from UTC in minutes (DST included), -840..840. |
 
 Response `200`:
 
@@ -342,9 +342,14 @@ Response `200`:
 { "utc_ms": 1729780000123, "applied": ["system", "rtc", "timezone"] }
 ```
 
-`utc_ms` is the camera clock after the change; `applied` lists what was set (`system` clock,
+`utc_ms` is the camera clock after the change, as UTC; `applied` lists what was set (`system` clock,
 battery-backed `rtc`, `timezone`). Missing entries are not errors: the camera did what it can.
-`400 bad_request` for a missing or implausible time (before 2020).
+`400 bad_request` for a missing or implausible time (before 2020) or offset.
+
+Cameras without a time zone database (the C200: its OSD and EXIF show the RTC plus an offset of its
+own, left at 0) keep the **local wall-clock time** in the system clock and RTC: the server sets them
+to `utc_ms + tz_offset_min` and reports `timezone` in `applied`. EXIF dates are then local, as on
+any camera. The app re-sends the time on every connection, so a DST change or a trip is picked up.
 
 ## 6. Camera-side behaviour (informative)
 

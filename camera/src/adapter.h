@@ -56,6 +56,7 @@ struct adapter {
     const char *video_modes[MAX_LIST]; int n_video_modes;
     int files_delete;
     int thumbnails;
+    int clock_local;            /* the system clock/RTC hold local wall-clock time, not UTC */
     led_chan_t leds[MAX_LEDS];  int n_leds;
 
     /* Trigger one capture. Must return once the shot was requested (files

@@ -8,7 +8,9 @@
  *    memory/dfms/script_cmd, which the dfmsd that ran our SD hook keeps watching
  *    and forwards to di-camera-app's dfms_app_cmd_capture. (`st app nx capture run`
  *    only injects shutter keys into the normal UI, which does not run in factory
- *    mode: Test 1h produced no file.) Both are ASYNC: the caller polls DCIM.
+ *    mode: Test 1h produced no file.) In normal mode (modified firmware, no
+ *    dfmsd) the live UI is up and `st app nx capture run count 1` is the shot.
+ *    Both are ASYNC: the caller polls DCIM.
  *    Every call has a hard timeout.
  *  - storage: exFAT card mounted at /opt/storage/sdcard (/sdcard -> /mnt/mmc ->
  *    /opt/storage/sdcard). Files: DCIM/<nnn>PHOTO/360_XXXX.JPG (+ .SRW beside
@@ -86,6 +88,9 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
                         const char *resolution, char *err, size_t errlen)
 {
     char q[32];
+    /* Factory mode (SD hook) has a dfmsd listening and no live capture UI;
+     * normal mode (modified firmware) has the live UI and no dfmsd. */
+    int factory = dfmsd_running();
     (void)resolution; /* not settable in v1 */
 
     if (access(ST_BIN, X_OK) != 0) {
@@ -100,9 +105,9 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
     else
         snprintf(q, sizeof q, "%s", quality ? quality : "sfine");
 
-    /* dfms `capture still` only fires if the capture pipeline is live, which
-     * factory mode does not start by itself (Test 2: no file). Put the app in
-     * 360 photo mode first, and ask once for the live view. */
+    LOGI("c200: capture via %s", factory ? "dfms (factory mode)" : "st shutter keys (normal mode)");
+    /* Put the app in 360 photo mode first. In factory mode also ask once for
+     * the live view: dfms `capture still` needs a live pipeline (Test 2). */
     {
         /* A marker file, not a static: each request runs in a forked child, and
          * `show liveview` toggles, so it must be sent once per controller run. */
@@ -112,7 +117,7 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
         snprintf(marker, sizeof marker, "%s/liveview_asked", a->run_dir);
         if (st_call(mode_argv, "mode_360 photo", err, errlen) < 0)
             return -1;
-        if (!file_exists(marker)) {
+        if (factory && !file_exists(marker)) {
             write_text_file(marker, "1\n");
             if (st_call(lv_argv, "show liveview", err, errlen) < 0)
                 return -1;
@@ -125,6 +130,11 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
             return -1;
     }
     sleep_ms(300);
+    if (!factory) {
+        /* Normal mode: the shutter key sequence into the live capture UI */
+        char *argv[] = { ST_BIN, "app", "nx", "capture", "run", "count", "1", NULL };
+        return st_call(argv, "capture run", err, errlen);
+    }
     {
         char out[256];
         char *vargv[] = { VCONFTOOL_BIN, "get", "memory/dfms/script_cmd", NULL };
@@ -132,10 +142,6 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
         int rc;
         if (access(DFMSTOOL_BIN, X_OK) != 0) {
             snprintf(err, errlen, "%s not found", DFMSTOOL_BIN);
-            return -1;
-        }
-        if (!dfmsd_running()) {
-            snprintf(err, errlen, "no dfmsd running to take the capture command");
             return -1;
         }
         rc = run_cmd(vargv, ST_TIMEOUT_MS, out, sizeof out);
@@ -178,6 +184,10 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
     a->n_video_modes = 3;
     a->files_delete = 1;
     a->thumbnails = 1;
+    /* di-camera-app has no zoneinfo: OSD and EXIF show RTC + its own time zone
+     * offset (User_Spec DB 0x234), which stays 0 (London/GMT) unless the stock
+     * app sets it. So the clock is set to the phone's local wall-clock time. */
+    a->clock_local = 1;
     a->trigger_capture = c200_capture;
     adapter_discover_leds(a, "/sys/class/leds", 5, cfg);
 }
