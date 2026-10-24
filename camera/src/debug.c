@@ -177,8 +177,8 @@ void api_debug_shim(req_t *r)
         return;
     }
     for (const char *c = req; *c; c++)
-        if (!isalnum((unsigned char)*c) && *c != ' ') {
-            http_send_error(r, 400, "bad_request", "req may only hold letters, digits and spaces");
+        if (!isalnum((unsigned char)*c) && !strchr(" /._-", *c)) {
+            http_send_error(r, 400, "bad_request", "req may only hold letters, digits, spaces and /._-");
             return;
         }
     s = socket(AF_UNIX, SOCK_STREAM, 0);

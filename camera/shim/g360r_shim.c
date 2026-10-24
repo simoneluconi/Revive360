@@ -148,12 +148,48 @@ struct job {
     pthread_cond_t cv;
 };
 
-/* Requests: ping | handle | usr <id> <val> | var <cmd> <val> | userspec <item> <flag>
- * (numbers in decimal or 0x hex). The set requests go through the same
- * interposers, so they are logged like the app's own calls. */
+/* An optional plugin, loaded at run time from the card, so new requests need no
+ * firmware flash: int g360r_plugin_request(const char *req, char *resp, size_t len),
+ * called on the main loop for "p <text>" requests. */
+typedef int (*plugin_fn)(const char *, char *, size_t);
+static plugin_fn g_plugin;
+
+static void load_plugin(const char *path, char *resp, size_t len)
+{
+    void *h;
+    plugin_fn f;
+
+    if (g_plugin) {
+        snprintf(resp, len, "error a plugin is already loaded");
+        return;
+    }
+    h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!h) {
+        snprintf(resp, len, "error dlopen: %s", dlerror());
+        return;
+    }
+    f = (plugin_fn)dlsym(h, "g360r_plugin_request");
+    if (!f) {
+        snprintf(resp, len, "error no g360r_plugin_request in %s", path);
+        dlclose(h);
+        return;
+    }
+    g_plugin = f;
+    snprintf(resp, len, "ok plugin %s loaded", path);
+}
+
+/* Requests (numbers in decimal or 0x hex):
+ *   ping | handle
+ *   mcb ID VAL        SetUserDataMCB(ID, VAL): an RTOS capture USERDATA (volatile,
+ *                     re-initialized at every boot), e.g. 0x7b RAW_SAVE
+ *   usr ID VAL | var CMD VAL | userspec ITEM FLAG   the app's mm_camera setters
+ *   plugin PATH       dlopen a plugin (path under /opt/storage/sdcard/g360r/)
+ *   p TEXT            hand TEXT to the plugin
+ * The mm_camera set requests go through the interposers, so they are logged
+ * like the app's own calls. */
 static void run_on_main(struct job *j)
 {
-    char verb[16];
+    char verb[16], path[200];
     long a = 0, b = 0;
     int n = sscanf(j->req, "%15s %li %li", verb, &a, &b), rc;
 
@@ -162,11 +198,40 @@ static void run_on_main(struct job *j)
         return;
     }
     if (n >= 1 && strcmp(verb, "handle") == 0) {
-        snprintf(j->resp, sizeof j->resp, "ok camera=%p", g_camera);
+        snprintf(j->resp, sizeof j->resp, "ok camera=%p plugin=%s", g_camera, g_plugin ? "yes" : "no");
+        return;
+    }
+    if (n >= 1 && strcmp(verb, "plugin") == 0) {
+        if (sscanf(j->req, "%*s %199s", path) != 1 || strncmp(path, "/opt/storage/sdcard/g360r/", 26) != 0 ||
+            strstr(path, "..")) {
+            snprintf(j->resp, sizeof j->resp, "error plugin path must be under /opt/storage/sdcard/g360r/");
+            return;
+        }
+        load_plugin(path, j->resp, sizeof j->resp);
+        return;
+    }
+    if (n >= 1 && strcmp(verb, "p") == 0) {
+        if (!g_plugin)
+            snprintf(j->resp, sizeof j->resp, "error no plugin loaded");
+        else
+            g_plugin(j->req + 2, j->resp, sizeof j->resp);
+        return;
+    }
+    if (n == 3 && strcmp(verb, "mcb") == 0) {
+        static int (*mcb)(int, int);
+        if (!mcb)
+            mcb = (int (*)(int, int))dlsym(RTLD_DEFAULT, "SetUserDataMCB");
+        if (!mcb) {
+            snprintf(j->resp, sizeof j->resp, "error no SetUserDataMCB");
+            return;
+        }
+        rc = mcb((int)a, (int)b);
+        slog("shim: SetUserDataMCB(id=0x%lx, val=%ld) -> %d", a, b, rc);
+        snprintf(j->resp, sizeof j->resp, "ok mcb 0x%lx %ld -> rc=%d", a, b, rc);
         return;
     }
     if (n != 3) {
-        snprintf(j->resp, sizeof j->resp, "error usage: ping | handle | usr ID VAL | var CMD VAL | userspec ITEM FLAG");
+        snprintf(j->resp, sizeof j->resp, "error usage: ping | handle | mcb ID VAL | usr ID VAL | var CMD VAL | userspec ITEM FLAG | plugin PATH | p TEXT");
         return;
     }
     if (!g_camera) {
