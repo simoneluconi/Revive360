@@ -88,8 +88,9 @@ the swsusp signature is at the end of page 0, hence `mkswap`.
 4. Power off and on again: a cold boot from our rootfs. It is slower than usual (~30 s, no instant-on).
 
 **What a cold boot looks like** (every power-on from now on, so tell users): press power and
-**nothing happens for a while**; then a **red LED blinks**, still nothing on screen; then the camera
-comes on. This is normal: without the snapshot the camera loads the kernel and the system from
+**nothing happens for a while**; then our **LED signature** (the LEDs one at a time, then two quick
+flashes: this is how you know our firmware is running); then another wait; then the stock start-up
+(the charge LED blinks blue twice, the two LEDs by the lenses turn red) and the camera comes on. This is normal: without the snapshot the camera loads the kernel and the system from
 scratch. Don't press power again while you wait, or you may switch it off again.
 
 From now on every power-on is a cold boot with our files. Instant-on (a new snapshot with
