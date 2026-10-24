@@ -19,12 +19,18 @@ static int read_attr(const char *dir, const char *name, char *out, size_t len)
     return read_text_file(p, out, len);
 }
 
-/* Log every power supply and its small attributes (diagnostics for the
- * hardware test; the exact sec-battery attribute set is unconfirmed). */
+/* Attributes safe to read on every supply. Never enumerate a supply directory:
+ * sec-battery has attributes whose read is an action, and reading them all
+ * reset the SM-C200 (Test 1g trace ended at battery/batt_inbat_voltage). */
+static const char *const SAFE_ATTRS[] = {
+    "type", "status", "capacity", "online", "present", "temp", "batt_temp", "voltage_now", "health", NULL,
+};
+
+/* Log every power supply and its safe attributes (diagnostics for the hardware test). */
 static void log_supplies(const char *base)
 {
-    DIR *d, *ad;
-    struct dirent *de, *ae;
+    DIR *d;
+    struct dirent *de;
     trace_note("opendir", base);
     d = opendir(base);
     if (!d) {
@@ -37,19 +43,12 @@ static void log_supplies(const char *base)
         if (de->d_name[0] == '.')
             continue;
         snprintf(dir, sizeof dir, "%s/%s", base, de->d_name);
-        trace_note("opendir", dir);
-        ad = opendir(dir);
-        if (!ad)
-            continue;
         sbuf_init(&b);
-        while ((ae = readdir(ad)) != NULL) {
+        for (const char *const *a = SAFE_ATTRS; *a; a++) {
             char v[96];
-            if (ae->d_name[0] == '.' || strcmp(ae->d_name, "uevent") == 0)
-                continue;
-            if (read_attr(dir, ae->d_name, v, sizeof v) >= 0 && !strchr(v, '\n'))
-                sbuf_printf(&b, " %s=%s", ae->d_name, v);
+            if (read_attr(dir, *a, v, sizeof v) >= 0 && !strchr(v, '\n'))
+                sbuf_printf(&b, " %s=%s", *a, v);
         }
-        closedir(ad);
         LOGI("status: power_supply %s:%s", de->d_name, b.buf ? b.buf : "");
         sbuf_free(&b);
     }
