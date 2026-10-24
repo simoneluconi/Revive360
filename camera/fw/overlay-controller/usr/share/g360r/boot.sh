@@ -9,11 +9,40 @@
 # nothing runs; /sdcard/g360r.off = nothing runs. The payload on the SD
 # (g360r/bin/g360rd, g360r/launcher.sh, g360r/netup.sh) wins over the copy
 # built into the firmware, so a new controller needs only a card, not a flash.
+#
+# Every boot of our firmware shows itself first, card or not: the status LED
+# cycles red, green, blue twice (~2 s). No cycle = the stock rootfs is running.
 
 SD_DIR=/sdcard/g360r
 SYS_DIR=/usr/share/g360r
 RUN=/tmp/g360r
 export PATH=/usr/sbin:/sbin:/usr/bin:/bin
+
+# st_wait ARGS: one `st` command to di-camera-app, killed after 2 s if its
+# message queue does not answer
+st_wait() {
+    /usr/bin/st "$@" >/dev/null 2>&1 &
+    p=$!
+    n=0
+    while kill -0 "$p" 2>/dev/null && [ $n -lt 20 ]; do sleep 0.1; n=$((n + 1)); done
+    kill "$p" 2>/dev/null
+}
+
+# The firmware signature on the status LED (st app 360 led <led> <r|g|b> <on|off>)
+signature() {
+    [ -x /usr/bin/st ] || return 0
+    i=0
+    while ! pgrep -f di-camera-app >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done
+    sleep 2
+    for round in 1 2; do
+        for c in r g b; do
+            st_wait app 360 led status "$c" on
+            sleep 0.3
+            st_wait app 360 led status "$c" off
+        done
+    done
+}
+signature &
 
 # The card is mounted by the stock stack some seconds into the boot
 i=0
@@ -38,6 +67,7 @@ src_netup=$(pick "$SD_DIR/netup.sh" "$SYS_DIR/netup.sh")
 {
     echo "=== boot.sh (normal mode) $(date '+%Y-%m-%d %H:%M:%S') uptime $(cut -d' ' -f1 /proc/uptime) pid $$"
     echo "card ready after ${i}s"
+    echo "firmware: $(cat "$SYS_DIR/VERSION" 2>/dev/null || echo unknown)"
     echo "payload: $src_bin $src_launcher $src_netup"
 } > "$BOOTLOG" 2>&1
 
@@ -49,5 +79,7 @@ fi
 chmod 0755 "$RUN/g360rd" "$RUN/launcher.sh" 2>/dev/null
 sync
 
+# Let the signature finish before the launcher sets its own LED colours
+wait
 export G360R_MODE=normal
 exec /bin/sh "$RUN/launcher.sh"

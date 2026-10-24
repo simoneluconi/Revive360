@@ -13,6 +13,8 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp -R "$CAMERA/fw/overlay-controller/." "$STAGE/"
 cp "$SRC/bin/g360rd" "$SRC/launcher.sh" "$SRC/netup.sh" "$STAGE/usr/share/g360r/"
+# Which build this firmware is: logged by boot.sh to g360r/log/start.log
+echo "g360r $(git -C "$CAMERA" describe --always --dirty 2>/dev/null || echo nogit) built $(date -u '+%Y-%m-%d %H:%M UTC')"     > "$STAGE/usr/share/g360r/VERSION"
 # The camera's shell rejects CRLF
 for f in "$STAGE/usr/share/g360r/"*.sh "$STAGE/usr/lib/systemd/system/g360r.service" "$STAGE/MODES" "$STAGE/LINKS"; do
     if grep -q "$(printf '\r')" "$f"; then
