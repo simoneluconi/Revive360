@@ -14,12 +14,13 @@
 # Strategy "hostapd": the stock softAP on this build is /usr/sbin/hostapd with
 # driver=nl80211 (mobileap-agent _mh_core_enable_softap backend 2). The older WEXT
 # private-ioctl path (SIOCSIWPRIV 0x8B0C, ASCII_CMD=AP_CFG/AP_BSS_START) returns
-# EOPNOTSUPP on this cfg80211 bcmdhd build, so it is NOT used here. The loaded STA
-# firmware is a combo image; nl80211 switches wlan0 to the AP iftype internally, so we
-# do NOT write /sys/module/dhd/parameters/firmware_path. Before hostapd can own wlan0 we
-# must release it from the STA stack (connman/wpa_supplicant), unblock rfkill, and take
-# the iface down. The passphrase is never logged in clear: the conf stays under /tmp and
-# hostapd's own debug log is masked when copied to the SD.
+# EOPNOTSUPP on this cfg80211 bcmdhd build, so it is NOT used here. The default wlan_net
+# STA firmware does NOT support the AP iftype, so hostapd aborts on it; the stock
+# /usr/bin/wlan.sh loads the APSTA firmware image first (wlan.sh stop -> wlan.sh softap,
+# which writes firmware_path + nvram and cycles the iface). Before hostapd can own wlan0
+# we must release it from any STA-stack unit, unblock rfkill, and load that APSTA image.
+# The passphrase is never logged in clear: the conf stays under /tmp and hostapd's own
+# debug log is masked when copied to the SD.
 
 # Config (overridable in g360r.conf via the launcher's cfg()):
 G360R_STA_IF=wlan0           # the single Broadcom iface; nl80211 makes it the AP iface
@@ -74,6 +75,26 @@ _netup_rfkill() {
     else
         log "netup: rfkill not present (skipping unblock)"
     fi
+}
+
+# --- (3) load the APSTA firmware via the stock wlan.sh ------------------------------
+# The default wlan_net STA image does not support the AP iftype. Stock softAP uses
+# /usr/bin/wlan.sh: `stop` (ifconfig wlan0 down) then `softap`, which writes the APSTA
+# image (wlan_apsta_bcm4354.bin, _4339 if board_revision==0) to firmware_path + nvram
+# and brings the iface up. softap()/stop() write nothing to /opt. Then prove it loaded.
+_netup_load_apsta_fw() {
+    if [ -x /usr/bin/wlan.sh ]; then
+        logrun /usr/bin/wlan.sh stop
+        logrun /usr/bin/wlan.sh softap
+    else
+        log "netup: WARN /usr/bin/wlan.sh not present - APSTA firmware will not load"
+    fi
+    logrun cat /sys/module/dhd/parameters/firmware_path
+    if [ -x /usr/bin/wl ]; then
+        logrun /usr/bin/wl ver      # firmware build string (apsta vs sta)
+        logrun /usr/bin/wl cap      # capabilities: look for "ap"/"apsta"
+    fi
+    logrun sh -c 'dmesg 2>/dev/null | tail -n 12'
 }
 
 # --- (4) hostapd.conf (passphrase only on disk under /tmp, never logged) ------------
@@ -139,10 +160,14 @@ _netup_hostapd_up_in_log() {
 
 _netup_start_hostapd() {
     [ -x /usr/sbin/hostapd ] || { log "netup: /usr/sbin/hostapd not present"; return 1; }
-    # -dd for diagnostics while we validate AP bring-up; log is masked on import. If a
-    # build is found to dump the passphrase in clear despite the mask, lower to -d here.
-    log "netup: \$ /usr/sbin/hostapd -B -P $_netup_hostapd_pid -f $_netup_hostapd_log -dd $_netup_hostapd_conf"
-    /usr/sbin/hostapd -B -P "$_netup_hostapd_pid" -f "$_netup_hostapd_log" -dd "$_netup_hostapd_conf" 2>/dev/null
+    # Foreground (-dd) backgrounded by the shell, NOT -B: if hostapd aborts before it
+    # would daemonize, with -B that early stdout/stderr is lost; here it all lands in the
+    # log so we capture the real error. We record the shell's $! as the pid. The log is
+    # masked on import; if a build is found to dump the passphrase despite the mask,
+    # lower -dd to -d here.
+    log "netup: \$ /usr/sbin/hostapd -dd $_netup_hostapd_conf > $_netup_hostapd_log 2>&1 &"
+    /usr/sbin/hostapd -dd "$_netup_hostapd_conf" > "$_netup_hostapd_log" 2>&1 &
+    echo $! > "$_netup_hostapd_pid"
     i=0
     while [ "$i" -lt 8 ]; do
         _netup_hostapd_running || { log "netup: hostapd exited during startup"; return 1; }
@@ -182,9 +207,9 @@ netup() {
 
     mkdir -p "$_netup_dir" 2>/dev/null
 
-    _netup_release_sta            # (1) free wlan0 from connman/wpa_supplicant
+    _netup_release_sta            # (1) free wlan0 from any STA-stack unit
     _netup_rfkill                 # (2) unblock the radio
-    logrun "$BIN" ifdown "$G360R_STA_IF"   # (3) iface down; hostapd re-ups it in AP mode
+    _netup_load_apsta_fw          # (3) wlan.sh stop + softap: load the APSTA firmware
 
     _netup_write_hostapd_conf     # (4) conf under /tmp (key not logged)
     _netup_start_hostapd
