@@ -27,7 +27,7 @@ CFLAGS_HOST := $(CFLAGS_COMMON) -g -O1
 
 OUT := out
 
-.PHONY: all check smoke sd clean shim
+.PHONY: all check smoke sd clean shim plugin
 
 all: $(OUT)/g360rd $(OUT)/g360rd-host sd check
 
@@ -76,3 +76,9 @@ $(OUT)/libg360r_shim.so: shim/g360r_shim.c
 	@mkdir -p $(OUT)
 	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -o $@ $< -nostdlib -Wl,--no-undefined 		$(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2 $(SYSROOT)/lib/libpthread.so.0 $(SYSROOT)/lib/librt.so.1
 	@$(CROSS)readelf -V $@ | grep -oE "GLIBC_[0-9.]+" | sort -uV | tr '\n' ' '; echo "<- glibc versions needed (camera has 2.13)"
+
+# libg360r_plugin.so: dlopened by the shim from the card (no flash to change it).
+plugin: $(OUT)/libg360r_plugin.so
+$(OUT)/libg360r_plugin.so: shim/g360r_plugin.c
+	@mkdir -p $(OUT)
+	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -o $@ $< -nostdlib -Wl,--no-undefined $(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2
