@@ -321,6 +321,10 @@ Response `200` `{ "id": "front", "state": "blink" }`. Unknown `id` or state → 
 Only when `capabilities.debug_log`. Returns the last `N` lines (default 200, max 2000) of the
 controller's log as `text/plain; charset=utf-8`. For diagnostics in the app's debug screen.
 
+`source=system` returns the camera's own system log instead (on Tizen `dlogutil -d`: the stock
+camera app logs there), optionally filtered with `grep=TEXT` (case-insensitive substring; letters,
+digits and `_.:+-` only, else `400 bad_request`). Debugging aid; the app does not depend on it.
+
 ### 5.10 `POST /api/v1/time`
 
 Only when `capabilities.time`. Sets the camera's date, time and time zone from the phone. The app

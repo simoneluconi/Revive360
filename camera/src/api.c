@@ -91,19 +91,51 @@ static void api_info(req_t *r)
     sbuf_free(&b);
 }
 
+/* GET /api/v1/log?source=system[&grep=TEXT][&lines=N]: the tail of the camera's
+ * system log (dlogutil -d), for debugging the stock app from the phone.
+ * grep is limited to [A-Za-z0-9_.:+-] and goes through grep -i -F. */
+static void api_system_log(req_t *r, int lines, const char *grep)
+{
+    char cmd[256], *out;
+    char *argv[] = { "/bin/sh", "-c", cmd, NULL };
+    const size_t cap = 256 * 1024;
+
+    for (const char *c = grep; *c; c++)
+        if (!isalnum((unsigned char)*c) && !strchr("_.:+-", *c)) {
+            http_send_error(r, 400, "bad_request", "grep may only hold letters, digits and _.:+-");
+            return;
+        }
+    snprintf(cmd, sizeof cmd, "PATH=/usr/bin:/bin:/usr/sbin:/sbin; dlogutil -d 2>&1 | %s%s%s tail -n %d",
+             *grep ? "grep -i -F -- '" : "", grep, *grep ? "' |" : "", lines);
+    out = malloc(cap);
+    if (!out) {
+        http_send_error(r, 500, "internal", "out of memory");
+        return;
+    }
+    run_cmd(argv, 10000, out, cap);
+    http_send(r, 200, "text/plain; charset=utf-8", NULL, out, strlen(out), 0);
+    free(out);
+}
+
 static void api_log(req_t *r)
 {
-    int lines = 200;
+    int lines = 200, system = 0;
     const char *q = r->query;
+    char grep[64] = "";
     char *text;
     size_t len;
 
-    if (!log_path()) {
-        http_send_error(r, 404, "not_found", "no log file configured");
-        return;
-    }
-    /* Only "lines=N" is understood; other parameters are ignored. */
+    /* lines=N, source=system, grep=TEXT; other parameters are ignored. */
     while (q && *q) {
+        if (strncmp(q, "source=system", 13) == 0 && (q[13] == 0 || q[13] == '&'))
+            system = 1;
+        if (strncmp(q, "grep=", 5) == 0) {
+            size_t n = strcspn(q + 5, "&");
+            if (n >= sizeof grep)
+                n = sizeof grep - 1;
+            memcpy(grep, q + 5, n);
+            grep[n] = 0;
+        }
         if (strncmp(q, "lines=", 6) == 0) {
             char *end;
             long v = strtol(q + 6, &end, 10);
@@ -116,6 +148,14 @@ static void api_log(req_t *r)
         q = strchr(q, '&');
         if (q)
             q++;
+    }
+    if (system) {
+        api_system_log(r, lines, grep);
+        return;
+    }
+    if (!log_path()) {
+        http_send_error(r, 404, "not_found", "no log file configured");
+        return;
     }
     text = log_tail(lines, &len);
     http_send(r, 200, "text/plain; charset=utf-8", NULL, text ? text : "", text ? len : 0, 0);
