@@ -125,6 +125,11 @@ void settings_capabilities_json(sbuf_t *b);
 const setting_def_t *settings_find(const char *id);
 int  settings_ensure_mode(const char *mode, char *err, size_t errlen);
 
+/* shim_client.c: the shim loaded into di-camera-app (modified firmware) */
+int shim_request(const char *req, char *reply, size_t len);  /* 0 = answered */
+int shim_plugin(const char *preq, char *reply, size_t len);  /* 0 = "ok ..." */
+int shim_ui_get(int item, int *out);
+
 /* capture.c: video recording (§5.13) */
 void api_record(req_t *r);
 void recording_json(sbuf_t *b);

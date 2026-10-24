@@ -10,7 +10,13 @@
  *   uiset ITEM VAL      UI_Set_Value(item, val)
  *   uisend ITEM VAL     UI_Send_Message_Changed_Attributes(item, val): the app
  *                       pushes the changed setting to the camera
- * Image quality is item 0xd0: 0 SFINE, 1 FINE, 2 NORMAL, 3 RAW, 4-6 RAW+JPEG.
+ *   menu ITEM VAL       UI_Change_Menu_Value(item, val, 1): what the app's own
+ *                       menus do (set, exceptional handling, push, remaining count)
+ *   allsend             UI_Send_Message_Changed_All_Attributes(): after a mode change
+ *   lens VAL            ui_set_360_lens_mode(val): 0 dual, 1 rear, 2 front
+ * Keys used by g360rd (AQK1): mode 0x21c, lens 0x21a, photo size 0xcf, movie
+ * size 0x223, self-timer 0x225, time-lapse interval 0x224, loop time 0x21b,
+ * movie state 0x2bc (2 = recording), elapsed seconds 0x2bd.
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -19,6 +25,9 @@
 
 typedef int (*get_fn)(int);
 typedef void (*set_fn)(int, int);
+typedef void (*menu_fn)(int, int, int);
+typedef void (*void_fn)(void);
+typedef void (*int_fn)(int);
 
 static void *app_fn(const char *mangled)
 {
@@ -60,6 +69,36 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         snprintf(resp, len, "ok uisend 0x%lx %ld", item, val);
         return 0;
     }
-    snprintf(resp, len, "error usage: uiget ITEM | uiset ITEM VAL | uisend ITEM VAL");
+    if (n == 3 && strcmp(verb, "menu") == 0) {
+        menu_fn menu = (menu_fn)app_fn("_Z20UI_Change_Menu_Value14eUI_VALUE_ITEMib");
+        if (!menu) {
+            snprintf(resp, len, "error no UI_Change_Menu_Value");
+            return -1;
+        }
+        menu((int)item, (int)val, 1);
+        snprintf(resp, len, "ok menu 0x%lx %ld", item, val);
+        return 0;
+    }
+    if (n >= 1 && strcmp(verb, "allsend") == 0) {
+        void_fn all = (void_fn)app_fn("_Z38UI_Send_Message_Changed_All_Attributesv");
+        if (!all) {
+            snprintf(resp, len, "error no UI_Send_Message_Changed_All_Attributes");
+            return -1;
+        }
+        all();
+        snprintf(resp, len, "ok allsend");
+        return 0;
+    }
+    if (n >= 2 && strcmp(verb, "lens") == 0) {
+        int_fn lens = (int_fn)app_fn("_Z20ui_set_360_lens_modei");
+        if (!lens) {
+            snprintf(resp, len, "error no ui_set_360_lens_mode");
+            return -1;
+        }
+        lens((int)item);
+        snprintf(resp, len, "ok lens %ld", item);
+        return 0;
+    }
+    snprintf(resp, len, "error usage: uiget ITEM | uiset ITEM VAL | uisend ITEM VAL | menu ITEM VAL | allsend | lens VAL");
     return -1;
 }
