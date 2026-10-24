@@ -2,8 +2,10 @@
  * Adapter "c200": Samsung Gear 360 (2016), SM-C200, firmware APE4 and AQK1.
  *
  * Mechanisms (docs/firmware/03, 08, 09) - all by name/path, no addresses:
- *  - capture: quality through the factory `st` CLI (SysV queue 0x8828 serviced
- *    by the running di-camera-app): st app nx capture quality <q>. The shot itself
+ *  - capture: JPEG only, at the camera's fixed quality. The 360 pipeline has no
+ *    quality or RAW setting (its settings are size, movie size, lens, timer,
+ *    format); `st app nx capture quality` writes the NX menu it never reads
+ *    (no size change even on the physical shutter, 2026-10-24). The shot
  *    goes through dfms: dfmstool --script "capture still" sets the vconf key
  *    memory/dfms/script_cmd, which the dfmsd that ran our SD hook keeps watching
  *    and forwards to di-camera-app's dfms_app_cmd_capture. (`st app nx capture run`
@@ -13,10 +15,10 @@
  *    Both are ASYNC: the caller polls DCIM.
  *    Every call has a hard timeout.
  *  - storage: exFAT card mounted at /opt/storage/sdcard (/sdcard -> /mnt/mmc ->
- *    /opt/storage/sdcard). Files: DCIM/<nnn>PHOTO/360_XXXX.JPG (+ .SRW beside
- *    the JPG in the raw quality modes).
- *  - LEDs: 5 gpio LEDs /sys/class/leds/led.0..4 (status R/G/B, front, rear),
- *    physical mapping not yet confirmed -> roles come from the SD config.
+ *    /opt/storage/sdcard). Files: DCIM/<nnn>PHOTO/360_XXXX.JPG.
+ *  - LEDs: 5 gpio LEDs /sys/class/leds/led.0..4: led.0-2 charge LED R/G/B,
+ *    led.3 lens LED on the display side, led.4 the other lens LED (mapped on
+ *    the hardware); roles still come from the SD config.
  *  - battery: /sys/class/power_supply/<name> (sec-battery "battery", "adc_battery").
  *
  * adapter_status is "experimental" until the hardware tests in camera/README.md
@@ -88,7 +90,6 @@ static int dfmsd_running(void)
 static int c200_capture(adapter_t *a, int mode, const char *quality,
                         const char *resolution, char *err, size_t errlen)
 {
-    char q[32];
     /* The shot always goes through dfms: dfmsd runs in normal mode too, and
      * there `capture still` works (8.9 s) while `st app nx capture run` writes
      * nothing (both tested on the modified firmware). Factory mode (SD hook)
@@ -96,24 +97,19 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
      * G360R_MODE=normal) has it already. */
     const char *run_mode = getenv("G360R_MODE");
     int factory = !(run_mode && strcmp(run_mode, "normal") == 0);
+    (void)mode;       /* JPEG only (capture_modes) */
+    (void)quality;    /* fixed in the 360 pipeline */
     (void)resolution; /* not settable in v1 */
 
-    if (access(ST_BIN, X_OK) != 0) {
+    if (factory && access(ST_BIN, X_OK) != 0) {
         snprintf(err, errlen, "%s not found", ST_BIN);
         return -1;
     }
-    /* st quality tokens: sfine fine norm raw raw+sfine raw+fine raw+norm */
-    if (mode == MODE_RAW)
-        snprintf(q, sizeof q, "raw");
-    else if (mode == MODE_RAWPHOTO)
-        snprintf(q, sizeof q, "raw+%s", quality ? quality : "sfine");
-    else
-        snprintf(q, sizeof q, "%s", quality ? quality : "sfine");
-
     LOGI("c200: capture via dfms (%s mode)", factory ? "factory" : "normal");
-    /* Put the app in 360 photo mode first. In factory mode also ask once for
-     * the live view: dfms `capture still` needs a live pipeline (Test 2). */
-    {
+    /* Factory mode only: 360 photo mode, and the live view asked once (dfms
+     * `capture still` needs a live pipeline, Test 2). In normal mode both are
+     * there already, and `st app mode_360` has no visible effect anyway. */
+    if (factory) {
         /* A marker file, not a static: each request runs in a forked child, and
          * `show liveview` toggles, so it must be sent once per controller run. */
         char marker[300];
@@ -122,19 +118,13 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
         snprintf(marker, sizeof marker, "%s/liveview_asked", a->run_dir);
         if (st_call(mode_argv, "mode_360 photo", err, errlen) < 0)
             return -1;
-        if (factory && !file_exists(marker)) {
+        if (!file_exists(marker)) {
             write_text_file(marker, "1\n");
             if (st_call(lv_argv, "show liveview", err, errlen) < 0)
                 return -1;
             sleep_ms(1000);
         }
     }
-    {
-        char *argv[] = { ST_BIN, "app", "nx", "capture", "quality", q, NULL };
-        if (st_call(argv, "capture quality", err, errlen) < 0)
-            return -1;
-    }
-    sleep_ms(300);
     {
         char out[256];
         char *vargv[] = { VCONFTOOL_BIN, "get", "memory/dfms/script_cmd", NULL };
@@ -162,7 +152,7 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
 
 void adapter_c200_init(adapter_t *a, const config_t *cfg)
 {
-    static const char *const qualities[] = { "sfine", "fine", "norm" };
+    static const char *const qualities[] = { "sfine" };
     static const char *const resolutions[] = { "7776x3888", "3072x1728" };
     static const char *const video[] = { "3840x1920@30", "2560x1280@30", "1920x960@30" };
     int i;
@@ -176,11 +166,13 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
     snprintf(a->mount_point, sizeof a->mount_point, "%s",
              config_get(cfg, "storage_mount", "/opt/storage/sdcard"));
 
-    a->capture_modes = MODE_PHOTO | MODE_RAW | MODE_RAWPHOTO;
+    /* JPEG at one fixed quality: the 360 pipeline has no RAW and ignores the
+     * quality menu (docs/firmware/08). */
+    a->capture_modes = MODE_PHOTO;
     if (!config_get_int(cfg, "capture_enable", 1))
         a->capture_modes = 0;
-    for (i = 0; i < 3; i++) a->qualities[i] = qualities[i];
-    a->n_qualities = 3;
+    a->qualities[0] = qualities[0];
+    a->n_qualities = 1;
     for (i = 0; i < 2; i++) a->resolutions[i] = resolutions[i];
     a->n_resolutions = 2;
     a->resolution_settable = 0;
