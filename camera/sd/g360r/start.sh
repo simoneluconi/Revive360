@@ -19,6 +19,13 @@ SD_DIR=/sdcard/g360r
 RUN=/tmp/g360r
 export PATH=/usr/sbin:/sbin:/usr/bin:/bin
 
+# First thing: disable the hardware watchdog. The stock app pets it; in factory
+# mode nobody does, and the SoC resets ~30 s later (the Test 1 reset loop).
+# Same command di-camera-app uses (UI_Devman_Disable_Watchdog). The launcher
+# repeats it and keeps it off.
+WDT=/sys/devices/platform/jack/set_watchdog
+[ -e "$WDT" ] && echo 0 > "$WDT" 2>/dev/null
+
 if [ "$1" != "__detached" ]; then
     setsid /bin/sh "$SD_DIR/start.sh" __detached </dev/null >/dev/null 2>&1 &
     exit 0
@@ -28,6 +35,7 @@ mkdir -p "$RUN" "$SD_DIR/log" 2>/dev/null
 BOOTLOG="$SD_DIR/log/start.log"
 {
     echo "=== start.sh $(date '+%Y-%m-%d %H:%M:%S') uptime $(cut -d' ' -f1 /proc/uptime) pid $$"
+    echo "watchdog: $WDT $([ -e "$WDT" ] && echo "present, disabled (reads: $(cat "$WDT" 2>&1))" || echo MISSING)"
     echo "cgroup before:"; cat /proc/self/cgroup
     if grep -q "di-camera-app" /proc/self/cgroup 2>/dev/null; then
         if echo "$$" > /sys/fs/cgroup/systemd/tasks; then

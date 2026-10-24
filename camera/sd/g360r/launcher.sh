@@ -2,8 +2,9 @@
 # Revive360 - launcher (runs from /tmp/g360r, started by start.sh).
 #
 # Sequence (every step is logged with a timestamp to /sdcard/g360r/log/g360r.log):
+#   0. disable the hardware watchdog (kept off by the supervisor)
 #   1. reset the factory-mode low-battery auto-off (vconf, volatile memory/ key)
-#   2. LEDs slow blink ("starting"), one beep
+#   2. one beep (shell-side LED blink disabled until led.N is identified)
 #   3. optional LED mapping diagnostic (ledtest=1 in g360r.conf)
 #   4. wait for wlan0, bring up our softAP (netup.sh: pluggable strategies)
 #   5. start the HTTP server (g360rd serve), two beeps
@@ -24,6 +25,11 @@ SND_DIR=/usr/apps/com.samsung.di-camera-app/res/sounds/camera
 WAV_OK="$SND_DIR/04_N_OK.wav"
 WAV_ERR="$SND_DIR/05_N_Cancel.wav"
 VCONF_KEY=memory/sysman/battery_skip_low_batt_power_off
+WDT=/sys/devices/platform/jack/set_watchdog
+
+# Hardware watchdog off before anything else (start.sh already did it; this
+# covers an older start.sh on the card). See watchdog_off below.
+[ -e "$WDT" ] && echo 0 > "$WDT" 2>/dev/null
 
 mkdir -p "$RUN" "$LOGDIR" 2>/dev/null
 echo $$ > "$RUN/launcher.pid"
@@ -73,24 +79,22 @@ beep() {
     done
 }
 
-# LEDs used for the shell-side "starting" indication (before the server runs).
-feedback_leds() {
-    fb=$(cfg led_feedback all)
-    if [ "$fb" = "all" ]; then
-        for d in /sys/class/leds/led.*; do [ -d "$d" ] && echo "${d##*/led.}"; done
-    elif [ "$fb" != "none" ]; then
-        echo "$fb" | tr ',' ' '
-    fi
+# Hardware watchdog (/sys/devices/platform/jack/set_watchdog, written by
+# di-camera-app: "echo %d" arms it with a timeout in seconds, 0 disables). The
+# stock app pets it; factory mode does not, so it fired ~30 s in and reset the
+# SoC in a loop (Test 1). Kept at 0 for the whole session: re-written on every
+# supervisor tick in case di-camera-app re-arms it.
+watchdog_off() {
+    [ -e "$WDT" ] || return 1
+    echo 0 > "$WDT" 2>/dev/null
 }
 
+# Shell-side "starting" LED indication: disabled. The old version wrote
+# trigger=timer to every /sys/class/leds/led.N, but led.0..4 are not identified
+# yet (one may be a GPIO that is not an LED). Use `st app led` / `st app 360 led`
+# for feedback once their arguments are known; until then this is a no-op.
 leds_blink() {   # on_ms off_ms
-    for n in $(feedback_leds); do
-        d=/sys/class/leds/led.$n
-        [ -d "$d" ] || continue
-        echo timer > "$d/trigger" 2>/dev/null
-        echo "$1" > "$d/delay_on" 2>/dev/null
-        echo "$2" > "$d/delay_off" 2>/dev/null
-    done
+    :
 }
 
 vconf_reset() {
@@ -106,6 +110,11 @@ vconf_reset() {
 # ------------------------------------------------------------ start
 
 milestone "launcher start (pid $$)"
+if watchdog_off; then
+    log "watchdog: $WDT set to 0 (reads: $(cat "$WDT" 2>&1))"
+else
+    log "WARNING: watchdog control $WDT missing - expect a reset ~30 s after boot"
+fi
 log "g360rd: $("$BIN" version 2>&1)"
 log "kernel: $(uname -a)"
 log "info.ini: $(tr '\n' ' ' < /etc/info.ini 2>/dev/null)"
@@ -232,6 +241,7 @@ tick=0
 while :; do
     sleep 5
     tick=$((tick + 1))
+    watchdog_off
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
         wait "$SERVER_PID" 2>/dev/null
         log "server (pid $SERVER_PID) died with status $?"
