@@ -364,7 +364,7 @@ static void oled_text(struct oled_frame *f, const char *text)
 }
 
 /* Show a text on the status display for --ms, redrawn every 100 ms (the app is
- * the other writer), then stop: the app's status screen takes over again. */
+ * the other writer), then blank it; the caller makes the app repaint (st). */
 int cmd_oledtext(int argc, char **argv)
 {
     const char *text = opt(argc, argv, "--text", "REVIVED");
@@ -389,6 +389,11 @@ int cmd_oledtext(int argc, char **argv)
         ioctl(fd, OLED_UPDATE, &f);
         sleep_ms(100);
     }
+    /* Leave it blank: the app repaints only its own items (mode, count,
+     * battery ...), not the background, so the text would show between them */
+    memset(f.dots, 0, sizeof f.dots);
+    ioctl(fd, OLED_DRAW, &f);
+    ioctl(fd, OLED_UPDATE, &f);
     close(fd);
     return 0;
 }
