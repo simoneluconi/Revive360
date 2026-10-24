@@ -17,6 +17,7 @@ class FakeCamera : AutoCloseable {
     )
     val requests = mutableListOf<String>()
     var busy = false
+    var lastTimeBody: String? = null
 
     val port: Int get() = server.address.port
     val client: CameraClient get() = CameraClient("127.0.0.1", port, Connector { it.openConnection() as HttpURLConnection })
@@ -46,6 +47,10 @@ class FakeCamera : AutoCloseable {
                 }
             }
             method == "POST" && path == "/api/v1/led" -> json(ex, 200, """{"id":"front","state":"on"}""")
+            method == "POST" && path == "/api/v1/time" -> {
+                lastTimeBody = ex.requestBody.readBytes().toString(Charsets.UTF_8)
+                json(ex, 200, """{"utc_ms":1729780000123,"applied":["system","rtc"]}""")
+            }
             path.startsWith("/api/v1/thumb/") -> {
                 val file = path.removePrefix("/api/v1/thumb/")
                 if (file.endsWith(".JPG")) bytes(ex, 200, byteArrayOf(-1, -40, -1, -39)) else error(ex, 404, "no_thumbnail")

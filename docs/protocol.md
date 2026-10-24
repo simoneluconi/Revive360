@@ -116,7 +116,8 @@ A missing key means "not supported" (`false`, empty list).
     { "id": "status_r", "label": "Status (red)",   "role": "status_red",   "states": ["off", "on", "blink", "auto"] },
     { "id": "front",    "label": "Front",          "role": "front",        "states": ["off", "on", "blink", "auto"] }
   ],
-  "debug_log": true
+  "debug_log": true,
+  "time": true
 }
 ```
 
@@ -133,6 +134,7 @@ A missing key means "not supported" (`false`, empty list).
 | `status.battery` / `status.storage` / `status.battery_temperature` | bool | Which parts of §5.2 are filled in. |
 | `leds` | list of LED channel objects | One entry per independently controllable LED. `id` is opaque (used in §5.8); `label` is for display; `role` is one of `status_red`, `status_green`, `status_blue`, `front`, `rear`, `charge`, `unknown`; `states` lists what §5.8 accepts for it. Empty = no LED control. |
 | `debug_log` | bool | §5.9 is available. |
+| `time` | bool | §5.10 is available: the app may set the camera clock. |
 
 Values above are illustrative; each camera adapter reports its own. A not-yet-confirmed hardware
 mapping is reported honestly (e.g. `role: "unknown"`, `label: "LED 3"`).
@@ -319,6 +321,31 @@ Response `200` `{ "id": "front", "state": "blink" }`. Unknown `id` or state → 
 Only when `capabilities.debug_log`. Returns the last `N` lines (default 200, max 2000) of the
 controller's log as `text/plain; charset=utf-8`. For diagnostics in the app's debug screen.
 
+### 5.10 `POST /api/v1/time`
+
+Only when `capabilities.time`. Sets the camera's date, time and time zone from the phone. The app
+sends it right after `info` on every connection.
+
+```json
+{ "utc_ms": 1729780000000, "tz": "Europe/Rome", "tz_offset_min": 120 }
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `utc_ms` | yes | Current UTC time, Unix milliseconds. |
+| `tz` | no | IANA time zone id of the phone. The camera applies it if it knows the zone. |
+| `tz_offset_min` | yes | The phone's current offset from UTC in minutes (DST included), used when `tz` is unknown or not applied. |
+
+Response `200`:
+
+```json
+{ "utc_ms": 1729780000123, "applied": ["system", "rtc", "timezone"] }
+```
+
+`utc_ms` is the camera clock after the change; `applied` lists what was set (`system` clock,
+battery-backed `rtc`, `timezone`). Missing entries are not errors: the camera did what it can.
+`400 bad_request` for a missing or implausible time (before 2020).
+
 ## 6. Camera-side behaviour (informative)
 
 Not part of the wire contract, documented so both sides agree on what the user sees:
@@ -344,5 +371,4 @@ Not part of the wire contract, documented so both sides agree on what the user s
 ## 8. Reserved for later versions
 
 Not implemented in v1; names reserved so v1 code does not collide: `POST /api/v1/record`,
-`GET /api/v1/liveview`, `POST /api/v1/settings`, `POST /api/v1/time` (set camera clock),
-`GET /api/v1/events`, `POST /api/v1/power`.
+`GET /api/v1/liveview`, `POST /api/v1/settings`, `GET /api/v1/events`, `POST /api/v1/power`.

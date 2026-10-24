@@ -51,6 +51,7 @@ object ProtocolJson {
             batteryTemperature = status.optBoolean("battery_temperature"),
             leds = objects(json.optJSONArray("leds")).mapNotNull(::led),
             debugLog = json.optBoolean("debug_log"),
+            time = json.optBoolean("time"),
         )
     }
 
@@ -85,6 +86,17 @@ object ProtocolJson {
     fun capture(text: String): CaptureResult = parse(text) { json ->
         CaptureResult(objects(json.optJSONArray("files")).mapNotNull(::file), json.optLong("duration_ms"))
     }
+
+    fun time(text: String): TimeResult = parse(text) { json ->
+        TimeResult(json.optLong("utc_ms"), strings(json.optJSONArray("applied")))
+    }
+
+    fun timeRequest(utcMs: Long, tz: String?, tzOffsetMin: Int): String =
+        JSONObject().apply {
+            put("utc_ms", utcMs)
+            if (tz != null) put("tz", tz)
+            put("tz_offset_min", tzOffsetMin)
+        }.toString()
 
     /** The `error` object of a non-2xx answer, or null when the body isn't one. */
     fun error(httpStatus: Int, text: String?): CameraException? {

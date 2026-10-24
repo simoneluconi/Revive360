@@ -39,6 +39,10 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
         text("POST", "/api/v1/led", ProtocolJson.ledRequest(id, state, onMs, offMs))
     }
 
+    /** Sets the camera clock and time zone (protocol §5.10). */
+    fun setTime(utcMs: Long, tz: String?, tzOffsetMin: Int): TimeResult =
+        ProtocolJson.time(text("POST", "/api/v1/time", ProtocolJson.timeRequest(utcMs, tz, tzOffsetMin)))
+
     fun log(lines: Int = 200): String = text("GET", "/api/v1/log?lines=$lines")
 
     /** The embedded JPEG thumbnail, or null when the file has none (`no_thumbnail`). */

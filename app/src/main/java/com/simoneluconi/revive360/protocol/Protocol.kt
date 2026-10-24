@@ -78,6 +78,8 @@ data class Capabilities(
     val batteryTemperature: Boolean = false,
     val leds: List<LedChannel> = emptyList(),
     val debugLog: Boolean = false,
+    /** The camera clock can be set from the phone (protocol §5.10). */
+    val time: Boolean = false,
 ) {
     val canCapture: Boolean get() = captureModes.isNotEmpty()
 }
@@ -131,6 +133,9 @@ data class CameraFile(
 }
 
 data class CaptureResult(val files: List<CameraFile>, val durationMs: Long)
+
+/** The camera clock after a time sync, and what it applied (`system`, `rtc`, `timezone`). */
+data class TimeResult(val utcMs: Long, val applied: List<String>)
 
 /** A camera answer outside 2xx, with the protocol's error code (`busy`, `no_storage`, ...). */
 class CameraException(val httpStatus: Int, val code: String, message: String) :

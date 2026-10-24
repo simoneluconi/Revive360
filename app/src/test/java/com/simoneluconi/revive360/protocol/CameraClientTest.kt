@@ -100,6 +100,16 @@ class CameraClientTest {
     }
 
     @Test
+    fun setTimeSendsUtcZoneAndOffset() {
+        val result = client.setTime(1729780000000, "Europe/Rome", 120)
+        assertEquals(listOf("system", "rtc"), result.applied)
+        val body = org.json.JSONObject(camera.lastTimeBody!!)
+        assertEquals(1729780000000, body.getLong("utc_ms"))
+        assertEquals("Europe/Rome", body.getString("tz"))
+        assertEquals(120, body.getInt("tz_offset_min"))
+    }
+
+    @Test
     fun ledCommand() {
         client.setLed("front", LedState.ON)
         assertTrue(camera.requests.contains("POST /api/v1/led"))

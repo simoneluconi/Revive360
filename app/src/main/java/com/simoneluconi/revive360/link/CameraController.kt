@@ -198,6 +198,7 @@ class CameraController(
             )
             store.update { it.copy(mac = info.mac, name = info.name, model = info.model, firmware = info.firmware) }
             _state.value = LinkState.Connected(info)
+            if (info.capabilities.time) launch { syncTime(client) }
             if (info.capabilities.listFiles) launch { refreshFiles() }
             poll(client)
         }
@@ -219,6 +220,19 @@ class CameraController(
         }
         _state.value = LinkState.Failed(Failure.NO_SERVER)
         return null
+    }
+
+    /** The camera has no network time: it gets the phone's on every connection. */
+    private suspend fun syncTime(client: CameraClient) {
+        val zone = java.util.TimeZone.getDefault()
+        val now = System.currentTimeMillis()
+        try {
+            val result = withContext(Dispatchers.IO) { client.setTime(now, zone.id, zone.getOffset(now) / 60_000) }
+            EventLog.log("Time: camera clock set (${result.applied.joinToString().ifEmpty { "nothing applied" }})")
+        } catch (e: Exception) {
+            coroutineContext.ensureActive()
+            EventLog.log("Time: sync failed (${e.message})")
+        }
     }
 
     private suspend fun poll(client: CameraClient) {
