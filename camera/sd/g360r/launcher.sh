@@ -108,7 +108,9 @@ st_bg() {
 }
 
 # status_led starting|ready|error: blue / green / red on the status LED.
+# Factory mode only: in normal mode the LEDs are the stock app's (beeps only).
 status_led() {
+    [ "$MODE" = factory ] || return 0
     case "$1" in
         starting) on=b ;;
         ready)    on=g ;;

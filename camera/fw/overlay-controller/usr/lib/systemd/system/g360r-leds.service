@@ -1,0 +1,13 @@
+[Unit]
+Description=Revive360 firmware boot signature on the LEDs (before the stock app takes them)
+DefaultDependencies=no
+After=local-fs.target
+Before=di-camera-app.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/g360r/boot_leds.sh
+TimeoutStartSec=10
+
+[Install]
+WantedBy=default.target
