@@ -1,7 +1,8 @@
 [Unit]
 Description=Revive360 firmware boot signature on the LEDs (before the stock app takes them)
 DefaultDependencies=no
-After=local-fs.target
+# After deviced (it may reset the LEDs when it starts), before the stock app
+After=local-fs.target deviced.service
 Before=di-camera-app.service
 
 [Service]

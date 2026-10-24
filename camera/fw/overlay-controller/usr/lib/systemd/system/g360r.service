@@ -1,6 +1,9 @@
 [Unit]
 Description=Revive360 companion controller (runs only when the SD has g360r/g360r.conf)
-After=di-camera-app.service
+# No ordering against di-camera-app: it is After=default.target, and this unit
+# is wanted by default.target, so After=di-camera-app would be a cycle (systemd
+# then drops a job; on the first controller flash it dropped this one).
+# boot.sh waits for the app itself.
 
 [Service]
 Type=simple

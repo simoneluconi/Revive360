@@ -12,17 +12,23 @@
 # led.N is which colour is not pinned yet, so the pattern does not depend on it.
 
 L=/sys/class/leds
+# tmpfs, the card is not mounted yet: boot.sh copies it into g360r/log/start.log
+LOG=/run/g360r-leds.log
+log() { echo "[up $(cut -d' ' -f1 /proc/uptime)] $*" >> "$LOG" 2>/dev/null; }
 LEDS=""
 for n in 0 1 2 3 4; do
     [ -w "$L/led.$n/brightness" ] && LEDS="$LEDS led.$n"
 done
-[ -n "$LEDS" ] || exit 0
+log "boot_leds: start, nodes:$(ls "$L" 2>/dev/null | tr '
+' ' ')"
+[ -n "$LEDS" ] || { log "boot_leds: no writable led.0-4, nothing to do"; exit 0; }
 
 for l in $LEDS; do
     # The active trigger is the bracketed one: "[none] timer heartbeat"
     t=$(sed -n 's/.*\[\([^]]*\)\].*/\1/p' "$L/$l/trigger" 2>/dev/null)
     eval "trig_${l#led.}=\${t:-none}"
     eval "max_${l#led.}=$(cat "$L/$l/max_brightness" 2>/dev/null || echo 1)"
+    eval "log \"boot_leds: $l trigger=\$trig_${l#led.} max=\$max_${l#led.}\""
     echo none > "$L/$l/trigger" 2>/dev/null
     echo 0 > "$L/$l/brightness" 2>/dev/null
 done
@@ -46,4 +52,5 @@ for l in $LEDS; do
     eval "t=\$trig_${l#led.}"
     echo "$t" > "$L/$l/trigger" 2>/dev/null
 done
+log "boot_leds: done"
 exit 0

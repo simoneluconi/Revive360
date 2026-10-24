@@ -31,6 +31,14 @@ if [ -f "$RUN/launcher.pid" ] && kill -0 "$(cat "$RUN/launcher.pid" 2>/dev/null)
     exit 0
 fi
 
+# The controller needs the stock app (st commands); this unit is not ordered
+# against it (see g360r.service), so wait for it here
+i_app=0
+while ! pgrep -f /usr/apps/com.samsung.di-camera-app/bin/di-camera-app >/dev/null 2>&1 && [ $i_app -lt 60 ]; do
+    sleep 1; i_app=$((i_app + 1))
+done
+sleep 3
+
 # pick SD_PATH BUILTIN_PATH: the SD copy if present, else the built-in one
 pick() {
     if [ -f "$1" ]; then echo "$1"; else echo "$2"; fi
@@ -40,7 +48,8 @@ src_launcher=$(pick "$SD_DIR/launcher.sh" "$SYS_DIR/launcher.sh")
 src_netup=$(pick "$SD_DIR/netup.sh" "$SYS_DIR/netup.sh")
 {
     echo "=== boot.sh (normal mode) $(date '+%Y-%m-%d %H:%M:%S') uptime $(cut -d' ' -f1 /proc/uptime) pid $$"
-    echo "card ready after ${i}s"
+    echo "card ready after ${i}s, di-camera-app after ${i_app}s more"
+    [ -f /run/g360r-leds.log ] && cat /run/g360r-leds.log
     echo "firmware: $(cat "$SYS_DIR/VERSION" 2>/dev/null || echo unknown)"
     echo "payload: $src_bin $src_launcher $src_netup"
 } > "$BOOTLOG" 2>&1
