@@ -168,6 +168,10 @@ led_signature() {
         [ "$t" = none ] && echo "$b" > "$L/led.$n/brightness" 2>/dev/null
     done
     wait "$oled_pid" 2>/dev/null
+    # The app repaints its status screen only on an attribute change, and the
+    # display cannot be read back to restore it: re-assert photo mode (our
+    # default) so it repaints over REVIVED
+    st_log app mode_360 photo
 }
 
 # st_log ARGS: one st command, killed after 5 s; logs what the app answered in
