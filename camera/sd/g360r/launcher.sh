@@ -35,6 +35,8 @@ echo $$ > "$RUN/launcher.pid"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [up $(cut -d' ' -f1 /proc/uptime)] L $*" >> "$LOG" 2>/dev/null
+    # Synced line by line: Test 1 ended in a reset loop and the unsynced tail was lost
+    sync
 }
 
 # Run a command, log its output (indented). Never fails the script.

@@ -22,11 +22,13 @@ port=8360
 led_roles=unknown,unknown,unknown,unknown,unknown
 
 # Which LEDs show the controller's own feedback: all | none | list of indices.
-led_feedback=all
+# none until the led.N mapping is known: driving all five sysfs LEDs reset the
+# camera in Test 1 (one of them is likely not an LED).
+led_feedback=none
 
 # Which LEDs blink on error (list of indices). Empty = the status_red LED if
-# mapped, else the feedback LEDs.
-led_error=
+# mapped, else the feedback LEDs. none = no LED.
+led_error=none
 
 # 1 = run the LED mapping diagnostic at boot (about 75 s) before starting.
 ledtest=0
