@@ -149,7 +149,7 @@ Setting ids and their tokens (an adapter offers a subset):
 |---|---|---|
 | `mode` | `photo`, `video`, `timelapse`, `looping`, `burst`, `slowmo` | Shooting mode. §5.3 needs `photo`, §5.13 `video`/`looping`/`timelapse`. |
 | `lens` | `dual`, `rear`, `front` | Both lenses (360°) or a single one (180°). |
-| `photo_size` | `WxH` or adapter tokens (`dual_large`, `dual_small`, `single_large`, `single_wide`) | Still image size. |
+| `photo_size` | `WxH` or adapter tokens (`dual_large`, `dual_small`, `single_wide`) | Still image size. |
 | `video_size` | `WxH@fps` | Movie size and frame rate. |
 | `timer` | `off`, `on`, or seconds (`2`, `5`, `10`) | Self-timer before a still. |
 | `timelapse_interval` | seconds (`0.5` … `60`) | Interval between time-lapse frames. |
@@ -398,20 +398,26 @@ Arguments are limited to letters, digits, space and `+,._-` (`/=` too for st/vco
 Only when `capabilities.settings` is not empty. `GET` answers the current value of every setting:
 
 ```json
-{ "settings": { "mode": "photo", "lens": "dual", "video_size": "3840x1920@30" } }
+{
+  "settings": { "mode": "photo", "lens": "dual", "video_size": "3840x1920@30" },
+  "available": { "video_size": ["3840x1920@30", "2880x1440@30", "2560x1280@60"] }
+}
 ```
 
-A value the camera cannot report is `null`. `POST` changes one or more settings and answers like
-`GET` with the values after the change:
+A value the camera cannot report is `null`. `available` lists, per setting, the tokens the camera
+accepts right now (e.g. the sizes of the current lens), a subset of the capability's `values`; a
+setting missing from it accepts all of them. `POST` changes one or more settings, in the order of
+`capabilities.settings`, and answers like `GET` with the values after the change:
 
 ```json
 { "mode": "video", "video_size": "2560x1280@30" }
 ```
 
 `400 bad_request` for an unknown id or a token not in its `values` (nothing is changed);
+`409 unavailable` for a token not `available` now (after the earlier settings of the same request);
 `409 busy` while a capture or a recording runs; `500 internal` if the camera refused a setting
-(the others may have been applied: read the answer). The camera's own buttons can change settings
-too, so the app re-reads them (on connection and when it shows them).
+(the others may have been applied: read the answer). The camera's own buttons change settings
+too: the app re-reads them while it shows them (with the status poll).
 
 ### 5.13 `POST /api/v1/record`
 

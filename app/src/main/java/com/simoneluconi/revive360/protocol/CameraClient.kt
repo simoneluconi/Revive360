@@ -40,10 +40,10 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
     }
 
     /** Current camera settings (protocol §5.12). */
-    fun settings(): SettingValues = ProtocolJson.settings(text("GET", "/api/v1/settings"))
+    fun settings(): CameraSettings = ProtocolJson.settings(text("GET", "/api/v1/settings"))
 
     /** Changes settings; answers the values after the change. */
-    fun setSettings(changes: Map<String, String>): SettingValues =
+    fun setSettings(changes: Map<String, String>): CameraSettings =
         ProtocolJson.settings(text("POST", "/api/v1/settings", ProtocolJson.settingsRequest(changes)))
 
     /** Starts or stops a video recording (protocol §5.13). Stopping waits for the finished file. */

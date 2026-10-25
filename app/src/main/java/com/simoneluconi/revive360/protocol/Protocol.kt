@@ -116,6 +116,19 @@ object ShootingModes {
 /** Current setting values: id to token, `null` when the camera can't tell. */
 typealias SettingValues = Map<String, String?>
 
+/**
+ * The answer of protocol §5.12: the [values] in force, and per setting the tokens the camera
+ * [available]s now (the sizes of the current lens, say); a setting missing there accepts all of its
+ * capability values.
+ */
+data class CameraSettings(
+    val values: SettingValues = emptyMap(),
+    val available: Map<String, List<String>> = emptyMap(),
+) {
+    /** The tokens of [def] the camera accepts now, in the capability's order. */
+    fun offered(def: SettingDef): List<String> = available[def.id]?.let { now -> def.values.filter { it in now } } ?: def.values
+}
+
 data class Recording(val active: Boolean, val elapsedS: Long?)
 
 data class RecordResult(val recording: Recording, val files: List<CameraFile>)

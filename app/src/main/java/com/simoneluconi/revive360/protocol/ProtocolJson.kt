@@ -56,12 +56,18 @@ object ProtocolJson {
         )
     }
 
-    /** `{"settings": {"mode": "photo", "lens": null}}` (protocol §5.12) */
-    fun settings(text: String): SettingValues = parse(text) { json ->
+    /** `{"settings": {"mode": "photo", "lens": null}, "available": {"video_size": [...]}}` (protocol §5.12) */
+    fun settings(text: String): CameraSettings = parse(text) { json ->
         val settings = json.optJSONObject("settings") ?: JSONObject()
-        settings.keys().asSequence().associateWith { key ->
-            if (settings.isNull(key)) null else settings.optString(key).takeIf(String::isNotEmpty)
-        }
+        val available = json.optJSONObject("available") ?: JSONObject()
+        CameraSettings(
+            values = settings.keys().asSequence().associateWith { key ->
+                if (settings.isNull(key)) null else settings.optString(key).takeIf(String::isNotEmpty)
+            },
+            available = available.keys().asSequence().mapNotNull { key ->
+                available.optJSONArray(key)?.let { list -> key to List(list.length()) { list.optString(it) } }
+            }.toMap(),
+        )
     }
 
     fun settingsRequest(changes: Map<String, String>): String = JSONObject(changes).toString()

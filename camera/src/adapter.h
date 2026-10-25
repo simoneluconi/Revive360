@@ -79,6 +79,9 @@ struct adapter {
     setting_def_t settings[MAX_SETTINGS]; int n_settings;
     int (*get_setting)(adapter_t *a, const char *id, char *out, size_t outlen);
     int (*set_setting)(adapter_t *a, const char *id, const char *value, char *err, size_t errlen);
+    /* The tokens the camera accepts now (e.g. the sizes of the current lens),
+     * at most max into out; the count, or -1 = all of the definition. NULL = all. */
+    int (*setting_available)(adapter_t *a, const char *id, const char **out, int max);
 
     /* Video recording (§5.13), NULL = unsupported. start=1/0. Returns once the
      * request was made; the files are found by the caller polling DCIM. */

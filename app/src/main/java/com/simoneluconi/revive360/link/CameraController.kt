@@ -18,7 +18,7 @@ import com.simoneluconi.revive360.protocol.CaptureResult
 import com.simoneluconi.revive360.protocol.Connector
 import com.simoneluconi.revive360.protocol.LedState
 import com.simoneluconi.revive360.protocol.Protocol
-import com.simoneluconi.revive360.protocol.SettingValues
+import com.simoneluconi.revive360.protocol.CameraSettings
 import com.simoneluconi.revive360.settings.AppSettings
 import com.simoneluconi.revive360.settings.CameraStore
 import com.simoneluconi.revive360.settings.PairedCamera
@@ -98,9 +98,14 @@ class CameraController(
     private val _lastCapture = MutableStateFlow<CaptureResult?>(null)
     val lastCapture: StateFlow<CaptureResult?> = _lastCapture.asStateFlow()
 
-    private val _settings = MutableStateFlow<SettingValues?>(null)
-    /** The camera's current settings (protocol §5.12); null until read or when it has none. */
-    val cameraSettings: StateFlow<SettingValues?> = _settings.asStateFlow()
+    private val _settings = MutableStateFlow<CameraSettings?>(null)
+    /**
+     * The camera's current settings and what it offers now (protocol §5.12); null until read or when
+     * it has none. Re-read with every status poll: the camera's own buttons change them too.
+     */
+    val cameraSettings: StateFlow<CameraSettings?> = _settings.asStateFlow()
+    private var settingsWrites = 0
+    private var settingsWriting = false
 
     private val _recordBusy = MutableStateFlow(false)
     /** A record start or stop is running (stopping waits for the finished video). */
@@ -289,6 +294,14 @@ class CameraController(
                 lastUptime = status.uptimeS
                 _status.value = status
                 failures = 0
+                // Changes made on the camera itself (its buttons, later its Bluetooth remote)
+                if (_settings.value != null && !_capturing.value && !_recordBusy.value) {
+                    try {
+                        refreshSettings()
+                    } catch (e: Exception) {
+                        coroutineContext.ensureActive()
+                    }
+                }
             } catch (e: Exception) {
                 coroutineContext.ensureActive()
                 failures++
@@ -374,8 +387,11 @@ class CameraController(
 
     suspend fun refreshSettings() {
         val client = client ?: return
+        // A read that crossed a change would show the values from before it
+        val writes = settingsWrites
         try {
-            _settings.value = withContext(Dispatchers.IO) { client.settings() }
+            val read = withContext(Dispatchers.IO) { client.settings() }
+            if (settingsWrites == writes && !settingsWriting) _settings.value = read
         } catch (e: Exception) {
             EventLog.log("Settings: read failed (${e.message})")
             throw e
@@ -385,12 +401,18 @@ class CameraController(
     /** Changes one camera setting; the flow takes the values the camera answers. */
     suspend fun setSetting(id: String, value: String) {
         val client = requireClient()
+        settingsWrites++
+        settingsWriting = true
         try {
             _settings.value = withContext(Dispatchers.IO) { client.setSettings(mapOf(id to value)) }
             EventLog.log("Setting $id = $value")
         } catch (e: Exception) {
             EventLog.log("Setting $id = $value failed: ${e.message}")
+            // The camera may have taken part of it
+            scope.launch { runCatching { refreshSettings() } }
             throw e
+        } finally {
+            settingsWriting = false
         }
     }
 

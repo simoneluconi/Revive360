@@ -61,7 +61,6 @@
     <string name="lens_front">180° anteriore</string>
     <string name="photo_size_dual_large">360° grande</string>
     <string name="photo_size_dual_small">360° piccola</string>
-    <string name="photo_size_single_large">180° grande</string>
     <string name="photo_size_single_wide">180° wide</string>
     <string name="timer_off">No</string>
     <string name="value_seconds">%1$s s</string>

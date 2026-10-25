@@ -80,7 +80,6 @@ object Format {
         SettingIds.PHOTO_SIZE -> when (token) {
             "dual_large" -> resources.getString(R.string.photo_size_dual_large)
             "dual_small" -> resources.getString(R.string.photo_size_dual_small)
-            "single_large" -> resources.getString(R.string.photo_size_single_large)
             "single_wide" -> resources.getString(R.string.photo_size_single_wide)
             else -> token.replace('x', '×')
         }

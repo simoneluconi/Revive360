@@ -119,17 +119,26 @@ class CameraClientTest {
     @Test
     fun readAndChangeSettings() {
         val now = client.settings()
-        assertEquals("photo", now["mode"])
-        assertTrue(now.containsKey("lens"))
-        assertNull(now["lens"])
+        assertEquals("photo", now.values["mode"])
+        assertTrue(now.values.containsKey("lens"))
+        assertNull(now.values["lens"])
         val after = client.setSettings(mapOf("mode" to "video"))
-        assertEquals("video", after["mode"])
+        assertEquals("video", after.values["mode"])
         try {
             client.setSettings(mapOf("iso" to "100"))
             fail("expected bad_request")
         } catch (e: CameraException) {
             assertEquals(CameraException.BAD_REQUEST, e.code)
         }
+    }
+
+    @Test
+    fun offeredFollowsWhatTheCameraListsNow() {
+        val defs = client.info().capabilities
+        val now = client.settings()
+        assertEquals(listOf("3840x1920@30"), now.offered(defs.setting("video_size")!!))
+        // A setting the camera lists nothing for offers all of its values
+        assertEquals(listOf("photo", "video"), now.offered(defs.setting("mode")!!))
     }
 
     @Test

@@ -158,47 +158,42 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
 
 /* ------------------------------------------------------------ settings */
 
-/* Protocol token <-> the app's UI value, per UI key (AQK1, from the app's
- * menu tables, docs/firmware/12). Read with UI_Get_Value, written the way the
- * app's own menus do (UI_Change_Menu_Value), through the shim plugin. */
+/* Every setting goes through the camera's own remote menu manager
+ * (NETCameraMenuMan, docs/firmware/13), the path the Samsung phone app used:
+ * the camera runs its whole handling of the change (the mode change, the
+ * exceptional values, the status display), as with its buttons. Protocol
+ * token <-> item value per remote menu (the AQK1 table, dumped with the
+ * plugin's netmenu); the camera's current item list says what it offers now
+ * (the size menus follow the lens). The value is read back from the UI key
+ * the menu writes. */
 typedef struct {
     const char *id;
-    int key;
+    int menu;          /* E_CAMERA_MENU_ID; for the size menus the dual-lens one */
+    int menu_single;   /* the single-lens menu, -1 when the same for both */
+    int key;           /* the UI key the menu writes */
     int n;
     const char *tok[10];
     int val[10];
 } c200_setting_t;
 
 static const c200_setting_t C200_SETTINGS[] = {
-    { "mode", 0x21c, 4, { "photo", "video", "timelapse", "looping" }, { 1, 0, 2, 3 } },
-    { "lens", 0x21a, 3, { "dual", "rear", "front" }, { 0, 1, 2 } },
-    { "photo_size", 0xcf, 4, { "dual_large", "dual_small", "single_large", "single_wide" }, { 0, 1, 3, 5 } },
-    /* eUS_MOVIE_SIZE; 3, 4 and 8 are in the firmware's menu but not the stock app's */
-    { "video_size", 0x223, 9,
+    { "mode", 8, -1, 0x21c, 4, { "photo", "video", "timelapse", "looping" }, { 1, 0, 2, 3 } },
+    /* "Single CAM - F" is item 1, "Single CAM - R" item 2 */
+    { "lens", 23, -1, 0x21a, 3, { "dual", "rear", "front" }, { 0, 2, 1 } },
+    { "photo_size", 0, 1, 0xcf, 3, { "dual_large", "dual_small", "single_wide" }, { 0, 1, 5 } },
+    { "video_size", 9, 10, 0x109, 9,
       { "3840x1920@30", "2880x1440@30", "2560x1440@30", "2560x1280@60", "2560x1280@30",
         "1920x1080@60", "1920x1080@30", "1920x960@30", "1280x720@30" },
       { 0, 3, 5, 4, 1, 8, 6, 2, 7 } },
-    { "timer", 0x225, 4, { "off", "2", "5", "10" }, { 0, 1, 2, 3 } },
-    { "timelapse_interval", 0x224, 8, { "0.5", "1", "2", "5", "10", "20", "30", "60" },
-      { 0, 1, 2, 3, 4, 5, 6, 7 } },
-    { "loop_time", 0x21b, 4, { "5", "20", "60", "max" }, { 0, 1, 2, 3 } },
+    { "timer", 27, -1, 0x225, 4, { "off", "2", "5", "10" }, { 0, 1, 2, 3 } },
+    { "timelapse_interval", 24, -1, 0x224, 7, { "0.5", "1", "2", "5", "10", "30", "60" },
+      { 0, 1, 2, 3, 4, 6, 7 } },
+    { "loop_time", 25, -1, 0x21b, 4, { "5", "30", "60", "max" }, { 0, 1, 2, 3 } },
 };
 #define N_C200_SETTINGS ((int)(sizeof C200_SETTINGS / sizeof C200_SETTINGS[0]))
 
-#define KEY_MODE        0x21c   /* the 360 mode selection, values as in C200_SETTINGS */
-#define MODE_VALUE_PHOTO     1
-#define MODE_VALUE_TIMELAPSE 2
 #define KEY_LENS        0x21a
-#define LENS_VALUE_DUAL      0
-#define KEY_MOVIE_SIZE_MENU  0x223   /* the menu's choice (video_size) */
-#define KEY_MOVIE_SIZE       0x109   /* what the recorder realizes, eUS_MOVIE_SIZE */
-#define KEY_TIMELAPSE_SIZE   0x22a   /* the same for the time-lapse */
-
-/* Video and looping record from the movie standby */
-static int movie_mode(int mode)
-{
-    return mode != MODE_VALUE_PHOTO && mode != MODE_VALUE_TIMELAPSE && mode >= 0;
-}
+#define LENS_VALUE_DUAL 0
 
 static const c200_setting_t *c200_setting(const char *id)
 {
@@ -206,6 +201,16 @@ static const c200_setting_t *c200_setting(const char *id)
         if (strcmp(C200_SETTINGS[i].id, id) == 0)
             return &C200_SETTINGS[i];
     return NULL;
+}
+
+/* The remote menu a setting is in now: the size menus come per lens */
+static int c200_menu(const c200_setting_t *s)
+{
+    int lens = LENS_VALUE_DUAL;
+    if (s->menu_single < 0)
+        return s->menu;
+    shim_ui_get(KEY_LENS, &lens);
+    return lens == LENS_VALUE_DUAL ? s->menu : s->menu_single;
 }
 
 static int c200_get_setting(adapter_t *a, const char *id, char *out, size_t outlen)
@@ -225,48 +230,42 @@ static int c200_get_setting(adapter_t *a, const char *id, char *out, size_t outl
     return -1;
 }
 
-/* The recorder realizes 0x109 (0x22a in time-lapse), which a mode or lens
- * change resets to the lens default, not the menu's 0x223 (the same
- * eUS_MOVIE_SIZE values). Copy the menu's size over when it fits the lens
- * (2:1 dual, the others single); otherwise the menu follows the recorder. */
-static int c200_movie_size_sync(char *err, size_t errlen)
+/* The tokens the camera offers now, in its own order */
+static int c200_setting_available(adapter_t *a, const char *id, const char **out, int max)
 {
-    const c200_setting_t *s = c200_setting("video_size");
-    char req[64], reply[256] = "cannot read the recorder's movie size";
-    int menu = -1, lens = -1, w = 0, h = 0, fits = 0;
+    const c200_setting_t *s = c200_setting(id);
+    char req[64], reply[512];
+    const char *p;
+    int n = 0;
+    (void)a;
 
-    if (shim_ui_get(KEY_MOVIE_SIZE_MENU, &menu) < 0 || shim_ui_get(KEY_LENS, &lens) < 0) {
-        snprintf(err, errlen, "cannot read the movie size or lens");
+    if (!s)
         return -1;
-    }
-    for (int i = 0; i < s->n; i++)
-        if (s->val[i] == menu && sscanf(s->tok[i], "%dx%d", &w, &h) == 2)
-            fits = (w == 2 * h) == (lens == LENS_VALUE_DUAL);
-    if (fits) {
-        snprintf(req, sizeof req, "uiset 0x%x %d", KEY_MOVIE_SIZE, menu);
-        if (shim_plugin(req, reply, sizeof reply) == 0) {
-            snprintf(req, sizeof req, "uiset 0x%x %d", KEY_TIMELAPSE_SIZE, menu);
-            if (shim_plugin(req, reply, sizeof reply) == 0)
-                return 0;
+    snprintf(req, sizeof req, "netvalues %d", c200_menu(s));
+    if (shim_plugin(req, reply, sizeof reply) < 0 || strncmp(reply, "ok netvalues ", 13) != 0)
+        return -1;
+    p = strchr(reply + 13, ' ');   /* past the menu id */
+    while (p && n < max) {
+        char *end;
+        int v = (int)strtol(p, &end, 10);
+        if (end == p)
+            break;
+        for (int i = 0; i < s->n; i++) {
+            if (s->val[i] == v) {
+                out[n++] = s->tok[i];
+                break;
+            }
         }
-    } else {
-        int rec = -1;
-        if (shim_ui_get(KEY_MOVIE_SIZE, &rec) == 0) {
-            LOGI("c200: movie size %d does not fit lens %d, menu follows the recorder (%d)", menu, lens, rec);
-            snprintf(req, sizeof req, "uiset 0x%x %d", KEY_MOVIE_SIZE_MENU, rec);
-            if (shim_plugin(req, reply, sizeof reply) == 0)
-                return 0;
-        }
+        p = end;
     }
-    snprintf(err, errlen, "%s", reply);
-    return -1;
+    return n;
 }
 
 static int c200_set_setting(adapter_t *a, const char *id, const char *value, char *err, size_t errlen)
 {
     const c200_setting_t *s = c200_setting(id);
     char req[64], reply[256];
-    int v = -1, prev_mode = MODE_VALUE_PHOTO;
+    int v = -1;
     (void)a;
 
     for (int i = 0; s && i < s->n; i++)
@@ -276,58 +275,17 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
         snprintf(err, errlen, "no value for %s=%s", id, value);
         return -1;
     }
-    if (strcmp(id, "mode") == 0)
-        shim_ui_get(KEY_MODE, &prev_mode);
-    if (strcmp(id, "lens") == 0)
-        snprintf(req, sizeof req, "lensswitch %d", v);   /* the settings menu's own lens switch */
-    else
-        snprintf(req, sizeof req, "menu 0x%x %d", s->key, v);
+    snprintf(req, sizeof req, "netset %d %d", c200_menu(s), v);
     if (shim_plugin(req, reply, sizeof reply) < 0) {
         snprintf(err, errlen, "%s", reply);
         return -1;
-    }
-    /* A menu value alone does not re-realize the capture/record engine: run
-     * the transition the camera's own menu runs (a2, docs/firmware/12). Photo
-     * and time-lapse run in the photo live view (the time-lapse is an interval
-     * capture of stills, its menu switch keeps the live view); video and
-     * looping in the movie standby. */
-    if (strcmp(id, "mode") == 0) {
-        int movie = movie_mode(v), was_movie = movie_mode(prev_mode);
-        const char *transition;
-        if (movie)
-            /* from a movie mode the standby is already on: a stop first */
-            transition = was_movie ? "restandby" : "moviestandby";
-        else
-            /* from a movie mode only the movie stop path leaves its sub-state
-             * (it ends in the photo live view; a live view restart alone left
-             * the next shutter as a movie stop, no photo) */
-            transition = was_movie ? "recstop" : "photomode";
-        if (shim_plugin("allsend", reply, sizeof reply) < 0 ||
-            (v != MODE_VALUE_PHOTO && c200_movie_size_sync(reply, sizeof reply) < 0) ||
-            shim_plugin(transition, reply, sizeof reply) < 0) {
-            snprintf(err, errlen, "%s", reply);
-            return -1;
-        }
-    } else if (strcmp(id, "lens") == 0 || strcmp(id, "video_size") == 0) {
-        /* The movie size follows the lens and the menu; a movie mode realizes
-         * it on a new standby, the time-lapse when it records, photo on the
-         * next switch to a video mode */
-        int mode = -1;
-        if (shim_ui_get(KEY_MODE, &mode) < 0 || mode == MODE_VALUE_PHOTO)
-            return 0;
-        if (c200_movie_size_sync(reply, sizeof reply) < 0 ||
-            (movie_mode(mode) && shim_plugin("restandby", reply, sizeof reply) < 0)) {
-            snprintf(err, errlen, "%s", reply);
-            return -1;
-        }
     }
     return 0;
 }
 
 /* ------------------------------------------------------------ record */
 
-/* Recording or not: the movie state in video/looping, the interval capture
- * in time-lapse (plugin "recording") */
+/* Recording or not: the movie state, or in time-lapse its interval capture */
 static int c200_recording(int *out)
 {
     char reply[256];
@@ -335,31 +293,28 @@ static int c200_recording(int *out)
            sscanf(reply, "ok recording = %d", out) == 1 ? 0 : -1;
 }
 
-/* Video and looping: the app's movie entries (the stock remote shot refused
- * them after a new standby, "Recording..."). Time-lapse: the stock phone app's
- * remote shot, which starts and stops its interval capture (the movie entries
- * alone skip it). */
+/* The camera's own remote shot (CUINETFuncRemoteShot, the Samsung phone app's
+ * record button): video and looping record from the live view, the time-lapse
+ * runs its interval capture and its stop waits for the shot in progress */
 static int c200_record(adapter_t *a, int start, char *err, size_t errlen)
 {
-    int rec = -1, mode = -1, timelapse;
+    int rec = -1;
     char reply[256];
     (void)a;
 
-    if (c200_recording(&rec) < 0 || shim_ui_get(KEY_MODE, &mode) < 0) {
+    if (c200_recording(&rec) < 0) {
         snprintf(err, errlen, "cannot read the recording state");
         return -1;
     }
-    timelapse = mode == MODE_VALUE_TIMELAPSE;
-    LOGI("c200: record %s, mode %d, recording %d", start ? "start" : "stop", mode, rec);
+    LOGI("c200: record %s, recording %d", start ? "start" : "stop", rec);
     if (rec == start)
         return 0;   /* already where we want it */
-    if (shim_plugin(timelapse ? (start ? "remoterec" : "remotestop") : (start ? "recstart" : "recstop"),
-                    reply, sizeof reply) < 0) {
+    if (shim_plugin(start ? "remoterec" : "remotestop", reply, sizeof reply) < 0) {
         snprintf(err, errlen, "%s", reply);
         return -1;
     }
     if (start) {
-        /* Confirm, so a mode that does not record is reported */
+        /* Confirm: the remote shot refuses silently (no card, busy, ...) */
         for (int i = 0; i < 10; i++) {
             sleep_ms(300);
             if (c200_recording(&rec) == 0 && rec)
@@ -415,6 +370,7 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
                 adapter_add_360_setting(a, C200_SETTINGS[i].id);
             a->get_setting = c200_get_setting;
             a->set_setting = c200_set_setting;
+            a->setting_available = c200_setting_available;
             a->record = c200_record;
         }
     }

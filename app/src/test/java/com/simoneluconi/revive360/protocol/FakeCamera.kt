@@ -21,10 +21,13 @@ class FakeCamera : AutoCloseable {
     /** Current settings; `lens` is unknown to the camera (null). */
     val settings = linkedMapOf<String, String?>("mode" to "photo", "lens" to null, "video_size" to "3840x1920@30")
 
-    private fun settingsJson(): String = org.json.JSONObject().put(
-        "settings",
-        org.json.JSONObject().apply { settings.forEach { (k, v) -> put(k, v ?: org.json.JSONObject.NULL) } },
-    ).toString()
+    /** The video sizes the camera offers now (its lens takes only some) */
+    var availableVideoSizes = listOf("3840x1920@30")
+
+    private fun settingsJson(): String = org.json.JSONObject()
+        .put("settings", org.json.JSONObject().apply { settings.forEach { (k, v) -> put(k, v ?: org.json.JSONObject.NULL) } })
+        .put("available", org.json.JSONObject().put("video_size", org.json.JSONArray(availableVideoSizes)))
+        .toString()
 
     val port: Int get() = server.address.port
     val client: CameraClient get() = CameraClient("127.0.0.1", port, Connector { it.openConnection() as HttpURLConnection })

@@ -199,15 +199,15 @@ static void def(adapter_t *a, const char *id, const char *const *v, int n)
  * its 2560x1280@24 is not in the selectable menu. */
 const char *const SET360_MODE[] = { "photo", "video", "timelapse", "looping" };
 const char *const SET360_LENS[] = { "dual", "rear", "front" };
-const char *const SET360_PHOTO_SIZE[] = { "dual_large", "dual_small", "single_large", "single_wide" };
+const char *const SET360_PHOTO_SIZE[] = { "dual_large", "dual_small", "single_wide" };
 /* Highest first: pixels, then frame rate */
 const char *const SET360_VIDEO_SIZE[] = { "3840x1920@30", "2880x1440@30", "2560x1440@30", "2560x1280@60",
                                           "2560x1280@30", "1920x1080@60", "1920x1080@30", "1920x960@30",
                                           "1280x720@30" };
-/* timer: the C200 menu has off + 3 presets, the order of 2/5/10 is unconfirmed */
+/* As the C200's remote menus list them (docs/firmware/13) */
 const char *const SET360_TIMER[] = { "off", "2", "5", "10" };
-const char *const SET360_TIMELAPSE[] = { "0.5", "1", "2", "5", "10", "20", "30", "60" };
-const char *const SET360_LOOP[] = { "5", "20", "60", "max" };
+const char *const SET360_TIMELAPSE[] = { "0.5", "1", "2", "5", "10", "30", "60" };
+const char *const SET360_LOOP[] = { "5", "30", "60", "max" };
 
 #define N(x) ((int)(sizeof x / sizeof x[0]))
 

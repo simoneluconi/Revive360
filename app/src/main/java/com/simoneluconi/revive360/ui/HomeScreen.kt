@@ -52,7 +52,7 @@ import com.simoneluconi.revive360.protocol.CaptureMode
 import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.protocol.SettingDef
 import com.simoneluconi.revive360.protocol.SettingIds
-import com.simoneluconi.revive360.protocol.SettingValues
+import com.simoneluconi.revive360.protocol.CameraSettings
 import com.simoneluconi.revive360.protocol.ShootingModes
 import com.simoneluconi.revive360.protocol.Storage
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
@@ -276,7 +276,8 @@ private fun CaptureCard(info: CameraInfo) {
     val capturing by controller.capturing.collectAsStateWithLifecycle()
     val status by controller.status.collectAsStateWithLifecycle()
     val last by controller.lastCapture.collectAsStateWithLifecycle()
-    val values by controller.cameraSettings.collectAsStateWithLifecycle()
+    val settings by controller.cameraSettings.collectAsStateWithLifecycle()
+    val values = settings?.values
     val recordBusy by controller.recordBusy.collectAsStateWithLifecycle()
     var modeWire by rememberSaveable { mutableStateOf(caps.captureModes.first().wire) }
     val mode = caps.captureModes.firstOrNull { it.wire == modeWire } ?: caps.captureModes.first()
@@ -290,7 +291,7 @@ private fun CaptureCard(info: CameraInfo) {
     Card {
         Label(stringResource(R.string.capture_title), size = 13.sp, color = colors.text2, weight = FontWeight.Bold)
         if (caps.settings.isNotEmpty()) {
-            CameraSettings(caps.settings, values, shootingMode, locked = busy || recording)
+            CameraSettings(caps.settings, settings, shootingMode, locked = busy || recording)
         }
         if (caps.captureModes.size > 1 && !recordMode) {
             Spacer(Modifier.height(10.dp))
@@ -385,7 +386,8 @@ private fun elapsedSeconds(reported: Long?): Long {
  * Changes go to the camera, which answers the values in force; nothing changes while [locked].
  */
 @Composable
-private fun CameraSettings(defs: List<SettingDef>, values: SettingValues?, mode: String?, locked: Boolean) {
+private fun CameraSettings(defs: List<SettingDef>, settings: CameraSettings?, mode: String?, locked: Boolean) {
+    val values = settings?.values
     val nav = LocalActions.current
     val controller = nav.app.controller
     val resources = LocalResources.current
@@ -429,12 +431,9 @@ private fun CameraSettings(defs: List<SettingDef>, values: SettingValues?, mode:
         }
     }
     shown.forEach { full ->
-        // Video sizes: only the shape the lens gives (2:1 dual, 16:9 single); all while unknown
-        val def = if (full.id == SettingIds.VIDEO_SIZE) {
-            full.copy(values = full.values.filter { fitsLens(it, values?.get(SettingIds.LENS)) || it == values?.get(full.id) })
-        } else {
-            full
-        }
+        // What the camera offers now (the sizes of its current lens), and the value in force
+        val now = settings?.offered(full) ?: full.values
+        val def = full.copy(values = full.values.filter { it in now || it == values?.get(full.id) })
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label(Format.settingTitle(resources, def.id) ?: def.id, size = 13.sp, color = colors.text2)
@@ -451,17 +450,6 @@ private fun CameraSettings(defs: List<SettingDef>, values: SettingValues?, mode:
                 }
             }
         }
-    }
-}
-
-/** Whether a `WxH@fps` video size suits the `lens` setting: 2:1 for both lenses, 16:9 for one. */
-internal fun fitsLens(size: String, lens: String?): Boolean {
-    val (w, h) = size.substringBefore('@').split('x').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
-        ?: return true
-    return when (lens) {
-        "dual" -> w == 2 * h
-        "rear", "front" -> w * 9 == h * 16
-        else -> true
     }
 }
 

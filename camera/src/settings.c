@@ -46,11 +46,20 @@ void settings_capabilities_json(sbuf_t *b)
     sbuf_puts(b, "]");
 }
 
+/* The values the camera accepts now for a setting; -1 = all of its definition */
+static int available(const setting_def_t *d, const char **out)
+{
+    adapter_t *a = &g_srv.ad;
+    return a->setting_available ? a->setting_available(a, d->id, out, MAX_SETTING_VALUES) : -1;
+}
+
 static void send_current(req_t *r)
 {
     adapter_t *a = &g_srv.ad;
+    const char *avail[MAX_SETTING_VALUES];
     sbuf_t b;
     char v[64];
+    int first = 1;
 
     sbuf_init(&b);
     sbuf_puts(&b, "{\"settings\":{");
@@ -63,6 +72,23 @@ static void send_current(req_t *r)
             json_str(&b, v);
         else
             sbuf_puts(&b, "null");
+    }
+    sbuf_puts(&b, "},\"available\":{");
+    for (int i = 0; i < a->n_settings; i++) {
+        int n = available(&a->settings[i], avail);
+        if (n < 0)
+            continue;
+        if (!first)
+            sbuf_puts(&b, ",");
+        first = 0;
+        json_str(&b, a->settings[i].id);
+        sbuf_puts(&b, ":[");
+        for (int j = 0; j < n; j++) {
+            if (j)
+                sbuf_puts(&b, ",");
+            json_str(&b, avail[j]);
+        }
+        sbuf_puts(&b, "]");
     }
     sbuf_puts(&b, "}}");
     http_send_json(r, 200, &b);
@@ -109,8 +135,18 @@ void api_settings(req_t *r)
         return;
     }
     for (int i = 0; i < a->n_settings; i++) {
+        const char *avail[MAX_SETTING_VALUES];
+        int n, ok = 0;
         if (!vals[i])
             continue;
+        /* After the earlier changes of this request: a lens change changes the sizes */
+        n = available(&a->settings[i], avail);
+        for (int j = 0; j < n; j++)
+            ok |= strcmp(avail[j], vals[i]) == 0;
+        if (n >= 0 && !ok) {
+            http_send_error(r, 409, "unavailable", "%s=%s is not available now", a->settings[i].id, vals[i]);
+            return;
+        }
         err[0] = 0;
         LOGI("settings: %s = %s", a->settings[i].id, vals[i]);
         if (a->set_setting(a, a->settings[i].id, vals[i], err, sizeof err) < 0) {
