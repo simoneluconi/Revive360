@@ -74,6 +74,19 @@ static int mode_change(int engine_mode, char *resp, size_t len)
     return 0;
 }
 
+/* Calls an exported void(void) function of the app */
+static int call_void(const char *mangled, const char *what, char *resp, size_t len)
+{
+    void_fn f = (void_fn)app_fn(mangled);
+    if (!f) {
+        snprintf(resp, len, "error no %s", mangled);
+        return -1;
+    }
+    f();
+    snprintf(resp, len, "ok %s", what);
+    return 0;
+}
+
 int g360r_plugin_request(const char *req, char *resp, size_t len)
 {
     char verb[16];
@@ -149,6 +162,44 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         }
         movie((int)item);
         snprintf(resp, len, "ok movsize %ld", item);
+        return 0;
+    }
+    /* The state transitions the camera's own menu runs (a2, docs/firmware/12):
+     * a menu value alone does not re-realize the capture/record engine */
+    if (n >= 1 && strcmp(verb, "photomode") == 0)
+        return call_void("_Z29UI_Liveview_State_Constructorv", "photomode", resp, len);
+    if (n >= 1 && strcmp(verb, "moviestandby") == 0)
+        return call_void("_Z23UI_Manage_Movie_Standbyv", "moviestandby", resp, len);
+    if (n >= 1 && strcmp(verb, "camrealize") == 0) {
+        /* Recorder re-realize, for a movie size the standby did not pick up */
+        int_fn rvf = (int_fn)app_fn("_Z31UI_Set_Attribute_For_RVF_Streamb");
+        if (call_void("_Z25UI_Mm_Camcorder_Unrealizev", "unrealize", resp, len) < 0 || !rvf)
+            return -1;
+        rvf(1);
+        if (call_void("_Z23UI_Mm_Camcorder_Realizev", "realize", resp, len) < 0)
+            return -1;
+        return call_void("_Z23UI_Manage_Movie_Standbyv", "camrealize", resp, len);
+    }
+    if (n >= 1 && strcmp(verb, "recstart") == 0) {
+        int_fn rec = (int_fn)app_fn("_Z19UI_Manage_Movie_Recb");
+        if (!rec) {
+            snprintf(resp, len, "error no UI_Manage_Movie_Rec");
+            return -1;
+        }
+        rec(1);
+        snprintf(resp, len, "ok recstart");
+        return 0;
+    }
+    if (n >= 1 && strcmp(verb, "tlstart") == 0)
+        return call_void("_Z23UI_Manage_TimeLapse_Recv", "tlstart", resp, len);
+    if (n >= 1 && strcmp(verb, "recstop") == 0) {
+        int_fn stop = (int_fn)app_fn("_Z20UI_Manage_Movie_Stop17eUS_REC_STOP_TYPE");
+        if (!stop) {
+            snprintf(resp, len, "error no UI_Manage_Movie_Stop");
+            return -1;
+        }
+        stop(0);
+        snprintf(resp, len, "ok recstop");
         return 0;
     }
     if (n >= 1 && strcmp(verb, "runstate") == 0) {

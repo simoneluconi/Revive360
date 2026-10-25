@@ -187,6 +187,14 @@ static const c200_setting_t C200_SETTINGS[] = {
 
 #define KEY_MOVIE_STATE 0x2bc   /* eUS_MEDIA_STATE: 1 standby, 2 rec, 3 stop, 4 pause */
 #define MOVIE_STATE_REC 2
+#define KEY_MODE        0x21c   /* the 360 mode selection, values as in C200_SETTINGS */
+#define MODE_VALUE_PHOTO     1
+#define MODE_VALUE_TIMELAPSE 2
+
+/* video_size_realize=1 in g360r.conf: re-realize the recorder after a movie
+ * size change (unrealize, RVF stream, realize, standby) instead of only the
+ * movie standby, should the standby not pick the size up */
+static int g_size_realize;
 
 static const c200_setting_t *c200_setting(const char *id)
 {
@@ -235,30 +243,46 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
         snprintf(err, errlen, "%s", reply);
         return -1;
     }
-    /* The movie size menu value alone did not reach the recorder (2560x1280@60
-     * still recorded at 30 fps): push it to the camcorder attributes too */
+    /* A menu value alone does not re-realize the capture/record engine: run
+     * the transition the camera's own menu runs (a2, docs/firmware/12). Photo:
+     * restart the live view; video modes: movie standby, which realizes the
+     * camcorder for the mode and its movie size. */
+    if (strcmp(id, "mode") == 0) {
+        const char *transition = strcmp(value, "photo") == 0 ? "photomode" : "moviestandby";
+        if (shim_plugin("allsend", reply, sizeof reply) < 0 ||
+            shim_plugin(transition, reply, sizeof reply) < 0) {
+            snprintf(err, errlen, "%s", reply);
+            return -1;
+        }
+    }
     if (strcmp(id, "video_size") == 0) {
+        int mode = -1;
         snprintf(req, sizeof req, "movsize %d", v);
         if (shim_plugin(req, reply, sizeof reply) < 0) {
             snprintf(err, errlen, "%s", reply);
             return -1;
         }
-    }
-    /* A mode change needs every attribute re-propagated, as the app's mode handler does */
-    if (strcmp(id, "mode") == 0 && shim_plugin("allsend", reply, sizeof reply) < 0) {
-        snprintf(err, errlen, "%s", reply);
-        return -1;
+        /* In a video mode the recorder takes the size when it is realized again;
+         * in photo mode the next switch to video does it */
+        if (shim_ui_get(KEY_MODE, &mode) == 0 && mode != MODE_VALUE_PHOTO &&
+            shim_plugin(g_size_realize ? "camrealize" : "moviestandby", reply, sizeof reply) < 0) {
+            snprintf(err, errlen, "%s", reply);
+            return -1;
+        }
     }
     return 0;
 }
 
 /* ------------------------------------------------------------ record */
 
-/* In video/looping mode the shutter toggles the recording: from standby it
- * starts, while recording it stops. The movie state key tells which. */
+/* The app's own record entries (the generic dfms shutter never started a
+ * time-lapse or looping recording): movie/looping start, time-lapse start,
+ * stop. The movie state key tells where the recorder is. */
 static int c200_record(adapter_t *a, int start, char *err, size_t errlen)
 {
-    int state = -1;
+    int state = -1, mode = -1;
+    char reply[256];
+    const char *req;
     (void)a;
 
     if (shim_ui_get(KEY_MOVIE_STATE, &state) < 0) {
@@ -268,8 +292,14 @@ static int c200_record(adapter_t *a, int start, char *err, size_t errlen)
     LOGI("c200: record %s, movie state %d", start ? "start" : "stop", state);
     if ((state == MOVIE_STATE_REC) == start)
         return 0;   /* already where we want it */
-    if (dfms_capture_still(err, errlen) < 0)
+    if (start)
+        req = shim_ui_get(KEY_MODE, &mode) == 0 && mode == MODE_VALUE_TIMELAPSE ? "tlstart" : "recstart";
+    else
+        req = "recstop";
+    if (shim_plugin(req, reply, sizeof reply) < 0) {
+        snprintf(err, errlen, "%s", reply);
         return -1;
+    }
     if (start) {
         /* Confirm, so a mode the shutter does not record in is reported */
         for (int i = 0; i < 10; i++) {
@@ -325,6 +355,7 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
         if (run_mode && strcmp(run_mode, "normal") == 0 && config_get_int(cfg, "settings_enable", 1)) {
             for (i = 0; i < N_C200_SETTINGS; i++)
                 adapter_add_360_setting(a, C200_SETTINGS[i].id);
+            g_size_realize = config_get_int(cfg, "video_size_realize", 0);
             a->get_setting = c200_get_setting;
             a->set_setting = c200_set_setting;
             a->record = c200_record;
