@@ -187,6 +187,7 @@ static const c200_setting_t C200_SETTINGS[] = {
 
 #define KEY_MODE        0x21c   /* the 360 mode selection, values as in C200_SETTINGS */
 #define MODE_VALUE_PHOTO     1
+#define MODE_VALUE_TIMELAPSE 2
 #define KEY_LENS        0x21a
 #define LENS_VALUE_DUAL      0
 #define KEY_MOVIE_SIZE_MENU  0x223   /* the menu's choice (video_size) */
@@ -319,23 +320,26 @@ static int c200_recording(int *out)
            sscanf(reply, "ok recording = %d", out) == 1 ? 0 : -1;
 }
 
-/* The stock phone app's remote shot (the generic dfms shutter never started a
- * time-lapse or looping recording, and the movie entries alone skip the
- * time-lapse's interval capture): start and stop for every video mode */
+/* Video and looping: the app's movie entries (the stock remote shot refused
+ * them after a new standby, "Recording..."). Time-lapse: the stock phone app's
+ * remote shot, which starts and stops its interval capture (the movie entries
+ * alone skip it). */
 static int c200_record(adapter_t *a, int start, char *err, size_t errlen)
 {
-    int rec = -1;
+    int rec = -1, mode = -1, timelapse;
     char reply[256];
     (void)a;
 
-    if (c200_recording(&rec) < 0) {
+    if (c200_recording(&rec) < 0 || shim_ui_get(KEY_MODE, &mode) < 0) {
         snprintf(err, errlen, "cannot read the recording state");
         return -1;
     }
-    LOGI("c200: record %s, recording %d", start ? "start" : "stop", rec);
+    timelapse = mode == MODE_VALUE_TIMELAPSE;
+    LOGI("c200: record %s, mode %d, recording %d", start ? "start" : "stop", mode, rec);
     if (rec == start)
         return 0;   /* already where we want it */
-    if (shim_plugin(start ? "remoterec" : "remotestop", reply, sizeof reply) < 0) {
+    if (shim_plugin(timelapse ? (start ? "remoterec" : "remotestop") : (start ? "recstart" : "recstop"),
+                    reply, sizeof reply) < 0) {
         snprintf(err, errlen, "%s", reply);
         return -1;
     }
