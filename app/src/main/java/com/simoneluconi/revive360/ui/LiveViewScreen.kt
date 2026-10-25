@@ -2,6 +2,7 @@ package com.simoneluconi.revive360.ui
 
 import android.graphics.SurfaceTexture
 import android.os.Build
+import android.os.SystemClock
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -31,7 +32,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +42,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.revive360.EventLog
 import com.simoneluconi.revive360.R
 import com.simoneluconi.revive360.link.CameraController
@@ -68,13 +67,12 @@ fun LiveViewScreen() {
     // The retry the view already acted on (update runs at every recomposition)
     val handled = remember { intArrayOf(0) }
     var full by rememberSaveable { mutableStateOf(false) }
-    // The stream chosen last time, remembered across launches
-    val quality by nav.app.settings.liveQuality.collectAsStateWithLifecycle()
-    val qualityNow = rememberUpdatedState(quality)
     val view = LocalView.current
 
     DisposableEffect(Unit) { onDispose { session.stop() } }
     BackHandler(enabled = full) { full = false }
+    // A failure shows outside full screen, where its retry is
+    LaunchedEffect(error) { if (error != null) full = false }
     // Full screen hides the system bars; leaving the screen shows them again
     DisposableEffect(full) {
         systemBars(view, show = !full)
@@ -109,7 +107,6 @@ fun LiveViewScreen() {
                             override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
                                 session.start(
                                     Surface(texture),
-                                    qualityNow.value,
                                     onSize = { w, h -> size = w to h },
                                     onFrame = { frames = it },
                                     onError = { error = it },
@@ -135,7 +132,6 @@ fun LiveViewScreen() {
                         error = null
                         session.start(
                             Surface(view.surfaceTexture),
-                            qualityNow.value,
                             onSize = { w, h -> size = w to h },
                             onFrame = { frames = it },
                             onError = { error = it },
@@ -148,19 +144,6 @@ fun LiveViewScreen() {
           }
         }
         if (full) return@ScreenScaffold
-        // The camera's three streams: less bandwidth for a weak Wi-Fi
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            QUALITIES.forEach { q ->
-                Chip(stringResource(qualityLabel(q)), selected = q == quality) {
-                    if (q != quality) {
-                        nav.app.settings.setLiveQuality(q)
-                        frames = 0L
-                        session.stop()
-                        attempt++
-                    }
-                }
-            }
-        }
         val problem = error
         if (problem != null) {
             Card(color = colors.soft(colors.bad)) {
@@ -184,14 +167,6 @@ fun LiveViewScreen() {
     }
 }
 
-private val QUALITIES = listOf("high", "middle", "low")
-
-private fun qualityLabel(quality: String): Int = when (quality) {
-    "middle" -> R.string.liveview_quality_middle
-    "low" -> R.string.liveview_quality_low
-    else -> R.string.liveview_quality_high
-}
-
 /** Shows or hides the status and navigation bars (swipe brings them back for a moment) */
 @Suppress("DEPRECATION")
 private fun systemBars(view: View, show: Boolean) {
@@ -210,8 +185,10 @@ private fun systemBars(view: View, show: Boolean) {
 }
 
 /**
- * One live view at a time: a thread reads the stream and decodes it onto the surface. Stopping
- * closes the stream (the camera then ends its own) and waits for the decoder to let go.
+ * One live view at a time: a thread reads the stream and decodes it onto the surface. A stream that
+ * played and then ended (a Wi-Fi hiccup, another viewer taking it over) is opened once more on its
+ * own; a second end soon after is reported. Stopping closes the stream (the camera then ends its
+ * own) and waits for the decoder to let go.
  */
 private class LiveSession(private val controller: CameraController) {
     private val stream = AtomicReference<LiveStream?>(null)
@@ -223,7 +200,6 @@ private class LiveSession(private val controller: CameraController) {
 
     fun start(
         target: Surface,
-        quality: String,
         onSize: (Int, Int) -> Unit,
         onFrame: (Long) -> Unit,
         onError: (String) -> Unit,
@@ -233,20 +209,30 @@ private class LiveSession(private val controller: CameraController) {
         surface?.takeIf { it !== target }?.release()
         surface = target
         worker = thread(name = "liveview") {
-            try {
-                val opened = controller.openLiveView(quality)
-                stream.set(opened)
-                if (stopping) return@thread opened.close()
-                EventLog.log("Live view: ${opened.contentType}")
-                LiveViewDecoder(opened.input, target, onSize, onFrame).run()
-                if (!stopping) onError("the camera ended the stream")
-            } catch (e: Exception) {
-                if (!stopping) {
-                    EventLog.log("Live view failed: ${e.message}")
-                    onError(e.message ?: e.javaClass.simpleName)
+            var reopenedAt = Long.MIN_VALUE / 2
+            while (!stopping) {
+                var played = false
+                val failure = try {
+                    val opened = controller.openLiveView()
+                    stream.set(opened)
+                    if (stopping) break
+                    EventLog.log("Live view: ${opened.contentType}")
+                    LiveViewDecoder(opened.input, target, onSize) { played = true; onFrame(it) }.run()
+                    "the camera ended the stream"
+                } catch (e: Exception) {
+                    e.message ?: e.javaClass.simpleName
+                } finally {
+                    stream.getAndSet(null)?.close()
                 }
-            } finally {
-                stream.getAndSet(null)?.close()
+                if (stopping) break
+                val now = SystemClock.elapsedRealtime()
+                if (!played || now - reopenedAt < REOPEN_GAP_MS) {
+                    EventLog.log("Live view failed: $failure")
+                    onError(failure)
+                    break
+                }
+                EventLog.log("Live view: $failure, opening it again")
+                reopenedAt = now
             }
         }
     }
@@ -262,5 +248,7 @@ private class LiveSession(private val controller: CameraController) {
 
     private companion object {
         const val STOP_WAIT_MS = 2_000L
+        /** A stream ending again within this of the last reopen is a failure, not a hiccup */
+        const val REOPEN_GAP_MS = 30_000L
     }
 }

@@ -49,15 +49,6 @@ class AppSettings(context: Context) {
         prefs.edit { putString(ACCENT, accent.name) }
     }
 
-    private val _liveQuality = MutableStateFlow(prefs.getString(LIVE_QUALITY, null) ?: "high")
-    /** The live view stream last chosen (protocol §5.14 quality) */
-    val liveQuality: StateFlow<String> = _liveQuality.asStateFlow()
-
-    fun setLiveQuality(quality: String) {
-        _liveQuality.value = quality
-        prefs.edit { putString(LIVE_QUALITY, quality) }
-    }
-
     fun setHaptics(on: Boolean) {
         _haptics.value = on
         prefs.edit { putBoolean(HAPTICS, on) }
@@ -73,7 +64,6 @@ class AppSettings(context: Context) {
         const val THEME = "theme"
         const val ACCENT = "accent"
         const val HAPTICS = "haptics"
-        const val LIVE_QUALITY = "live_quality"
         const val DEV_HOST = "dev_host"
 
         inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =

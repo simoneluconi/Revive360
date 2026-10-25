@@ -443,7 +443,7 @@ recording or capturing; stopping when nothing records answers `200` with `active
 ### 5.14 `GET /api/v1/liveview`
 
 Only when `capabilities.liveview`. `?quality=high|middle|low` (default `high`) picks one of the
-camera's streams (the C200: about 22, 12 and less Mbit/s). Answers `200` and then the camera's live picture as it comes,
+camera's streams (on the C200 all three are the same: HEVC 2560x1280, about 20 Mbit/s). Answers `200` and then the camera's live picture as it comes,
 without `Content-Length` (the one exception to §2): the client reads until it closes the connection
 or the camera ends the stream. `Content-Type` names the container the camera produces (the C200:
 `video/x-avi`, the Samsung remote viewfinder stream). One client at a time: a new request takes the
