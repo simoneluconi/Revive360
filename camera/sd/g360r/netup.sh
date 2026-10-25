@@ -113,15 +113,16 @@ _netup_write_hostapd_conf() {
         echo "ctrl_interface=$_netup_hostapd_ctrl"
         echo "ssid=$AP_SSID"
         if [ "$BAND" = 5 ]; then
-            # 5 GHz, 802.11n/ac on an 80 MHz channel: the live view needs the bandwidth
+            # 5 GHz, 802.11n/ac on a 20 MHz channel: the AP firmware's driver refuses
+            # HT40 ("Driver does not support configured HT capability [HT40*]"), and
+            # so 80 MHz; 5 GHz is still far less crowded than 2.4
             echo "channel=$CH"
             echo "hw_mode=a"
             echo "ieee80211n=1"
             echo "ieee80211ac=1"
             echo "wmm_enabled=1"
-            echo "ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40]"
-            echo "vht_oper_chwidth=1"
-            echo "vht_oper_centr_freq_seg0_idx=$((CH + 6))"
+            echo "ht_capab=[SHORT-GI-20]"
+            echo "vht_oper_chwidth=0"
         else
             echo "channel=$CH"
             echo "hw_mode=g"
