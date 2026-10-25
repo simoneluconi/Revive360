@@ -43,6 +43,40 @@
     <string name="quality_sfine">Super fine</string>
     <string name="quality_fine">Fine</string>
     <string name="quality_norm">Normale</string>
+    <!-- Impostazioni della camera (protocollo §5.12) -->
+    <string name="setting_lens">Obiettivo</string>
+    <string name="setting_photo_size">Dimensione foto</string>
+    <string name="setting_video_size">Risoluzione video</string>
+    <string name="setting_timer">Autoscatto</string>
+    <string name="setting_timelapse_interval">Intervallo</string>
+    <string name="setting_loop_time">Durata loop</string>
+    <string name="shoot_mode_photo">Foto</string>
+    <string name="shoot_mode_video">Video</string>
+    <string name="shoot_mode_timelapse">Time-lapse</string>
+    <string name="shoot_mode_looping">Loop</string>
+    <string name="shoot_mode_burst">Raffica</string>
+    <string name="shoot_mode_slowmo">Slow motion</string>
+    <string name="lens_dual">360°</string>
+    <string name="lens_rear">180° posteriore</string>
+    <string name="lens_front">180° anteriore</string>
+    <string name="photo_size_dual_large">360° grande</string>
+    <string name="photo_size_dual_small">360° piccola</string>
+    <string name="photo_size_single_large">180° grande</string>
+    <string name="photo_size_single_wide">180° wide</string>
+    <string name="timer_off">No</string>
+    <string name="value_seconds">%1$s s</string>
+    <string name="value_minutes">%1$s min</string>
+    <string name="value_max">Max</string>
+    <string name="video_size_value">%1$s · %2$s fps</string>
+    <!-- Registrazione (protocollo §5.13) -->
+    <string name="record_start">Avvia registrazione</string>
+    <string name="record_stop">Ferma registrazione</string>
+    <string name="record_hint">Tocca per registrare</string>
+    <string name="record_hint_timelapse">Tocca per avviare il time-lapse</string>
+    <string name="record_running">Registrazione · %1$s · tocca per fermare</string>
+    <string name="record_saving">Salvataggio del video…</string>
+    <string name="record_done">Salvato: %1$s</string>
+    <string name="error_wrong_mode">Cambia prima la modalità di scatto</string>
 
     <!-- Errors -->
     <string name="error_busy">La fotocamera è occupata, riprova tra un attimo</string>

@@ -420,8 +420,8 @@ static void record_start(req_t *r, adapter_t *a)
         return;
     }
     if (a->get_setting && a->get_setting(a, "mode", mode, sizeof mode) == 0 &&
-        strcmp(mode, "video") != 0 && strcmp(mode, "looping") != 0) {
-        http_send_error(r, 409, "wrong_mode", "recording needs mode video or looping (now %s)", mode);
+        strcmp(mode, "video") != 0 && strcmp(mode, "looping") != 0 && strcmp(mode, "timelapse") != 0) {
+        http_send_error(r, 409, "wrong_mode", "recording needs mode video, looping or timelapse (now %s)", mode);
         return;
     }
     ns_free(&g_rec_before);

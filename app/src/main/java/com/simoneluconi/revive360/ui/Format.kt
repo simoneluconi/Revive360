@@ -6,6 +6,8 @@ import com.simoneluconi.revive360.link.Failure
 import com.simoneluconi.revive360.link.LinkState
 import com.simoneluconi.revive360.protocol.CameraException
 import com.simoneluconi.revive360.protocol.CaptureMode
+import com.simoneluconi.revive360.protocol.SettingIds
+import com.simoneluconi.revive360.protocol.ShootingModes
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -47,6 +49,66 @@ object Format {
         else -> quality
     }
 
+    /** Title of a camera setting row; null for the shooting mode (it has its own row) or unknown ids. */
+    fun settingTitle(resources: Resources, id: String): String? = when (id) {
+        SettingIds.LENS -> resources.getString(R.string.setting_lens)
+        SettingIds.PHOTO_SIZE -> resources.getString(R.string.setting_photo_size)
+        SettingIds.VIDEO_SIZE -> resources.getString(R.string.setting_video_size)
+        SettingIds.TIMER -> resources.getString(R.string.setting_timer)
+        SettingIds.TIMELAPSE_INTERVAL -> resources.getString(R.string.setting_timelapse_interval)
+        SettingIds.LOOP_TIME -> resources.getString(R.string.setting_loop_time)
+        else -> null
+    }
+
+    /** A setting token for display: known ones get a label, the rest show as they are. */
+    fun settingValue(resources: Resources, id: String, token: String): String = when (id) {
+        SettingIds.MODE -> when (token) {
+            ShootingModes.PHOTO -> resources.getString(R.string.shoot_mode_photo)
+            ShootingModes.VIDEO -> resources.getString(R.string.shoot_mode_video)
+            ShootingModes.TIMELAPSE -> resources.getString(R.string.shoot_mode_timelapse)
+            ShootingModes.LOOPING -> resources.getString(R.string.shoot_mode_looping)
+            "burst" -> resources.getString(R.string.shoot_mode_burst)
+            "slowmo" -> resources.getString(R.string.shoot_mode_slowmo)
+            else -> token
+        }
+        SettingIds.LENS -> when (token) {
+            "dual" -> resources.getString(R.string.lens_dual)
+            "rear" -> resources.getString(R.string.lens_rear)
+            "front" -> resources.getString(R.string.lens_front)
+            else -> token
+        }
+        SettingIds.PHOTO_SIZE -> when (token) {
+            "dual_large" -> resources.getString(R.string.photo_size_dual_large)
+            "dual_small" -> resources.getString(R.string.photo_size_dual_small)
+            "single_large" -> resources.getString(R.string.photo_size_single_large)
+            "single_wide" -> resources.getString(R.string.photo_size_single_wide)
+            else -> token.replace('x', '×')
+        }
+        SettingIds.VIDEO_SIZE -> {
+            val fps = token.substringAfter('@', "")
+            val size = token.substringBefore('@').replace('x', '×')
+            if (fps.isEmpty()) size else resources.getString(R.string.video_size_value, size, fps)
+        }
+        SettingIds.TIMER -> when (token) {
+            "off" -> resources.getString(R.string.timer_off)
+            else -> if (token.toDoubleOrNull() != null) resources.getString(R.string.value_seconds, token) else token
+        }
+        SettingIds.TIMELAPSE_INTERVAL ->
+            if (token.toDoubleOrNull() != null) resources.getString(R.string.value_seconds, token) else token
+        SettingIds.LOOP_TIME -> when (token) {
+            "max" -> resources.getString(R.string.value_max)
+            else -> if (token.toDoubleOrNull() != null) resources.getString(R.string.value_minutes, token) else token
+        }
+        else -> token
+    }
+
+    /** Elapsed recording time, m:ss or h:mm:ss. */
+    fun elapsed(seconds: Long): String {
+        val s = seconds.coerceAtLeast(0)
+        return if (s >= 3600) String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+        else String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60)
+    }
+
     fun state(resources: Resources, state: LinkState): String = when (state) {
         LinkState.NotPaired -> resources.getString(R.string.state_not_paired)
         LinkState.Idle -> resources.getString(R.string.state_idle)
@@ -66,6 +128,7 @@ object Format {
         CameraException.CAPTURE_TIMEOUT -> resources.getString(R.string.error_capture_timeout)
         CameraException.UNSUPPORTED -> resources.getString(R.string.error_unsupported)
         CameraException.NOT_FOUND -> resources.getString(R.string.error_not_found)
+        CameraException.WRONG_MODE -> resources.getString(R.string.error_wrong_mode)
         null -> resources.getString(R.string.error_link)
         else -> resources.getString(R.string.error_camera, code)
     }

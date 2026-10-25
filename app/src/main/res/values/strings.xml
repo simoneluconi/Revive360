@@ -45,6 +45,40 @@
     <string name="quality_sfine">Super fine</string>
     <string name="quality_fine">Fine</string>
     <string name="quality_norm">Normal</string>
+    <!-- Camera settings (protocol §5.12) -->
+    <string name="setting_lens">Lens</string>
+    <string name="setting_photo_size">Photo size</string>
+    <string name="setting_video_size">Video size</string>
+    <string name="setting_timer">Self-timer</string>
+    <string name="setting_timelapse_interval">Interval</string>
+    <string name="setting_loop_time">Loop length</string>
+    <string name="shoot_mode_photo">Photo</string>
+    <string name="shoot_mode_video">Video</string>
+    <string name="shoot_mode_timelapse">Time-lapse</string>
+    <string name="shoot_mode_looping">Loop</string>
+    <string name="shoot_mode_burst">Burst</string>
+    <string name="shoot_mode_slowmo">Slow motion</string>
+    <string name="lens_dual">360°</string>
+    <string name="lens_rear">180° rear</string>
+    <string name="lens_front">180° front</string>
+    <string name="photo_size_dual_large">360° large</string>
+    <string name="photo_size_dual_small">360° small</string>
+    <string name="photo_size_single_large">180° large</string>
+    <string name="photo_size_single_wide">180° wide</string>
+    <string name="timer_off">Off</string>
+    <string name="value_seconds">%1$s s</string>
+    <string name="value_minutes">%1$s min</string>
+    <string name="value_max">Max</string>
+    <string name="video_size_value">%1$s · %2$s fps</string>
+    <!-- Recording (protocol §5.13) -->
+    <string name="record_start">Start recording</string>
+    <string name="record_stop">Stop recording</string>
+    <string name="record_hint">Tap to start recording</string>
+    <string name="record_hint_timelapse">Tap to start the time-lapse</string>
+    <string name="record_running">Recording · %1$s · tap to stop</string>
+    <string name="record_saving">Saving the video…</string>
+    <string name="record_done">Saved: %1$s</string>
+    <string name="error_wrong_mode">Switch the shooting mode first</string>
 
     <!-- Errors -->
     <string name="error_busy">The camera is busy, try again in a moment</string>

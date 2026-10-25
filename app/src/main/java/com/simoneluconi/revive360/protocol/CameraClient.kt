@@ -39,6 +39,19 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
         text("POST", "/api/v1/led", ProtocolJson.ledRequest(id, state, onMs, offMs))
     }
 
+    /** Current camera settings (protocol §5.12). */
+    fun settings(): SettingValues = ProtocolJson.settings(text("GET", "/api/v1/settings"))
+
+    /** Changes settings; answers the values after the change. */
+    fun setSettings(changes: Map<String, String>): SettingValues =
+        ProtocolJson.settings(text("POST", "/api/v1/settings", ProtocolJson.settingsRequest(changes)))
+
+    /** Starts or stops a video recording (protocol §5.13). Stopping waits for the finished file. */
+    fun record(start: Boolean): RecordResult =
+        ProtocolJson.record(
+            text("POST", "/api/v1/record", ProtocolJson.recordRequest(start), if (start) READ_TIMEOUT_MS else CAPTURE_READ_TIMEOUT_MS)
+        )
+
     /** Sets the camera clock and time zone (protocol §5.10). */
     fun setTime(utcMs: Long, tz: String?, tzOffsetMin: Int): TimeResult =
         ProtocolJson.time(text("POST", "/api/v1/time", ProtocolJson.timeRequest(utcMs, tz, tzOffsetMin)))

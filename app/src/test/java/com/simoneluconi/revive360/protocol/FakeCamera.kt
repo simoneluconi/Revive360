@@ -18,6 +18,13 @@ class FakeCamera : AutoCloseable {
     val requests = mutableListOf<String>()
     var busy = false
     var lastTimeBody: String? = null
+    /** Current settings; `lens` is unknown to the camera (null). */
+    val settings = linkedMapOf<String, String?>("mode" to "photo", "lens" to null, "video_size" to "3840x1920@30")
+
+    private fun settingsJson(): String = org.json.JSONObject().put(
+        "settings",
+        org.json.JSONObject().apply { settings.forEach { (k, v) -> put(k, v ?: org.json.JSONObject.NULL) } },
+    ).toString()
 
     val port: Int get() = server.address.port
     val client: CameraClient get() = CameraClient("127.0.0.1", port, Connector { it.openConnection() as HttpURLConnection })
@@ -47,6 +54,21 @@ class FakeCamera : AutoCloseable {
                 }
             }
             method == "POST" && path == "/api/v1/led" -> json(ex, 200, """{"id":"front","state":"on"}""")
+            method == "GET" && path == "/api/v1/settings" -> json(ex, 200, settingsJson())
+            method == "POST" && path == "/api/v1/settings" -> {
+                val body = org.json.JSONObject(ex.requestBody.readBytes().toString(Charsets.UTF_8))
+                if (body.keys().asSequence().any { it !in settings }) return error(ex, 400, "bad_request")
+                body.keys().forEach { settings[it] = body.getString(it) }
+                json(ex, 200, settingsJson())
+            }
+            method == "POST" && path == "/api/v1/record" -> {
+                val start = ex.requestBody.readBytes().toString(Charsets.UTF_8).contains("\"start\"")
+                when {
+                    start && settings["mode"] != "video" -> error(ex, 409, "wrong_mode")
+                    start -> json(ex, 200, """{"recording":{"active":true,"elapsed_s":0}}""")
+                    else -> json(ex, 200, """{"recording":{"active":false},"files":[{"path":"DCIM/100VIDEO/360_0008.MP4","name":"360_0008.MP4","size":9,"mtime":2,"kind":"video"}]}""")
+                }
+            }
             method == "POST" && path == "/api/v1/time" -> {
                 lastTimeBody = ex.requestBody.readBytes().toString(Charsets.UTF_8)
                 json(ex, 200, """{"utc_ms":1729780000123,"applied":["system","rtc"]}""")
@@ -112,7 +134,13 @@ class FakeCamera : AutoCloseable {
                "status":{"battery":true,"storage":true,"battery_temperature":true},
                "leds":[{"id":"status_r","label":"Status (red)","role":"status_red","states":["off","on","blink","auto"]},
                        {"id":"front","label":"Front","role":"front","states":["off","on"]}],
-               "debug_log":true}}
+               "debug_log":true,
+               "settings":[{"id":"mode","values":["photo","video"]},{"id":"lens","values":["dual","rear"]},{"id":"bogus"},
+                           {"id":"video_size","values":["3840x1920@30","2560x1280@30"]}]}}
+        """.trimIndent()
+
+        val STATUS_RECORDING = """
+            {"busy":false,"uptime_s":5,"recording":{"active":true,"elapsed_s":42}}
         """.trimIndent()
 
         val STATUS = """

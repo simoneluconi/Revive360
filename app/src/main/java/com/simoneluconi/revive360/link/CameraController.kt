@@ -18,6 +18,7 @@ import com.simoneluconi.revive360.protocol.CaptureResult
 import com.simoneluconi.revive360.protocol.Connector
 import com.simoneluconi.revive360.protocol.LedState
 import com.simoneluconi.revive360.protocol.Protocol
+import com.simoneluconi.revive360.protocol.SettingValues
 import com.simoneluconi.revive360.settings.AppSettings
 import com.simoneluconi.revive360.settings.CameraStore
 import com.simoneluconi.revive360.settings.PairedCamera
@@ -96,6 +97,14 @@ class CameraController(
 
     private val _lastCapture = MutableStateFlow<CaptureResult?>(null)
     val lastCapture: StateFlow<CaptureResult?> = _lastCapture.asStateFlow()
+
+    private val _settings = MutableStateFlow<SettingValues?>(null)
+    /** The camera's current settings (protocol §5.12); null until read or when it has none. */
+    val cameraSettings: StateFlow<SettingValues?> = _settings.asStateFlow()
+
+    private val _recordBusy = MutableStateFlow(false)
+    /** A record start or stop is running (stopping waits for the finished video). */
+    val recordBusy: StateFlow<Boolean> = _recordBusy.asStateFlow()
 
     private val _downloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
     /** Transfers in progress (or failed) by file path. */
@@ -200,6 +209,7 @@ class CameraController(
             _state.value = LinkState.Connected(info)
             if (info.capabilities.time) launch { syncTime(client) }
             if (info.capabilities.listFiles) launch { refreshFiles() }
+            if (info.capabilities.settings.isNotEmpty()) launch { runCatching { refreshSettings() } }
             poll(client)
         }
     }
@@ -299,6 +309,7 @@ class CameraController(
         _downloads.value = emptyMap()
         _files.value = null
         _lastCapture.value = null
+        _settings.value = null
     }
 
     // ---- commands ----
@@ -316,12 +327,57 @@ class CameraController(
             // New files first, then a fresh listing replaces them
             _files.update { list -> list?.let { result.files + it.filterNot { f -> result.files.any { n -> n.path == f.path } } } }
             scope.launch { runCatching { refreshFiles() } }
+            // The camera switches to photo mode for a still (protocol §5.3)
+            if (_settings.value != null) scope.launch { runCatching { refreshSettings() } }
             return result
         } catch (e: Exception) {
             EventLog.log("Capture failed: ${e.message}")
             throw e
         } finally {
             _capturing.value = false
+        }
+    }
+
+    suspend fun refreshSettings() {
+        val client = client ?: return
+        try {
+            _settings.value = withContext(Dispatchers.IO) { client.settings() }
+        } catch (e: Exception) {
+            EventLog.log("Settings: read failed (${e.message})")
+            throw e
+        }
+    }
+
+    /** Changes one camera setting; the flow takes the values the camera answers. */
+    suspend fun setSetting(id: String, value: String) {
+        val client = requireClient()
+        try {
+            _settings.value = withContext(Dispatchers.IO) { client.setSettings(mapOf(id to value)) }
+            EventLog.log("Setting $id = $value")
+        } catch (e: Exception) {
+            EventLog.log("Setting $id = $value failed: ${e.message}")
+            throw e
+        }
+    }
+
+    /** Starts or stops a video recording; stopping adds the new video to the files. */
+    suspend fun record(start: Boolean) {
+        val client = requireClient()
+        _recordBusy.value = true
+        try {
+            EventLog.log("Recording: ${if (start) "start" else "stop"}")
+            val result = withContext(Dispatchers.IO) { client.record(start) }
+            _status.update { it?.copy(recording = result.recording) }
+            if (result.files.isNotEmpty()) {
+                EventLog.log("Recording: ${result.files.joinToString { it.name }}")
+                _files.update { list -> list?.let { result.files + it.filterNot { f -> result.files.any { n -> n.path == f.path } } } }
+                scope.launch { runCatching { refreshFiles() } }
+            }
+        } catch (e: Exception) {
+            EventLog.log("Recording ${if (start) "start" else "stop"} failed: ${e.message}")
+            throw e
+        } finally {
+            _recordBusy.value = false
         }
     }
 

@@ -50,8 +50,13 @@ import com.simoneluconi.revive360.protocol.CameraFile
 import com.simoneluconi.revive360.protocol.CameraInfo
 import com.simoneluconi.revive360.protocol.CaptureMode
 import com.simoneluconi.revive360.protocol.FileKind
+import com.simoneluconi.revive360.protocol.SettingDef
+import com.simoneluconi.revive360.protocol.SettingIds
+import com.simoneluconi.revive360.protocol.SettingValues
+import com.simoneluconi.revive360.protocol.ShootingModes
 import com.simoneluconi.revive360.protocol.Storage
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -271,14 +276,23 @@ private fun CaptureCard(info: CameraInfo) {
     val capturing by controller.capturing.collectAsStateWithLifecycle()
     val status by controller.status.collectAsStateWithLifecycle()
     val last by controller.lastCapture.collectAsStateWithLifecycle()
+    val values by controller.cameraSettings.collectAsStateWithLifecycle()
+    val recordBusy by controller.recordBusy.collectAsStateWithLifecycle()
     var modeWire by rememberSaveable { mutableStateOf(caps.captureModes.first().wire) }
     val mode = caps.captureModes.firstOrNull { it.wire == modeWire } ?: caps.captureModes.first()
     var quality by rememberSaveable { mutableStateOf(caps.photoQualities.firstOrNull()) }
-    val busy = capturing || status?.busy == true
+    val recording = status?.recording?.active == true
+    val busy = capturing || recordBusy || status?.busy == true
+    // The camera's shooting mode (protocol §5.12); a camera without the setting only shoots photos
+    val shootingMode = if (caps.setting(SettingIds.MODE) != null) values?.get(SettingIds.MODE) else ShootingModes.PHOTO
+    val recordMode = caps.record && ShootingModes.records(shootingMode)
 
     Card {
         Label(stringResource(R.string.capture_title), size = 13.sp, color = colors.text2, weight = FontWeight.Bold)
-        if (caps.captureModes.size > 1) {
+        if (caps.settings.isNotEmpty()) {
+            CameraSettings(caps.settings, values, shootingMode, locked = busy || recording)
+        }
+        if (caps.captureModes.size > 1 && !recordMode) {
             Spacer(Modifier.height(10.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 caps.captureModes.forEach { m ->
@@ -287,7 +301,7 @@ private fun CaptureCard(info: CameraInfo) {
             }
         }
         // Quality applies to the JPEG: not offered for RAW alone
-        if (caps.photoQualities.size > 1 && mode != CaptureMode.RAW) {
+        if (caps.photoQualities.size > 1 && mode != CaptureMode.RAW && !recordMode) {
             Spacer(Modifier.height(8.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 caps.photoQualities.forEach { q ->
@@ -297,22 +311,48 @@ private fun CaptureCard(info: CameraInfo) {
         }
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            ShutterButton(busy = busy) {
-                scope.launch {
-                    try {
-                        val result = controller.capture(mode, if (mode == CaptureMode.RAW) null else quality)
-                        haptic(Haptic.CONFIRM)
-                        nav.message(resources.getString(R.string.capture_done, result.files.size), MessageKind.GOOD)
-                    } catch (e: Exception) {
-                        haptic(Haptic.REJECT)
-                        nav.message(Format.error(resources, e), MessageKind.BAD)
+            if (recordMode || recording) {
+                RecordButton(active = recording, busy = recordBusy) {
+                    scope.launch {
+                        try {
+                            controller.record(start = !recording)
+                            haptic(Haptic.CONFIRM)
+                            val saved = controller.status.value?.recording?.active != true
+                            val name = controller.files.value?.firstOrNull()?.name
+                            if (saved && recording && name != null) {
+                                nav.message(resources.getString(R.string.record_done, name), MessageKind.GOOD)
+                            }
+                        } catch (e: Exception) {
+                            haptic(Haptic.REJECT)
+                            nav.message(Format.error(resources, e), MessageKind.BAD)
+                        }
+                    }
+                }
+            } else {
+                ShutterButton(busy = busy) {
+                    scope.launch {
+                        try {
+                            val result = controller.capture(mode, if (mode == CaptureMode.RAW) null else quality)
+                            haptic(Haptic.CONFIRM)
+                            nav.message(resources.getString(R.string.capture_done, result.files.size), MessageKind.GOOD)
+                        } catch (e: Exception) {
+                            haptic(Haptic.REJECT)
+                            nav.message(Format.error(resources, e), MessageKind.BAD)
+                        }
                     }
                 }
             }
         }
         Spacer(Modifier.height(8.dp))
         Label(
-            if (busy) stringResource(R.string.capture_busy) else stringResource(R.string.capture_hint),
+            when {
+                recordBusy && recording -> stringResource(R.string.record_saving)
+                recording -> stringResource(R.string.record_running, Format.elapsed(elapsedSeconds(status?.recording?.elapsedS)))
+                busy -> stringResource(R.string.capture_busy)
+                recordMode && shootingMode == ShootingModes.TIMELAPSE -> stringResource(R.string.record_hint_timelapse)
+                recordMode -> stringResource(R.string.record_hint)
+                else -> stringResource(R.string.capture_hint)
+            },
             Modifier.fillMaxWidth(), size = 13.sp, color = colors.text2, align = TextAlign.Center,
         )
         val shot = last?.files.orEmpty()
@@ -321,6 +361,116 @@ private fun CaptureCard(info: CameraInfo) {
             Hairline()
             Spacer(Modifier.height(10.dp))
             LastCapture(shot)
+        }
+    }
+}
+
+/** Seconds since the camera last reported [reported], counted on between status polls. */
+@Composable
+private fun elapsedSeconds(reported: Long?): Long {
+    var base by remember { mutableStateOf(0L to 0L) }   // (reported seconds, local time it arrived)
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(reported) {
+        base = (reported ?: 0L) to System.currentTimeMillis()
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    return base.first + (now - base.second) / 1_000
+}
+
+/**
+ * The camera's settings (protocol §5.12): the shooting mode, then the settings that matter in it.
+ * Changes go to the camera, which answers the values in force; nothing changes while [locked].
+ */
+@Composable
+private fun CameraSettings(defs: List<SettingDef>, values: SettingValues?, mode: String?, locked: Boolean) {
+    val nav = LocalActions.current
+    val controller = nav.app.controller
+    val resources = LocalResources.current
+    val colors = LocalAppColors.current
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf<String?>(null) }   // setting id being changed
+
+    fun change(id: String, token: String) {
+        if (locked || pending != null || values?.get(id) == token) return
+        pending = id
+        scope.launch {
+            try {
+                controller.setSetting(id, token)
+            } catch (e: Exception) {
+                nav.message(Format.error(resources, e), MessageKind.BAD)
+            } finally {
+                pending = null
+            }
+        }
+    }
+
+    // What matters per mode; unknown ids are shown everywhere
+    val shown = defs.filter { def ->
+        when (def.id) {
+            SettingIds.MODE -> false
+            SettingIds.PHOTO_SIZE, SettingIds.TIMER -> mode == ShootingModes.PHOTO
+            SettingIds.VIDEO_SIZE -> ShootingModes.records(mode)
+            SettingIds.TIMELAPSE_INTERVAL -> mode == ShootingModes.TIMELAPSE
+            SettingIds.LOOP_TIME -> mode == ShootingModes.LOOPING
+            else -> true
+        }
+    }
+    defs.firstOrNull { it.id == SettingIds.MODE }?.let { def ->
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            def.values.forEach { token ->
+                Chip(Format.settingValue(resources, def.id, token), selected = token == values?.get(def.id)) {
+                    change(def.id, token)
+                }
+            }
+        }
+    }
+    shown.forEach { def ->
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Label(Format.settingTitle(resources, def.id) ?: def.id, size = 13.sp, color = colors.text2)
+            if (pending == def.id) {
+                Spacer(Modifier.width(8.dp))
+                Spinner(size = 14.dp)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            def.values.forEach { token ->
+                Chip(Format.settingValue(resources, def.id, token), selected = token == values?.get(def.id)) {
+                    change(def.id, token)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordButton(active: Boolean, busy: Boolean, onClick: () -> Unit) {
+    val colors = LocalAppColors.current
+    val ring by animateColorAsState(if (busy) colors.warn else colors.bad, tween(200), label = "ring")
+    val corner by animateFloatAsState(if (active) 8f else 40f, tween(200), label = "corner")
+    Box(
+        Modifier
+            .size(84.dp)
+            .clip(CircleShape)
+            .border(4.dp, ring, CircleShape)
+            .pressable(
+                enabled = !busy,
+                label = stringResource(if (active) R.string.record_stop else R.string.record_start),
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (busy) {
+            Spinner(size = 28.dp)
+        } else {
+            // A round dot to start, a rounded square to stop
+            val inner = if (active) 30.dp else 56.dp
+            Box(Modifier.size(inner).clip(RoundedCornerShape(corner.dp)).background(colors.bad))
         }
     }
 }

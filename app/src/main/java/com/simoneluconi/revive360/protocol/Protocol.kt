@@ -80,9 +80,45 @@ data class Capabilities(
     val debugLog: Boolean = false,
     /** The camera clock can be set from the phone (protocol §5.10). */
     val time: Boolean = false,
+    /** Camera settings of protocol §5.12, in display order. */
+    val settings: List<SettingDef> = emptyList(),
 ) {
     val canCapture: Boolean get() = captureModes.isNotEmpty()
+
+    fun setting(id: String): SettingDef? = settings.firstOrNull { it.id == id }
 }
+
+/** One camera setting: protocol id (`mode`, `lens`, `video_size`, ...) and its accepted tokens. */
+data class SettingDef(val id: String, val values: List<String>)
+
+/** Setting ids the app knows (protocol §5.12); others are shown with their raw tokens. */
+object SettingIds {
+    const val MODE = "mode"
+    const val LENS = "lens"
+    const val PHOTO_SIZE = "photo_size"
+    const val VIDEO_SIZE = "video_size"
+    const val TIMER = "timer"
+    const val TIMELAPSE_INTERVAL = "timelapse_interval"
+    const val LOOP_TIME = "loop_time"
+}
+
+/** Shooting modes (values of the `mode` setting). */
+object ShootingModes {
+    const val PHOTO = "photo"
+    const val VIDEO = "video"
+    const val TIMELAPSE = "timelapse"
+    const val LOOPING = "looping"
+
+    /** Modes whose shutter starts and stops a recording (protocol §5.13). */
+    fun records(mode: String?): Boolean = mode == VIDEO || mode == LOOPING || mode == TIMELAPSE
+}
+
+/** Current setting values: id to token, `null` when the camera can't tell. */
+typealias SettingValues = Map<String, String?>
+
+data class Recording(val active: Boolean, val elapsedS: Long?)
+
+data class RecordResult(val recording: Recording, val files: List<CameraFile>)
 
 data class CameraInfo(
     val protocol: Int,
@@ -117,6 +153,8 @@ data class CameraStatus(
     val busy: Boolean,
     /** Seconds since the camera's controller started: going down means the camera rebooted. */
     val uptimeS: Long,
+    /** Present when the camera can record (protocol §5.13). */
+    val recording: Recording? = null,
 )
 
 data class CameraFile(
@@ -149,6 +187,8 @@ class CameraException(val httpStatus: Int, val code: String, message: String) :
         const val UNSUPPORTED = "unsupported"
         const val NO_STORAGE = "no_storage"
         const val CAPTURE_TIMEOUT = "capture_timeout"
+        /** The request needs another shooting mode (protocol §5.13). */
+        const val WRONG_MODE = "wrong_mode"
         const val INTERNAL = "internal"
         /** Not from the camera: an answer this app can't read. */
         const val MALFORMED = "malformed"

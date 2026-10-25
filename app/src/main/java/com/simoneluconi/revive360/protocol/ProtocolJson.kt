@@ -52,7 +52,38 @@ object ProtocolJson {
             leds = objects(json.optJSONArray("leds")).mapNotNull(::led),
             debugLog = json.optBoolean("debug_log"),
             time = json.optBoolean("time"),
+            settings = objects(json.optJSONArray("settings")).mapNotNull(::settingDef),
         )
+    }
+
+    /** `{"settings": {"mode": "photo", "lens": null}}` (protocol §5.12) */
+    fun settings(text: String): SettingValues = parse(text) { json ->
+        val settings = json.optJSONObject("settings") ?: JSONObject()
+        settings.keys().asSequence().associateWith { key ->
+            if (settings.isNull(key)) null else settings.optString(key).takeIf(String::isNotEmpty)
+        }
+    }
+
+    fun settingsRequest(changes: Map<String, String>): String = JSONObject(changes).toString()
+
+    fun record(text: String): RecordResult = parse(text) { json ->
+        RecordResult(
+            recording = recording(json.optJSONObject("recording")) ?: Recording(active = false, elapsedS = null),
+            files = objects(json.optJSONArray("files")).mapNotNull(::file),
+        )
+    }
+
+    fun recordRequest(start: Boolean): String =
+        JSONObject().put("action", if (start) "start" else "stop").toString()
+
+    private fun recording(json: JSONObject?): Recording? = json?.let {
+        Recording(active = it.optBoolean("active"), elapsedS = if (it.has("elapsed_s")) it.optLong("elapsed_s") else null)
+    }
+
+    private fun settingDef(json: JSONObject): SettingDef? {
+        val id = json.optString("id").takeIf { it.isNotEmpty() } ?: return null
+        val values = strings(json.optJSONArray("values"))
+        return if (values.isEmpty()) null else SettingDef(id, values)
     }
 
     fun status(text: String): CameraStatus = parse(text) { json ->
@@ -76,6 +107,7 @@ object ProtocolJson {
             },
             busy = json.optBoolean("busy"),
             uptimeS = json.optLong("uptime_s"),
+            recording = recording(json.optJSONObject("recording")),
         )
     }
 

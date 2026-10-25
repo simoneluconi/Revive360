@@ -78,7 +78,7 @@ Every non-2xx response with a JSON-capable endpoint has this body:
 | 404 | `no_thumbnail` | the file exists but has no embedded thumbnail |
 | 405 | `method_not_allowed` | wrong method for the endpoint |
 | 409 | `busy` | a capture or recording is in progress (capture, delete, settings, record) |
-| 409 | `wrong_mode` | the request needs another shooting mode (§5.3 needs `photo`, §5.13 `video`/`looping`) |
+| 409 | `wrong_mode` | the request needs another shooting mode (§5.3 needs `photo`, §5.13 `video`/`looping`/`timelapse`) |
 | 413 | `too_large` | headers or body over the limit |
 | 416 | `range_not_satisfiable` | bad `Range` on a download |
 | 500 | `internal` | unexpected failure; `message` says what |
@@ -147,7 +147,7 @@ Setting ids and their tokens (an adapter offers a subset):
 
 | `id` | Tokens | Meaning |
 |---|---|---|
-| `mode` | `photo`, `video`, `timelapse`, `looping`, `burst`, `slowmo` | Shooting mode. §5.3 needs `photo`, §5.13 `video`/`looping`. |
+| `mode` | `photo`, `video`, `timelapse`, `looping`, `burst`, `slowmo` | Shooting mode. §5.3 needs `photo`, §5.13 `video`/`looping`/`timelapse`. |
 | `lens` | `dual`, `rear`, `front` | Both lenses (360°) or a single one (180°). |
 | `photo_size` | `WxH` or adapter tokens (`dual_large`, `dual_small`, `single_large`, `single_wide`) | Still image size. |
 | `video_size` | `WxH@fps` | Movie size and frame rate. |
@@ -416,7 +416,7 @@ too, so the app re-reads them (on connection and when it shows them).
 ### 5.13 `POST /api/v1/record`
 
 Only when `capabilities.record`. `{"action": "start"}` starts a video recording in the current
-`mode` (`video` or `looping`; `409 wrong_mode` otherwise), `{"action": "stop"}` stops it. Answers
+`mode` (`video`, `looping` or `timelapse`; `409 wrong_mode` otherwise), `{"action": "stop"}` stops it. Answers
 `{ "recording": { "active": true, "elapsed_s": 0 } }` (as in §5.2); stopping answers the new files
 too, like §5.3: `{ "recording": { "active": false }, "files": [ ... ] }`. `409 busy` to start while
 recording or capturing; stopping when nothing records answers `200` with `active: false`.

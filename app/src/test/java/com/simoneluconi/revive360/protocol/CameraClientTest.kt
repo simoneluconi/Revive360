@@ -110,6 +110,53 @@ class CameraClientTest {
     }
 
     @Test
+    fun settingsCapabilitiesSkipEntriesWithoutValues() {
+        val defs = client.info().capabilities.settings
+        assertEquals(listOf("mode", "lens", "video_size"), defs.map { it.id })
+        assertEquals(listOf("photo", "video"), defs.first().values)
+    }
+
+    @Test
+    fun readAndChangeSettings() {
+        val now = client.settings()
+        assertEquals("photo", now["mode"])
+        assertTrue(now.containsKey("lens"))
+        assertNull(now["lens"])
+        val after = client.setSettings(mapOf("mode" to "video"))
+        assertEquals("video", after["mode"])
+        try {
+            client.setSettings(mapOf("iso" to "100"))
+            fail("expected bad_request")
+        } catch (e: CameraException) {
+            assertEquals(CameraException.BAD_REQUEST, e.code)
+        }
+    }
+
+    @Test
+    fun recordNeedsVideoModeThenStartsAndStops() {
+        try {
+            client.record(start = true)
+            fail("expected wrong_mode")
+        } catch (e: CameraException) {
+            assertEquals(CameraException.WRONG_MODE, e.code)
+        }
+        client.setSettings(mapOf("mode" to "video"))
+        val started = client.record(start = true)
+        assertTrue(started.recording.active)
+        assertEquals(0L, started.recording.elapsedS)
+        val stopped = client.record(start = false)
+        assertTrue(!stopped.recording.active)
+        assertEquals("360_0008.MP4", stopped.files.single().name)
+    }
+
+    @Test
+    fun statusCarriesTheRecording() {
+        val status = ProtocolJson.status(FakeCamera.STATUS_RECORDING)
+        assertEquals(Recording(active = true, elapsedS = 42), status.recording)
+        assertNull(ProtocolJson.status(FakeCamera.STATUS).recording)
+    }
+
+    @Test
     fun ledCommand() {
         client.setLed("front", LedState.ON)
         assertTrue(camera.requests.contains("POST /api/v1/led"))
