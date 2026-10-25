@@ -27,6 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -127,7 +130,10 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
     // Straightening: the slider turns from where the drag started, then springs back to 0
     var straighten by remember { mutableIntStateOf(0) }
     var straightenFrom by remember { mutableStateOf<Pair<PanoramaEdit, ViewState>?>(null) }
-    var framing by remember { mutableStateOf(false) }
+    // Framing: the chosen shape, its frame on the viewer and the viewer's size, in pixels
+    var frameRatio by remember { mutableStateOf<Float?>(null) }
+    var frame by remember { mutableStateOf<Rect?>(null) }
+    var viewer by remember { mutableStateOf(Size.Zero) }
     var panorama by remember { mutableStateOf<PanoramaView?>(null) }
 
     fun keep(next: PanoramaEdit) {
@@ -196,7 +202,14 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
     ScreenScaffold(title = source?.title ?: fallbackTitle, scroll = false, bare = full) {
         Box(
             (if (full) Modifier.fillMaxSize() else Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(20.dp)))
-                .background(Color.Black),
+                .background(Color.Black)
+                .onSizeChanged {
+                    val size = Size(it.width.toFloat(), it.height.toFloat())
+                    if (size != viewer) {
+                        viewer = size
+                        frame = frameRatio?.let { r -> centredFrame(size, r) }
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
             AndroidView(
@@ -210,6 +223,8 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
                 update = { it.show(picture) },
                 modifier = Modifier.fillMaxSize(),
             )
+            val shown = frame
+            if (shown != null && picture != null) FrameOverlay(shown, viewer) { frame = it }
             if (picture == null && error == null) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Spinner()
@@ -295,8 +310,36 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
             }
         }
 
+        // Framing: a shape shows its frame on the picture, tapped again it goes
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Label(stringResource(R.string.pano_format), size = 14.sp, color = colors.text2)
+            FRAMES.forEach { (label, ratio) ->
+                Chip(label, selected = frameRatio == ratio) {
+                    frameRatio = if (frameRatio == ratio) null else ratio
+                    frame = frameRatio?.let { centredFrame(viewer, it) }
+                }
+            }
+        }
+
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton(stringResource(R.string.pano_frame), Modifier.weight(1f), icon = AppIcons.Photo, enabled = ready) { framing = true }
+            PillButton(stringResource(R.string.pano_frame), Modifier.weight(1f), icon = AppIcons.Photo, enabled = ready && frame != null) {
+                val image = picture ?: return@PillButton
+                val v = panorama?.view ?: return@PillButton
+                val f = frame ?: return@PillButton
+                val local = original
+                val from = source ?: return@PillButton
+                val window = frameWindow(f, viewer)
+                val (w, h) = frameSize(image, v, window)
+                val stamp = java.text.SimpleDateFormat("HHmmss", java.util.Locale.ROOT).format(java.util.Date())
+                save("Framing ${w}x$h") {
+                    val flat = ViewRenderer.render(image, model, v, w, h, window)
+                    try {
+                        publish("${from.baseName}_${mode.fileTag}_$stamp.jpg") { Jpeg360.writeFlat(flat, local, it) }
+                    } finally {
+                        flat.recycle()
+                    }
+                }
+            }
             if (source?.stitched != true) {
                 PillButton(
                     stringResource(if (saving) R.string.pano_saving else R.string.pano_save),
@@ -318,35 +361,6 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
                             }
                         } finally {
                             stitched.recycle()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (framing) {
-        AppDialog(
-            title = stringResource(R.string.pano_frame_title),
-            onDismiss = { framing = false },
-            buttons = { PillButton(stringResource(R.string.action_cancel)) { framing = false } },
-        ) {
-            Label(stringResource(R.string.pano_frame_message), size = 14.sp, color = colors.text2)
-            FRAMES.forEach { (label, ratio) ->
-                PillButton(label, Modifier.fillMaxWidth()) {
-                    framing = false
-                    val image = picture ?: return@PillButton
-                    val v = panorama?.view ?: return@PillButton
-                    val local = original
-                    val from = source ?: return@PillButton
-                    val (w, h) = frameSize(image, v, ratio)
-                    val stamp = java.text.SimpleDateFormat("HHmmss", java.util.Locale.ROOT).format(java.util.Date())
-                    save("Framing ${w}x$h") {
-                        val flat = ViewRenderer.render(image, model, v, w, h)
-                        try {
-                            publish("${from.baseName}_${mode.fileTag}_$stamp.jpg") { Jpeg360.writeFlat(flat, local, it) }
-                        } finally {
-                            flat.recycle()
                         }
                     }
                 }
@@ -377,20 +391,34 @@ private const val STRAIGHTEN_STEPS = 60
 private val FRAMES = listOf("16:9" to 16f / 9f, "4:3" to 4f / 3f, "1:1" to 1f, "9:16" to 9f / 16f)
 
 /**
+ * The frame [f], on a viewer of size [viewer], as the renderer's window: centre and half size in
+ * units of the view's half height, y up.
+ */
+private fun frameWindow(f: Rect, viewer: Size): FloatArray {
+    val h = viewer.height
+    return floatArrayOf(
+        (f.center.x / viewer.width * 2f - 1f) * viewer.width / h,
+        -(f.center.y / h * 2f - 1f),
+        f.width / h,
+        f.height / h,
+    )
+}
+
+/**
  * A framing's size: as much detail as the picture has in the middle of the view (its pixels per
  * radian there), at most [MAX_FRAME] on the long side.
  */
-private fun frameSize(picture: Panorama, view: ViewState, ratio: Float): Pair<Int, Int> {
+private fun frameSize(picture: Panorama, view: ViewState, window: FloatArray): Pair<Int, Int> {
     val perRadian = when (picture) {
         is DualFisheyeImage -> picture.side * 2 / (2 * Math.PI)
         is EquirectImage -> picture.bitmap.width / (2 * Math.PI)
     }
-    var h = 2 * view.scale() * perRadian
-    var w = h * ratio
+    var w = 2 * window[2] * view.scale() * perRadian
+    var h = 2 * window[3] * view.scale() * perRadian
     val longest = maxOf(w, h)
     if (longest > MAX_FRAME) {
-        h *= MAX_FRAME / longest
         w *= MAX_FRAME / longest
+        h *= MAX_FRAME / longest
     }
     return w.toInt().coerceAtLeast(320) to h.toInt().coerceAtLeast(320)
 }

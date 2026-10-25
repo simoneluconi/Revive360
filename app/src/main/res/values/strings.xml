@@ -240,6 +240,5 @@
     <string name="pano_first_view_done">The 360 photo will open looking here</string>
     <string name="pano_reset">Undo edits</string>
     <string name="pano_frame">Save framing</string>
-    <string name="pano_frame_title">Save what you see</string>
-    <string name="pano_frame_message">An ordinary photo of the current view, in the shape you choose.</string>
+    <string name="pano_format">Format</string>
 </resources>

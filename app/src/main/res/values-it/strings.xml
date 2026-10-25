@@ -238,6 +238,5 @@
     <string name="pano_first_view_done">La foto 360° si aprirà guardando qui</string>
     <string name="pano_reset">Annulla modifiche</string>
     <string name="pano_frame">Salva inquadratura</string>
-    <string name="pano_frame_title">Salva quello che vedi</string>
-    <string name="pano_frame_message">Una foto normale della vista attuale, nel formato che scegli.</string>
+    <string name="pano_format">Formato</string>
 </resources>

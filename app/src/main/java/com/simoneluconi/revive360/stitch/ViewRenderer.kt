@@ -54,6 +54,7 @@ class ViewRenderer(private val model: DualFisheye) {
         val scale = GLES30.glGetUniformLocation(id, "uScale")
         val projection = GLES30.glGetUniformLocation(id, "uProjection")
         val flip = GLES30.glGetUniformLocation(id, "uFlipY")
+        val window = GLES30.glGetUniformLocation(id, "uWindow")
     }
 
     private var dual: ViewProgram? = null
@@ -84,8 +85,11 @@ class ViewRenderer(private val model: DualFisheye) {
         equirect = null
     }
 
-    /** Into the bound framebuffer, [width] x [height]; [flipY] for a picture read back with glReadPixels. */
-    fun draw(picture: Panorama, width: Int, height: Int, view: ViewState, flipY: Boolean = false) {
+    /**
+     * Into the bound framebuffer, [width] x [height]; [flipY] for a picture read back with
+     * glReadPixels. [window]: the part of a screen's view to draw (see [render]); null for all of it.
+     */
+    fun draw(picture: Panorama, width: Int, height: Int, view: ViewState, flipY: Boolean = false, window: FloatArray? = null) {
         if (shown !== picture) {
             dropTextures()
             textures = when (picture) {
@@ -117,6 +121,8 @@ class ViewRenderer(private val model: DualFisheye) {
         GLES30.glUniform1f(program.scale, view.scale())
         GLES30.glUniform1i(program.projection, view.projection.ordinal)
         GLES30.glUniform1f(program.flip, if (flipY) -1f else 1f)
+        val w = window ?: floatArrayOf(0f, 0f, width.toFloat() / height, 1f)
+        GLES30.glUniform4f(program.window, w[0], w[1], w[2], w[3])
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
     }
 
@@ -129,11 +135,13 @@ uniform mat3 uLevel;
 uniform float uScale;
 uniform int uProjection;
 uniform float uFlipY;
+// The drawn part of the view: centre and half size, in units of the view's half height
+uniform vec4 uWindow;
 out vec4 color;
 
 vec3 viewRay() {
-    vec2 p = gl_FragCoord.xy / uViewport * 2.0 - 1.0;
-    p = vec2(p.x * uViewport.x / uViewport.y, p.y * uFlipY) * uScale;
+    vec2 l = gl_FragCoord.xy / uViewport * 2.0 - 1.0;
+    vec2 p = (uWindow.xy + vec2(l.x, l.y * uFlipY) * uWindow.zw) * uScale;
     vec3 r;
     if (uProjection == 1) {
         float q = dot(p, p);
@@ -168,10 +176,11 @@ void main() {
 """
 
         /**
-         * The view as a [width] x [height] picture, off screen. Call off the main thread: it makes
-         * its own GL context.
+         * The view as a [width] x [height] picture, off screen: all of it, or the [window] of a
+         * screen showing it (centre x, y and half width, height, in units of that screen's half
+         * height, y up). Call off the main thread: it makes its own GL context.
          */
-        fun render(picture: Panorama, model: DualFisheye, view: ViewState, width: Int, height: Int): Bitmap =
+        fun render(picture: Panorama, model: DualFisheye, view: ViewState, width: Int, height: Int, window: FloatArray? = null): Bitmap =
             OffscreenGl().use {
                 val renderer = ViewRenderer(model).apply { create() }
                 val target = IntArray(1)
@@ -185,7 +194,7 @@ void main() {
                     GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, target[0], 0)
                     check(GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER) == GLES30.GL_FRAMEBUFFER_COMPLETE) { "framebuffer incomplete" }
                     // Read back bottom row first: drawn upside down, the rows land top first
-                    renderer.draw(picture, width, height, view, flipY = true)
+                    renderer.draw(picture, width, height, view, flipY = true, window = window)
                     val pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
                     GLES30.glReadPixels(0, 0, width, height, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels)
                     Gl.check("view read back")
