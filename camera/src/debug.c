@@ -165,6 +165,15 @@ void api_debug_vconf(req_t *r)
  * ("chain FILE"), no card swap. FILE is a plain name ([A-Za-z0-9._-], not
  * starting with a dot).
  */
+/* Puts part in place of to. The camera's exFAT driver does not replace on a
+ * rename over an existing file: it adds a second entry of the same name (the
+ * card ended up with seven bin/g360rd), so the old one goes first. */
+static int replace_file(const char *part, const char *to)
+{
+    unlink(to);
+    return rename(part, to);
+}
+
 /* Copies from to to through to.part, mode 0755; 0 or -1 */
 static int copy_exec(const char *from, const char *to)
 {
@@ -184,7 +193,7 @@ static int copy_exec(const char *from, const char *to)
         if (fwrite(buf, 1, n, out) != n)
             rc = -1;
     fclose(in);
-    if (fclose(out) != 0 || rc < 0 || chmod(part, 0755) != 0 || rename(part, to) != 0) {
+    if (fclose(out) != 0 || rc < 0 || chmod(part, 0755) != 0 || replace_file(part, to) != 0) {
         unlink(part);
         return -1;
     }
@@ -283,7 +292,7 @@ void api_debug_upload(req_t *r)
         fwrite(buf, 1, (size_t)n, f);
         left -= n;
     }
-    if (fclose(f) != 0 || left > 0 || rename(part, path) != 0) {
+    if (fclose(f) != 0 || left > 0 || replace_file(part, path) != 0) {
         unlink(part);
         http_send_error(r, 500, "internal", "upload of %s incomplete (%ld bytes missing)", name, left);
         return;
