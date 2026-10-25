@@ -199,6 +199,24 @@ data class CameraFile(
     val baseName: String get() = name.substringBeforeLast('.')
 }
 
+/**
+ * Newest shot first, by the DCF numbers (folder 100..999, then the file's four digits): the order
+ * the camera shot them in, whatever its clock said. Names without numbers go by date, after.
+ */
+object ShotOrder {
+    private val FOLDER = Regex("""^DCIM/(\d{3})""")
+    private val FILE = Regex("""(\d{4})$""")
+
+    val newestFirst: Comparator<CameraFile> = compareByDescending<CameraFile> { folder(it) }
+        .thenByDescending { number(it) }
+        .thenByDescending { it.mtime }
+        .thenBy { it.name }
+
+    private fun folder(file: CameraFile): Int = FOLDER.find(file.path)?.groupValues?.get(1)?.toInt() ?: -1
+
+    private fun number(file: CameraFile): Int = FILE.find(file.baseName)?.groupValues?.get(1)?.toInt() ?: -1
+}
+
 data class CaptureResult(val files: List<CameraFile>, val durationMs: Long)
 
 /** The camera clock after a time sync, and what it applied (`system`, `rtc`, `timezone`). */

@@ -12,6 +12,7 @@ import com.simoneluconi.revive360.media.VideoThumbnails
 import com.simoneluconi.revive360.protocol.CameraClient
 import com.simoneluconi.revive360.protocol.CameraException
 import com.simoneluconi.revive360.protocol.CameraFile
+import com.simoneluconi.revive360.protocol.ShotOrder
 import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.protocol.CameraInfo
 import com.simoneluconi.revive360.protocol.CameraStatus
@@ -404,7 +405,7 @@ class CameraController(
             EventLog.log("Capture: ${result.files.joinToString { it.name }} in ${result.durationMs} ms")
             _lastCapture.value = result
             // New files first, then a fresh listing replaces them
-            _files.update { list -> list?.let { result.files + it.filterNot { f -> result.files.any { n -> n.path == f.path } } } }
+            _files.update { list -> list?.let { (result.files + it.filterNot { f -> result.files.any { n -> n.path == f.path } }).sortedWith(ShotOrder.newestFirst) } }
             scope.launch { runCatching { refreshFiles() } }
             // The camera switches to photo mode for a still (protocol §5.3)
             if (_settings.value != null) scope.launch { runCatching { refreshSettings() } }
@@ -471,7 +472,7 @@ class CameraController(
             _status.update { it?.copy(recording = result.recording) }
             if (result.files.isNotEmpty()) {
                 EventLog.log("Recording: ${result.files.joinToString { it.name }}")
-                _files.update { list -> list?.let { result.files + it.filterNot { f -> result.files.any { n -> n.path == f.path } } } }
+                _files.update { list -> list?.let { (result.files + it.filterNot { f -> result.files.any { n -> n.path == f.path } }).sortedWith(ShotOrder.newestFirst) } }
                 scope.launch { runCatching { refreshFiles() } }
             }
         } catch (e: Exception) {
@@ -486,7 +487,7 @@ class CameraController(
         val client = client ?: return
         try {
             val list = withContext(Dispatchers.IO) { client.files() }
-            _files.value = list
+            _files.value = list.sortedWith(ShotOrder.newestFirst)
         } catch (e: Exception) {
             EventLog.log("Files: listing failed (${e.message})")
             throw e
