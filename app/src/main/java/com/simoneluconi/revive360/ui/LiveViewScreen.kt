@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.revive360.EventLog
 import com.simoneluconi.revive360.R
 import com.simoneluconi.revive360.link.CameraController
@@ -67,7 +68,8 @@ fun LiveViewScreen() {
     // The retry the view already acted on (update runs at every recomposition)
     val handled = remember { intArrayOf(0) }
     var full by rememberSaveable { mutableStateOf(false) }
-    var quality by rememberSaveable { mutableStateOf(QUALITIES.first()) }
+    // The stream chosen last time, remembered across launches
+    val quality by nav.app.settings.liveQuality.collectAsStateWithLifecycle()
     val qualityNow = rememberUpdatedState(quality)
     val view = LocalView.current
 
@@ -151,7 +153,7 @@ fun LiveViewScreen() {
             QUALITIES.forEach { q ->
                 Chip(stringResource(qualityLabel(q)), selected = q == quality) {
                     if (q != quality) {
-                        quality = q
+                        nav.app.settings.setLiveQuality(q)
                         frames = 0L
                         session.stop()
                         attempt++
