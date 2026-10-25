@@ -81,6 +81,41 @@ copy_checked() {
     step "copied ${1##*/} -> card/${2##*/} (checked)"
 }
 
+# The camera's model and firmware version, from the newest photo on the card (its Exif
+# Model and Software fields: SM-C200 / 0.85 is C200GLU0AQK1). Empty when there is none.
+camera_of() {
+    local jpg head
+    jpg=$(ls -t "$1"/DCIM/*/*.JPG "$1"/DCIM/*/*.jpg 2>/dev/null | head -n 1 || true)
+    [ -n "$jpg" ] || return 0
+    head=$(head -c 4096 "$jpg" | tr -c '[:print:]' '
+')
+    printf '%s %s
+' "$(printf '%s
+' "$head" | grep -E -x 'SM-[CR][0-9]+' | head -n 1)"         "$(printf '%s
+' "$head" | grep -E -x '[0-9]\.[0-9]{2}' | head -n 1)"
+}
+
+# Stops for another camera model, warns for another firmware version or no photo to tell.
+check_camera() {
+    local found model version
+    found=$(camera_of "$1")
+    model=${found%% *}
+    version=${found#* }
+    if [ -z "$model" ]; then
+        say "Could not check the camera: no photo of it on the card. Take one photo with the"
+        step "camera (with this card in), then run this again to be sure it is a supported one."
+        return 0
+    fi
+    [ "$model" = "SM-C200" ] || die "the photos on this card come from a $model: only the SM-C200 (Gear 360 2016) is supported"
+    if [ "$version" = "0.85" ]; then
+        step "camera: SM-C200 with firmware C200GLU0AQK1 (0.85), from its photos"
+    else
+        say "Note: the photos come from an SM-C200 with firmware version ${version:-unknown}, not 0.85"
+        step "(C200GLU0AQK1). Our firmware is a complete C200GLU0AQK1 image, so installing it also"
+        step "updates the camera to that version, as Samsung's own update did."
+    fi
+}
+
 flash_instructions() {
     say "On the camera ($1):"
     step "1. Battery charged to near full, USB cable UNPLUGGED."
@@ -118,6 +153,7 @@ cmd_flash() {
     card=$(card_dir "${1:-}")
     [ -f "$IMAGE" ] || die "no $IMAGE yet: run ./install.sh build first"
     say "Preparing $card for the firmware update"
+    check_camera "$card"
     disarm "$card"
     put_aside "$card/smc200.bin.flashed"
     copy_checked "$IMAGE" "$card/smc200.bin"
@@ -211,6 +247,9 @@ cmd_status() {
     local card
     card=$(card_dir "${1:-}")
     say "Card $card"
+    local cam
+    cam=$(camera_of "$card")
+    if [ -n "${cam// /}" ]; then step "camera (from its newest photo): $cam"; fi
     local f
     for f in smc200.bin fwupgrade.txt info.tg cmd.tg; do
         if [ -e "$card/$f" ]; then step "$f present"; fi

@@ -7,7 +7,10 @@ you exactly what to do on the camera.
 
 **You need:**
 
-- a **Gear 360 (2016, SM-C200)** with firmware **C200GLU0AQK1** (the only one supported for now);
+- a **Gear 360 (2016, SM-C200)**, best with firmware **C200GLU0AQK1**. To see yours, look at
+  the details of any photo it took: "Software" (on Windows: Properties, Details, "Program name")
+  is **0.85** for C200GLU0AQK1. You do not have to check by hand: `./install.sh flash` reads it
+  from the photos on the card and stops if the camera is not a supported one;
 - a **microSD card** and a card reader for the computer (the photos already on it stay);
 - a **Windows or Linux computer** with [Docker Desktop](https://www.docker.com/products/docker-desktop/)
   running and [Git](https://git-scm.com/downloads) installed (on Windows, the commands below go
