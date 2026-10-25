@@ -11,7 +11,7 @@
 
     <!-- Home -->
     <string name="welcome_title">Set up your camera</string>
-    <string name="welcome_text">Prepare the camera\'s SD card once with the Revive360 files, then let the app find the camera\'s Wi-Fi. From then on it connects by itself and your phone keeps its internet.</string>
+    <string name="welcome_text">Prepare the camera's SD card once with ./install.sh, then switch the camera on and pair it: the app finds it over Bluetooth, and from then on connects by itself while the phone stays on the internet.</string>
     <string name="welcome_action">Set up the camera</string>
     <string name="adapter_not_supported">This camera is not fully supported yet (%1$s): only what it reports is shown.</string>
     <string name="status_battery">Battery</string>
@@ -193,7 +193,7 @@
     <string name="settings_repair">Set up again</string>
     <string name="settings_forget">Forget</string>
     <string name="forget_title">Forget the camera?</string>
-    <string name="forget_message">The app stops connecting to it. To use it again, set it up with its code.</string>
+    <string name="forget_message">The app stops connecting to it. To use it again, pair it again within 3 minutes of switching it on.</string>
     <string name="settings_look">Look</string>
     <string name="settings_theme">Theme</string>
     <string name="theme_system">System</string>

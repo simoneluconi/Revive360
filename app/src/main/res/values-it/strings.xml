@@ -9,7 +9,7 @@
 
     <!-- Home -->
     <string name="welcome_title">Configura la fotocamera</string>
-    <string name="welcome_text">Prepara una volta la scheda SD della fotocamera con i file di Revive360, poi lascia che l\'app trovi il Wi-Fi della fotocamera. Da lì in poi si collega da sola e il telefono resta connesso a internet.</string>
+    <string name="welcome_text">Prepara una volta la scheda SD della fotocamera con ./install.sh, poi accendila e associala: l'app la trova via Bluetooth e da lì in poi si collega da sola, mentre il telefono resta connesso a internet.</string>
     <string name="welcome_action">Configura la fotocamera</string>
     <string name="adapter_not_supported">Questa fotocamera non è ancora supportata del tutto (%1$s): vedi solo quello che dichiara.</string>
     <string name="status_battery">Batteria</string>
@@ -191,7 +191,7 @@
     <string name="settings_repair">Riconfigura</string>
     <string name="settings_forget">Dimentica</string>
     <string name="forget_title">Dimenticare la fotocamera?</string>
-    <string name="forget_message">L\'app smette di collegarsi. Per usarla di nuovo, configurala con il suo codice.</string>
+    <string name="forget_message">L'app smette di collegarsi. Per usarla di nuovo, associala di nuovo entro 3 minuti dall'accensione.</string>
     <string name="settings_look">Aspetto</string>
     <string name="settings_theme">Tema</string>
     <string name="theme_system">Sistema</string>
