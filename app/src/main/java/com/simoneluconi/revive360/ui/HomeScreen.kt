@@ -122,7 +122,8 @@ fun HomeScreen() {
             }
         }
         if (caps.canCapture) CaptureCard(info, shot, changer)
-        if (caps.listFiles) {
+        // Without a capture bar the gallery is a row here
+        if (caps.listFiles && !caps.canCapture) {
             Card(padding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
                 SettingRow(
                     title = stringResource(R.string.gallery_title),
@@ -338,7 +339,11 @@ private fun CaptureBar(info: CameraInfo, shot: ShotChoice, changer: SettingChang
 
     v.caps.setting(SettingIds.MODE)?.let { ModeChips(it, v.settings, changer) }
     Spacer(Modifier.height(10.dp))
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // The gallery on the left of the shutter, as in a camera app; the right side balances it
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (v.caps.listFiles) GalleryButton()
+        }
         if (v.recordMode || recording) {
             RecordButton(active = recording, busy = v.recordBusy) {
                 scope.launch {
@@ -370,6 +375,7 @@ private fun CaptureBar(info: CameraInfo, shot: ShotChoice, changer: SettingChang
                 }
             }
         }
+        Spacer(Modifier.weight(1f))
     }
     Spacer(Modifier.height(6.dp))
     Label(
@@ -609,6 +615,33 @@ private fun ShutterButton(busy: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         if (busy) Spinner(size = 28.dp) else Icon(AppIcons.Shutter, colors.onAccent, size = 30.dp)
+    }
+}
+
+/** The gallery, showing the newest file's picture: the camera roll button of a camera app. */
+@Composable
+private fun GalleryButton() {
+    val nav = LocalActions.current
+    val colors = LocalAppColors.current
+    val files by nav.app.controller.files.collectAsStateWithLifecycle()
+    val newest = files?.firstOrNull()
+    var thumb by remember(newest?.path) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(newest?.path) { thumb = newest?.let { nav.app.controller.thumbnail(it) } }
+    Box(
+        Modifier
+            .size(56.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.surface2)
+            .border(1.dp, colors.line, RoundedCornerShape(16.dp))
+            .pressable(label = stringResource(R.string.gallery_title)) { nav.navigate(Screen.Gallery) },
+        contentAlignment = Alignment.Center,
+    ) {
+        val image = thumb
+        if (image != null) {
+            Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp))
+        } else {
+            Icon(AppIcons.Gallery, colors.text2, size = 24.dp)
+        }
     }
 }
 
