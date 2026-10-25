@@ -74,6 +74,9 @@
     <string name="liveview_info">%1$d×%2$d · %3$d fps</string>
     <string name="liveview_hint">Both lenses as the camera sees them. The camera closes the live view to take a shot or record.</string>
     <string name="liveview_hint_full">Tap the picture for full screen.</string>
+    <string name="liveview_quality_high">High</string>
+    <string name="liveview_quality_middle">Medium</string>
+    <string name="liveview_quality_low">Low</string>
     <string name="value_never">Never</string>
     <string name="setting_ev">Exposure</string>
     <string name="setting_iso_limit">ISO limit</string>

@@ -402,9 +402,9 @@ class CameraController(
     }
 
     /** Opens the live view (protocol §5.14); the caller closes it. Blocking: call off the main thread. */
-    fun openLiveView(): LiveStream {
-        EventLog.log("Live view: opening")
-        return requireClient().openLiveView()
+    fun openLiveView(quality: String? = null): LiveStream {
+        EventLog.log("Live view: opening${quality?.let { " ($it)" } ?: ""}")
+        return requireClient().openLiveView(quality)
     }
 
     /** Changes one camera setting; the flow takes the values the camera answers. */

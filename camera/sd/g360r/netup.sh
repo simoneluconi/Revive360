@@ -112,9 +112,21 @@ _netup_write_hostapd_conf() {
         echo "driver=nl80211"
         echo "ctrl_interface=$_netup_hostapd_ctrl"
         echo "ssid=$AP_SSID"
-        echo "channel=$CH"
-        echo "hw_mode=g"
-        echo "ieee80211n=1"
+        if [ "$BAND" = 5 ]; then
+            # 5 GHz, 802.11n/ac on an 80 MHz channel: the live view needs the bandwidth
+            echo "channel=$CH"
+            echo "hw_mode=a"
+            echo "ieee80211n=1"
+            echo "ieee80211ac=1"
+            echo "wmm_enabled=1"
+            echo "ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40]"
+            echo "vht_oper_chwidth=1"
+            echo "vht_oper_centr_freq_seg0_idx=$((CH + 6))"
+        else
+            echo "channel=$CH"
+            echo "hw_mode=g"
+            echo "ieee80211n=1"
+        fi
         echo "max_num_sta=1"
         echo "ignore_broadcast_ssid=$HIDE"
         echo "wpa=2"
@@ -123,7 +135,7 @@ _netup_write_hostapd_conf() {
         echo "$key_line"
     } > "$_netup_hostapd_conf" 2>/dev/null
     chmod 600 "$_netup_hostapd_conf" 2>/dev/null
-    log "netup: wrote $_netup_hostapd_conf (ssid=$AP_SSID ch=$CH hide=$HIDE, key masked)"
+    log "netup: wrote $_netup_hostapd_conf (ssid=$AP_SSID band=$BAND ch=$CH hide=$HIDE, key masked)"
 }
 
 # Copy hostapd's -dd log into the SD log, masking the passphrase (literal) AND any
@@ -191,6 +203,45 @@ _netup_wl_is_ap() {
     return 1
 }
 
+# One access point attempt on $BAND/$CH: conf, hostapd, the checks. 0 = up on that
+# band; else hostapd is stopped again for the next attempt.
+_netup_try_ap() {
+    _netup_write_hostapd_conf
+    _netup_start_hostapd
+    _netup_import_hostapd_log     # copy masked hostapd log regardless of outcome
+    # Success requires hostapd alive AND AP mode confirmed (wl, or hostapd's own
+    # AP-ENABLED when wl is unavailable).
+    if ! _netup_hostapd_running; then
+        log "netup: hostapd not running ($BAND GHz)"
+        return 1
+    fi
+    _netup_wl_is_ap; wl_rc=$?
+    case "$wl_rc" in
+        0) log "netup: AP confirmed by wl" ;;
+        1) log "netup: hostapd up but wl reports NOT in AP mode ($BAND GHz)"; _netup_stop_hostapd; return 1 ;;
+        2) if ! _netup_hostapd_up_in_log; then
+               log "netup: wl unavailable and hostapd never reported AP-ENABLED ($BAND GHz)"
+               _netup_stop_hostapd
+               return 1
+           fi
+           log "netup: wl unavailable; accepting hostapd AP-ENABLED as confirmation" ;;
+    esac
+    # On 5 GHz the radio must really be there ("Using interface" comes before the channel)
+    if [ "$BAND" = 5 ] && [ -x /usr/bin/wl ] && ! /usr/bin/wl status 2>/dev/null | grep -q "5GHz"; then
+        log "netup: the AP did not come up on 5 GHz"
+        _netup_stop_hostapd
+        return 1
+    fi
+    return 0
+}
+
+_netup_stop_hostapd() {
+    [ -f "$_netup_hostapd_pid" ] && { p=$(cat "$_netup_hostapd_pid" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; }
+    pkill -f "hostapd -dd $_netup_hostapd_conf" 2>/dev/null
+    rm -f "$_netup_hostapd_pid" 2>/dev/null
+    sleep 1
+}
+
 netup() {
     AP_STRATEGY="hostapd"
     AP_IF="$G360R_AP_IF"
@@ -198,7 +249,10 @@ netup() {
 
     AP_SSID=$(_netup_ssid)
     PSK=$(cfg psk "")
-    CH=$(cfg channel 6)
+    # band=5 (default) tries 5 GHz first and falls back to 2.4 GHz; band=2.4 only that
+    BAND=$(cfg band 5)
+    CH5=$(cfg channel_5g 36)
+    CH24=$(cfg channel 6)
     # Refuse an unprotected AP: it would expose camera control to anyone in range.
     if [ -z "$PSK" ]; then
         log "netup: no psk in g360r.conf - refusing to start an open AP"
@@ -211,29 +265,25 @@ netup() {
     _netup_rfkill                 # (2) unblock the radio
     _netup_load_apsta_fw          # (3) wlan.sh stop + softap: load the APSTA firmware
 
-    _netup_write_hostapd_conf     # (4) conf under /tmp (key not logged)
-    _netup_start_hostapd
-    hostapd_rc=$?
-    _netup_import_hostapd_log     # copy masked hostapd log regardless of outcome
-
-    # (6) success requires hostapd alive AND AP mode confirmed (wl, or hostapd's own
-    # AP-ENABLED when wl is unavailable).
-    if ! _netup_hostapd_running; then
-        log "netup: FAIL - hostapd not running"
-        logrun ls /sys/class/net
-        return 1
+    # (4) conf under /tmp (key not logged), hostapd, checks: 5 GHz first unless told not to
+    if [ "$BAND" = 5 ]; then
+        CH=$CH5
+        if ! _netup_try_ap; then
+            log "netup: 5 GHz failed, falling back to 2.4 GHz"
+            BAND=2.4
+        fi
     fi
-    _netup_wl_is_ap; wl_rc=$?
-    case "$wl_rc" in
-        0) log "netup: AP confirmed by wl" ;;
-        1) log "netup: FAIL - hostapd up but wl reports NOT in AP mode"; return 1 ;;
-        2) if _netup_hostapd_up_in_log; then
-               log "netup: wl unavailable; accepting hostapd AP-ENABLED as confirmation"
-           else
-               log "netup: FAIL - wl unavailable and hostapd never reported AP-ENABLED"
-               return 1
-           fi ;;
-    esac
+    if [ "$BAND" != 5 ]; then
+        BAND=2.4
+        CH=$CH24
+        if ! _netup_try_ap; then
+            log "netup: FAIL - no access point on 2.4 GHz either"
+            logrun ls /sys/class/net
+            return 1
+        fi
+    fi
+    G360R_AP_BAND=$BAND
+    log "netup: access point on $BAND GHz, channel $CH"
 
     # (5) address + DHCP on wlan0
     logrun "$BIN" ifaddr "$AP_IF" "$G360R_AP_IP" "$G360R_AP_MASK"

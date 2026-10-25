@@ -72,6 +72,9 @@
     <string name="liveview_info">%1$d×%2$d · %3$d fps</string>
     <string name="liveview_hint">Le due lenti come le vede la fotocamera. Per scattare o registrare la fotocamera chiude l\'anteprima.</string>
     <string name="liveview_hint_full">Tocca l\'immagine per lo schermo intero.</string>
+    <string name="liveview_quality_high">Alta</string>
+    <string name="liveview_quality_middle">Media</string>
+    <string name="liveview_quality_low">Bassa</string>
     <string name="value_never">Mai</string>
     <string name="setting_ev">Esposizione</string>
     <string name="setting_iso_limit">Limite ISO</string>

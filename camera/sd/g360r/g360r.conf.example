@@ -10,6 +10,14 @@ psk=CHANGE_ME
 # SSID override. Empty = G360R-<last 3 bytes of the wlan0 MAC> (protocol.md §1).
 ssid=
 
+# Wi-Fi band: 5 = 5 GHz (802.11ac, the bandwidth the live view needs), falling
+# back to 2.4 GHz on its own when the radio cannot; 2.4 = 2.4 GHz only (for a
+# phone without 5 GHz).
+band=5
+
+# 5 GHz channel (36-48: no radar detection needed, allowed indoors in Europe).
+channel_5g=36
+
 # 2.4 GHz channel.
 channel=6
 

@@ -3,6 +3,7 @@ package com.simoneluconi.revive360.media
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Build
+import android.os.SystemClock
 import android.view.Surface
 import java.io.DataInputStream
 import java.io.EOFException
@@ -28,6 +29,10 @@ class LiveViewDecoder(
 ) {
     private var codec: MediaCodec? = null
     private var frames = 0L
+    // Falling behind: the camera's timeline against the phone's clock
+    private var anchorWall = 0L
+    private var anchorTs = 0L
+    private var catchingUp = false
 
     /** Plays until the stream ends or fails (the exception says why) */
     fun run() {
@@ -41,13 +46,42 @@ class LiveViewDecoder(
                 val timestamp = data.readLong()
                 if (size < 0 || size > MAX_CHUNK) throw IllegalStateException("chunk of $size bytes")
                 val payload = ByteArray(size).also { data.readFully(it) }
-                if (String(id, Charsets.US_ASCII) == VIDEO_CHUNK) video(payload, timestamp, width, height)
+                if (String(id, Charsets.US_ASCII) == VIDEO_CHUNK && !behind(payload, timestamp)) {
+                    video(payload, timestamp, width, height)
+                }
             }
         } finally {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }
             codec = null
         }
+    }
+
+    /**
+     * Whether to drop this frame to catch up: when the picture is more than [MAX_LAG_MS] behind the
+     * camera (a slow stretch of Wi-Fi, then a burst), frames are dropped up to the next key frame,
+     * which decodes on its own; the timeline restarts there.
+     */
+    private fun behind(au: ByteArray, timestamp: Long): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val key = isKeyFrame(au)
+        if (anchorWall == 0L) {
+            anchorWall = now
+            anchorTs = timestamp
+        }
+        val lag = (now - anchorWall) - (timestamp - anchorTs) * 1_000 / TIMESCALE
+        if (lag < 0 || (key && (catchingUp || lag > MAX_LAG_MS))) {
+            // Ahead of the clock (data came early), or a key frame to restart from
+            anchorWall = now
+            anchorTs = timestamp
+            catchingUp = false
+            return false
+        }
+        if (lag > MAX_LAG_MS || catchingUp) {
+            catchingUp = true
+            return true
+        }
+        return false
     }
 
     /** The size from VID0; the reader left at the first chunk (after `movi`) */
@@ -108,10 +142,19 @@ class LiveViewDecoder(
         private const val HEADER_MAX = 4096
         private const val MAX_CHUNK = 8 * 1024 * 1024
         private const val INPUT_WAIT_US = 100_000L
+        /** How far the picture may fall behind the camera before frames are dropped */
+        private const val MAX_LAG_MS = 400L
 
         private const val NAL_VPS = 32
         private const val NAL_SPS = 33
         private const val NAL_PPS = 34
+
+        /** An access unit that starts with its parameter sets: a key frame (the camera's IDR) */
+        fun isKeyFrame(au: ByteArray): Boolean {
+            var i = 0
+            while (i + 3 < au.size && !(au[i].toInt() == 0 && au[i + 1].toInt() == 0 && au[i + 2].toInt() == 1)) i++
+            return i + 3 < au.size && ((au[i + 3].toInt() shr 1) and 0x3f) == NAL_VPS
+        }
 
         /** The VPS, SPS and PPS NAL units of an Annex B access unit, with their start codes */
         fun parameterSets(au: ByteArray): ByteArray? {

@@ -110,8 +110,8 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
      * The live view stream (protocol §5.14), open until [LiveStream.close]. The camera's stream starts
      * its camcorder a few seconds after the request: the read timeout leaves room for it.
      */
-    fun openLiveView(): LiveStream {
-        val connection = open("GET", "/api/v1/liveview", LIVE_READ_TIMEOUT_MS)
+    fun openLiveView(quality: String? = null): LiveStream {
+        val connection = open("GET", "/api/v1/liveview" + (quality?.let { "?quality=$it" } ?: ""), LIVE_READ_TIMEOUT_MS)
         val code = connection.responseCode
         if (code != 200) {
             val failure = failure(connection, code)

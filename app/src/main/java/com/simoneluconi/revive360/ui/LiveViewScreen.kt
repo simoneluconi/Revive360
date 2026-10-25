@@ -14,7 +14,9 @@ import androidx.compose.ui.platform.LocalView
 import android.view.Surface
 import android.view.TextureView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +67,8 @@ fun LiveViewScreen() {
     // The retry the view already acted on (update runs at every recomposition)
     val handled = remember { intArrayOf(0) }
     var full by rememberSaveable { mutableStateOf(false) }
+    var quality by rememberSaveable { mutableStateOf(QUALITIES.first()) }
+    val qualityNow = rememberUpdatedState(quality)
     val view = LocalView.current
 
     DisposableEffect(Unit) { onDispose { session.stop() } }
@@ -102,6 +107,7 @@ fun LiveViewScreen() {
                             override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
                                 session.start(
                                     Surface(texture),
+                                    qualityNow.value,
                                     onSize = { w, h -> size = w to h },
                                     onFrame = { frames = it },
                                     onError = { error = it },
@@ -127,6 +133,7 @@ fun LiveViewScreen() {
                         error = null
                         session.start(
                             Surface(view.surfaceTexture),
+                            qualityNow.value,
                             onSize = { w, h -> size = w to h },
                             onFrame = { frames = it },
                             onError = { error = it },
@@ -139,6 +146,19 @@ fun LiveViewScreen() {
           }
         }
         if (full) return@ScreenScaffold
+        // The camera's three streams: less bandwidth for a weak Wi-Fi
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            QUALITIES.forEach { q ->
+                Chip(stringResource(qualityLabel(q)), selected = q == quality) {
+                    if (q != quality) {
+                        quality = q
+                        frames = 0L
+                        session.stop()
+                        attempt++
+                    }
+                }
+            }
+        }
         val problem = error
         if (problem != null) {
             Card(color = colors.soft(colors.bad)) {
@@ -160,6 +180,14 @@ fun LiveViewScreen() {
         Label(stringResource(R.string.liveview_hint), Modifier.fillMaxWidth(), size = 13.sp, color = colors.text2,
             align = TextAlign.Center)
     }
+}
+
+private val QUALITIES = listOf("high", "middle", "low")
+
+private fun qualityLabel(quality: String): Int = when (quality) {
+    "middle" -> R.string.liveview_quality_middle
+    "low" -> R.string.liveview_quality_low
+    else -> R.string.liveview_quality_high
 }
 
 /** Shows or hides the status and navigation bars (swipe brings them back for a moment) */
@@ -191,14 +219,20 @@ private class LiveSession(private val controller: CameraController) {
 
     val running: Boolean get() = worker?.isAlive == true
 
-    fun start(target: Surface, onSize: (Int, Int) -> Unit, onFrame: (Long) -> Unit, onError: (String) -> Unit) {
+    fun start(
+        target: Surface,
+        quality: String,
+        onSize: (Int, Int) -> Unit,
+        onFrame: (Long) -> Unit,
+        onError: (String) -> Unit,
+    ) {
         if (running) return
         stopping = false
         surface?.takeIf { it !== target }?.release()
         surface = target
         worker = thread(name = "liveview") {
             try {
-                val opened = controller.openLiveView()
+                val opened = controller.openLiveView(quality)
                 stream.set(opened)
                 if (stopping) return@thread opened.close()
                 EventLog.log("Live view: ${opened.contentType}")
