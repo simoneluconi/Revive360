@@ -48,8 +48,10 @@ app shows `C200GLU0AQK1`).
 
 **The stock firmware file** for that version: `C200GLU0AQK1_171121_1257_REV00_user.bin`. It is
 Samsung's software, so this project **cannot distribute it, nor any firmware built from it**: you
-need your own copy, and you build the modified image yourself (step 3). Where to obtain the stock
-file: **TODO: verify**.
+need your own copy, and you build the modified image yourself (step 3). Put it in
+`firmware/stock/` in your clone of this repository (git ignores it); the expected file names and
+checksums are in [firmware/README.md](../firmware/README.md). Where to obtain the stock file:
+**TODO: verify**.
 
 **On the camera side:**
 
@@ -91,39 +93,21 @@ to extract that sysroot: **TODO: verify** (not documented yet).
 
 ## 3. Build the modified firmware
 
-In Git Bash, from the repository root. Replace `<stock firmware dir>` with the folder that holds
-`C200GLU0AQK1_171121_1257_REV00_user.bin`, and `<scratch dir>` with an empty folder for the output.
+Put the stock image in `firmware/stock/` (git ignores that folder; see
+[firmware/README.md](../firmware/README.md) for the files and their checksums). Then, in Git Bash
+from the repository root:
 
-1. Build the firmware tools image (once):
+```sh
+sh camera/tools/make_firmware.sh
+```
 
-   ```sh
-   MSYS_NO_PATHCONV=1 docker build -t g360r-fwtools:1 -f camera/docker/fwtools.Dockerfile camera/docker
-   ```
+It checks that the stock image is the supported one (by its SHA-256), builds the controller and
+the shim, stages the overlay and rebuilds the image. `fw_build.sh`, which it runs, refuses to
+overwrite any stock file and reads every added file back from the new image to compare it with
+the source. The result is `firmware/out/smc200.bin`.
 
-2. Stage the controller overlay: it copies the built `g360rd`, `launcher.sh`, `netup.sh` and the
-   shim next to the firmware overlay files (`camera/fw/overlay-controller/`).
-
-   ```sh
-   sh camera/tools/fw_stage_controller.sh <stage dir>
-   ```
-
-   Use a stage directory that the next command can see inside the repository (it is mounted at
-   `/w`), for example a folder under `camera/out/`. **TODO: verify** the recommended stage
-   location.
-
-3. Build the image:
-
-   ```sh
-   OUT=<scratch dir>
-   MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD:/w" -v "<stock firmware dir>:/fw:ro" -v "$OUT:/out" \
-       g360r-fwtools:1 sh camera/tools/fw_build.sh \
-       /fw/C200GLU0AQK1_171121_1257_REV00_user.bin <stage dir> /out/smc200.bin /out/work
-   ```
-
-   `fw_build.sh` refuses to overwrite any stock file and reads every added file back from the new
-   image to compare it with the source. The result is `<scratch dir>/smc200.bin`.
-
-Details and the sanity check (an empty overlay rebuilds a byte-identical rootfs):
+The individual steps, the overlay format and the sanity check (an empty overlay rebuilds a
+byte-identical rootfs) are in
 [camera/fw/README.md, section 1](../camera/fw/README.md#1-build-pc-git-bash-from-the-repo-root).
 
 ## 4. Flash the camera
@@ -134,7 +118,7 @@ Details and the sanity check (an empty overlay rebuilds a byte-identical rootfs)
 
    There must be **no** `info.tg` at the root. Check that the copy is intact: its SHA-256 must
    match the build output (in PowerShell: `Get-FileHash E:\smc200.bin`, and the same for the file
-   in `<scratch dir>`).
+   in `firmware/out/`).
 2. **Charge the battery to near full.** The camera checks the battery before updating, and the
    battery icon is not precise: half or low can fail the check.
 3. **Unplug the USB cable.** With USB connected at power-on the camera goes into USB mode and shows

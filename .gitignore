@@ -38,6 +38,10 @@ g360r.conf
 *.jks
 *.keystore
 
+# Samsung's firmware images: kept locally in firmware/, never published
+/firmware/*
+!/firmware/README.md
+
 # Local tooling
 /.claude/
 /history-purge-paths.txt
