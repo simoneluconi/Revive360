@@ -104,7 +104,19 @@ fun HomeScreen() {
             }
         }
         ConnectionCard(state, camera?.label)
-        val info = (state as? LinkState.Connected)?.info ?: return@ScreenScaffold
+        val info = (state as? LinkState.Connected)?.info
+        if (info == null) {
+            // Without the camera, what is already on the phone is still there to look at
+            Card(padding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+                SettingRow(
+                    title = stringResource(R.string.gallery_tab_phone),
+                    subtitle = stringResource(R.string.phone_subtitle),
+                    icon = AppIcons.Gallery,
+                    onClick = { nav.navigate(Screen.Gallery) },
+                )
+            }
+            return@ScreenScaffold
+        }
         val caps = info.capabilities
         if (info.adapterStatus != "supported") {
             Card(color = LocalAppColors.current.soft(LocalAppColors.current.warn)) {

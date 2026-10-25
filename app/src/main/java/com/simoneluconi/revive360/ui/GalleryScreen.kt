@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +62,8 @@ fun GalleryScreen() {
     val connected = state is LinkState.Connected
     val canDelete = (state as? LinkState.Connected)?.info?.capabilities?.delete == true
     var refreshing by remember { mutableStateOf(false) }
+    // The camera's card or what is already on the phone
+    var onPhone by rememberSaveable { mutableStateOf(!connected) }
     // Selection: a long press starts it, taps then toggle; paths, so a refresh keeps it
     var selected by remember { mutableStateOf<Set<String>?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -69,6 +73,7 @@ fun GalleryScreen() {
     val chosen = selected?.let { sel -> list.orEmpty().filter { it.path in sel } }
 
     BackHandler(enabled = selected != null) { selected = null }
+    LaunchedEffect(onPhone) { if (onPhone) selected = null }
 
     fun deleteChosen(targets: List<CameraFile>) {
         deleting = true
@@ -117,7 +122,9 @@ fun GalleryScreen() {
         title = chosen?.let { stringResource(R.string.gallery_selected, it.size) } ?: stringResource(R.string.gallery_title),
         scroll = false,
         actions = {
-            if (chosen != null) {
+            if (onPhone) {
+                // Nothing to act on: the phone's list has no selection
+            } else if (chosen != null) {
                 val all = chosen.size == list.orEmpty().size
                 RoundIconButton(
                     if (all) AppIcons.SelectNone else AppIcons.SelectAll,
@@ -140,6 +147,16 @@ fun GalleryScreen() {
             }
         },
     ) {
+        if (chosen == null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip(stringResource(R.string.gallery_tab_camera), selected = !onPhone) { onPhone = false }
+                Chip(stringResource(R.string.gallery_tab_phone), selected = onPhone) { onPhone = true }
+            }
+        }
+        if (onPhone) {
+            PhoneGallery()
+            return@ScreenScaffold
+        }
         when {
             list == null && !connected -> EmptyNote(stringResource(R.string.gallery_not_connected))
             list == null -> EmptyNote(stringResource(R.string.gallery_loading))

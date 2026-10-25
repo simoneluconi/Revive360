@@ -39,9 +39,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.revive360.EventLog
 import com.simoneluconi.revive360.R
 import com.simoneluconi.revive360.media.MediaSaver
+import com.simoneluconi.revive360.media.PhoneItem
+import com.simoneluconi.revive360.media.PhoneMedia
 import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.stitch.DualFisheye
 import com.simoneluconi.revive360.stitch.DualFisheyeImage
+import com.simoneluconi.revive360.stitch.EquirectImage
+import com.simoneluconi.revive360.stitch.Panorama
 import com.simoneluconi.revive360.stitch.Jpeg360
 import com.simoneluconi.revive360.stitch.Stitcher
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
@@ -51,22 +55,59 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** Where the 360 screen's picture comes from, and what it is. */
+class PanoramaSource(
+    val title: String,
+    /** The stitched copy is saved as this plus "_360.jpg". */
+    val baseName: String,
+    /** Unix seconds, when it was shot. */
+    val time: Long,
+    /** Already stitched (equirectangular): shown as it is, nothing to save. */
+    val stitched: Boolean,
+    /** The picture as a local file; reports the fraction fetched. */
+    val fetch: suspend (progress: (Float) -> Unit) -> File,
+)
+
 /** A camera photo as a sphere to look around, and its stitched 360 copy saved to the phone. */
 @Composable
 fun PanoramaScreen(path: String) {
+    val controller = LocalActions.current.app.controller
+    val files by controller.files.collectAsStateWithLifecycle()
+    val file = files?.firstOrNull { it.path == path }
+    val source = file?.let { f ->
+        remember(f) {
+            PanoramaSource(f.name, f.baseName, f.mtime, stitched = false) { progress ->
+                controller.original(f) { done, total -> progress(if (total > 0) done.toFloat() / total else 0f) }
+            }
+        }
+    }
+    PanoramaContent(source, path.substringAfterLast('/'))
+}
+
+/** A picture saved on the phone: a camera original (stitched on the fly) or a stitched copy. */
+@Composable
+fun PhonePanoramaScreen(item: PhoneItem) {
+    val context = LocalContext.current
+    val source = remember(item) {
+        PanoramaSource(item.name, item.baseName, item.time, item.isStitched) { progress ->
+            withContext(Dispatchers.IO) { PhoneMedia.local(context, item) }.also { progress(1f) }
+        }
+    }
+    PanoramaContent(source, item.name)
+}
+
+@Composable
+private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
     val nav = LocalActions.current
-    val controller = nav.app.controller
     val colors = LocalAppColors.current
     val resources = LocalResources.current
     val context = LocalContext.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
-    val files by controller.files.collectAsStateWithLifecycle()
-    val file = files?.firstOrNull { it.path == path }
     val model = remember { DualFisheye() }
     var fetched by remember { mutableFloatStateOf(-1f) }
     var original by remember { mutableStateOf<File?>(null) }
-    var picture by remember { mutableStateOf<DualFisheyeImage?>(null) }
+    var picture by remember { mutableStateOf<Panorama?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     var saving by remember { mutableStateOf(false) }
@@ -77,24 +118,26 @@ fun PanoramaScreen(path: String) {
         systemBars(view, show = !full)
         onDispose { systemBars(view, show = true) }
     }
-    LaunchedEffect(file?.path, attempt) {
-        val target = file ?: return@LaunchedEffect
+    LaunchedEffect(source, attempt) {
+        val target = source ?: return@LaunchedEffect
         if (picture != null) return@LaunchedEffect
         error = null
         try {
-            val local = controller.original(target) { done, total -> fetched = if (total > 0) done.toFloat() / total else 0f }
+            val local = target.fetch { fetched = it }
             original = local
             fetched = 1f
-            picture = withContext(Dispatchers.Default) { DualFisheyeImage.load(local, model, MAX_SIDE) }
+            picture = withContext(Dispatchers.Default) {
+                if (target.stitched) EquirectImage.load(local, MAX_SIDE) else DualFisheyeImage.load(local, model, MAX_SIDE)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            EventLog.log("360 view: ${target.name} failed (${e.message})")
+            EventLog.log("360 view: ${target.title} failed (${e.message})")
             error = Format.error(resources, e)
         }
     }
 
-    ScreenScaffold(title = file?.name ?: path.substringAfterLast('/'), scroll = false, bare = full) {
+    ScreenScaffold(title = source?.title ?: fallbackTitle, scroll = false, bare = full) {
         Box(
             (if (full) Modifier.fillMaxSize() else Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(20.dp)))
                 .background(Color.Black),
@@ -135,28 +178,29 @@ fun PanoramaScreen(path: String) {
             }
         }
         Label(stringResource(R.string.pano_hint), Modifier.fillMaxWidth(), size = 13.sp, color = colors.text2, align = TextAlign.Center)
+        if (source?.stitched == true) return@ScreenScaffold
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.Center) {
             PillButton(
                 stringResource(if (saving) R.string.pano_saving else R.string.pano_save),
                 icon = AppIcons.Download,
                 style = ButtonStyle.PRIMARY,
-                enabled = picture != null && !saving && file != null,
+                enabled = picture is DualFisheyeImage && !saving,
             ) {
-                val image = picture ?: return@PillButton
-                val source = original ?: return@PillButton
-                val camera = file ?: return@PillButton
+                val image = picture as? DualFisheyeImage ?: return@PillButton
+                val local = original ?: return@PillButton
+                val from = source ?: return@PillButton
                 saving = true
                 scope.launch {
                     try {
-                        val name = "${camera.baseName}_360.jpg"
+                        val name = "${from.baseName}${PhoneItem.STITCHED_SUFFIX}.jpg"
                         withContext(Dispatchers.Default) {
                             val started = System.currentTimeMillis()
                             val stitched = Stitcher.equirect(image, model, image.side * 2)
                             val out = File(context.cacheDir, name)
                             try {
-                                Jpeg360.write(stitched, source, out)
+                                Jpeg360.write(stitched, local, out)
                                 stitched.recycle()
-                                MediaSaver.publish(context, name, FileKind.PHOTO, "image/jpeg", camera.mtime, out)
+                                MediaSaver.publish(context, name, FileKind.PHOTO, "image/jpeg", from.time, out)
                             } finally {
                                 out.delete()
                             }

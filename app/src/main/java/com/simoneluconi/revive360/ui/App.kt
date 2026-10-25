@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.revive360.Revive360App
 import com.simoneluconi.revive360.R
+import com.simoneluconi.revive360.media.PhoneItem
 import com.simoneluconi.revive360.link.CompanionWifi
 import com.simoneluconi.revive360.ui.theme.AppTheme
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
@@ -65,6 +66,7 @@ sealed interface Screen {
     data object Log : Screen
     data object LiveView : Screen
     data class Panorama(val path: String) : Screen
+    data class PhonePanorama(val item: PhoneItem) : Screen
 }
 
 /** What screens need from the activity: navigation, short messages, system prompts. */
@@ -148,6 +150,7 @@ fun AppRoot(app: Revive360App, findCamera: ((CompanionWifi.Found?) -> Unit) -> U
                             Screen.Log -> LogScreen()
                             Screen.LiveView -> LiveViewScreen()
                             is Screen.Panorama -> PanoramaScreen(screen.path)
+                            is Screen.PhonePanorama -> PhonePanoramaScreen(screen.item)
                         }
                     }
                 }

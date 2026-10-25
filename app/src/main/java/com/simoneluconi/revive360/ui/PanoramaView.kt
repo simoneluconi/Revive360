@@ -9,24 +9,28 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import com.simoneluconi.revive360.stitch.DualFisheye
 import com.simoneluconi.revive360.stitch.DualFisheyeImage
+import com.simoneluconi.revive360.stitch.EquirectImage
+import com.simoneluconi.revive360.stitch.Panorama
 import com.simoneluconi.revive360.stitch.Gl
 import com.simoneluconi.revive360.stitch.Mat3
 import com.simoneluconi.revive360.stitch.SphereBinding
 import com.simoneluconi.revive360.stitch.SphereShader
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import kotlin.math.PI
+import kotlin.math.log2
 import kotlin.math.tan
 
 /**
- * Looks around a dual-fisheye picture as a sphere, stitched on the fly by the same shader the
- * export uses: drag to turn, pinch to zoom, double tap to go back to the front lens.
+ * Looks around a 360 picture: a dual-fisheye original, stitched on the fly by the same shader the
+ * export uses, or a stitched copy. Drag to turn, pinch to zoom, double tap to face the front again.
  */
 @SuppressLint("ViewConstructor")
 class PanoramaView(context: Context, private val model: DualFisheye) : GLSurfaceView(context) {
     @Volatile private var yaw = 0f
     @Volatile private var pitch = 0f
     @Volatile private var fov = DEFAULT_FOV
-    @Volatile private var image: DualFisheyeImage? = null
+    @Volatile private var image: Panorama? = null
     private val renderer = Renderer()
 
     init {
@@ -37,7 +41,7 @@ class PanoramaView(context: Context, private val model: DualFisheye) : GLSurface
     }
 
     /** The picture to show; the view uploads it and keeps it until replaced. */
-    fun show(picture: DualFisheyeImage?) {
+    fun show(picture: Panorama?) {
         image = picture
         queueEvent { renderer.dropTextures() }
         requestRender()
@@ -80,17 +84,23 @@ class PanoramaView(context: Context, private val model: DualFisheye) : GLSurface
         return true
     }
 
+    /** A program and the view uniforms every one of them has. */
+    private class ViewProgram(fragment: String) {
+        val id = Gl.program(Gl.FULLSCREEN_VERTEX, fragment)
+        val viewport = GLES30.glGetUniformLocation(id, "uViewport")
+        val view = GLES30.glGetUniformLocation(id, "uView")
+        val tanHalf = GLES30.glGetUniformLocation(id, "uTanHalf")
+    }
+
     private inner class Renderer : GLSurfaceView.Renderer {
-        private var program = 0
+        private var dual: ViewProgram? = null
+        private var equirect: ViewProgram? = null
         private var binding: SphereBinding? = null
         private var textures: IntArray? = null
-        private var shown: DualFisheyeImage? = null
-        private var viewportLoc = 0
-        private var viewLoc = 0
-        private var tanLoc = 0
+        private var shown: Panorama? = null
 
         fun dropTextures() {
-            textures?.let { GLES30.glDeleteTextures(2, it, 0) }
+            textures?.let { GLES30.glDeleteTextures(it.size, it, 0) }
             textures = null
             shown = null
         }
@@ -99,11 +109,8 @@ class PanoramaView(context: Context, private val model: DualFisheye) : GLSurface
             // A new context: the old one's objects are gone with it
             textures = null
             shown = null
-            program = Gl.program(Gl.FULLSCREEN_VERTEX, FRAGMENT)
-            binding = SphereBinding(program)
-            viewportLoc = GLES30.glGetUniformLocation(program, "uViewport")
-            viewLoc = GLES30.glGetUniformLocation(program, "uView")
-            tanLoc = GLES30.glGetUniformLocation(program, "uTanHalf")
+            dual = ViewProgram(DUAL_FRAGMENT).also { binding = SphereBinding(it.id) }
+            equirect = ViewProgram(EQUIRECT_FRAGMENT)
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -116,16 +123,36 @@ class PanoramaView(context: Context, private val model: DualFisheye) : GLSurface
             val picture = image ?: return
             if (shown !== picture) {
                 dropTextures()
-                textures = intArrayOf(Gl.texture(picture.front), Gl.texture(picture.back))
+                textures = when (picture) {
+                    is DualFisheyeImage -> intArrayOf(Gl.texture(picture.front), Gl.texture(picture.back))
+                    // Longitude wraps around: the texture repeats across
+                    is EquirectImage -> intArrayOf(Gl.texture(picture.bitmap)).also {
+                        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_REPEAT)
+                    }
+                }
                 shown = picture
             }
             val tex = textures ?: return
-            GLES30.glUseProgram(program)
-            binding?.bind(model, tex[0], tex[1], picture.gains)
-            GLES30.glUniform2f(viewportLoc, width.toFloat(), height.toFloat())
+            val tanHalf = tan(Math.toRadians(fov / 2.0)).toFloat()
+            val program = when (picture) {
+                is DualFisheyeImage -> dual?.also {
+                    GLES30.glUseProgram(it.id)
+                    binding?.bind(model, tex[0], tex[1], picture.gains)
+                }
+                is EquirectImage -> equirect?.also {
+                    GLES30.glUseProgram(it.id)
+                    GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex[0])
+                    GLES30.glUniform1i(GLES30.glGetUniformLocation(it.id, "uPano"), 0)
+                    // The mip level by hand: atan's jump at the back would pick the smallest one
+                    val texelsPerPixel = picture.bitmap.width / (2f * PI.toFloat()) * 2f * tanHalf / height.coerceAtLeast(1)
+                    GLES30.glUniform1f(GLES30.glGetUniformLocation(it.id, "uLod"), log2(texelsPerPixel.coerceAtLeast(1f)))
+                }
+            } ?: return
+            GLES30.glUniform2f(program.viewport, width.toFloat(), height.toFloat())
             val view = Mat3.multiply(Mat3.rotation(yaw, 0f, 0f), Mat3.rotation(0f, pitch, 0f))
-            GLES30.glUniformMatrix3fv(viewLoc, 1, false, view, 0)
-            GLES30.glUniform1f(tanLoc, tan(Math.toRadians(fov / 2.0)).toFloat())
+            GLES30.glUniformMatrix3fv(program.view, 1, false, view, 0)
+            GLES30.glUniform1f(program.tanHalf, tanHalf)
             GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
         }
     }
@@ -136,16 +163,32 @@ class PanoramaView(context: Context, private val model: DualFisheye) : GLSurface
         const val MAX_FOV = 120f
         val MAX_PITCH = Math.toRadians(89.0).toFloat()
 
-        const val FRAGMENT = "#version 300 es\nprecision highp float;\n" + SphereShader.UNIFORMS + """
+        /** The world direction of this pixel, from the view uniforms. */
+        const val VIEW_RAY = """
 uniform vec2 uViewport;
 uniform mat3 uView;
 uniform float uTanHalf;
 out vec4 color;
-""" + SphereShader.FUNCTIONS + """
-void main() {
+
+vec3 viewRay() {
     vec2 ndc = gl_FragCoord.xy / uViewport * 2.0 - 1.0;
-    vec3 ray = normalize(vec3(ndc.x * uTanHalf * uViewport.x / uViewport.y, ndc.y * uTanHalf, 1.0));
-    color = vec4(sphereColor(uView * ray), 1.0);
+    return uView * normalize(vec3(ndc.x * uTanHalf * uViewport.x / uViewport.y, ndc.y * uTanHalf, 1.0));
+}
+"""
+
+        const val DUAL_FRAGMENT = "#version 300 es\nprecision highp float;\n" + SphereShader.UNIFORMS + VIEW_RAY +
+            SphereShader.FUNCTIONS + """
+void main() {
+    color = vec4(sphereColor(viewRay()), 1.0);
+}
+"""
+
+        const val EQUIRECT_FRAGMENT = "#version 300 es\nprecision highp float;\nuniform sampler2D uPano;\nuniform float uLod;\n" +
+            VIEW_RAY + """
+void main() {
+    vec3 d = viewRay();
+    vec2 uv = vec2(atan(d.x, d.z) / 6.28318531 + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / 3.14159265);
+    color = vec4(textureLod(uPano, uv, uLod).rgb, 1.0);
 }
 """
     }

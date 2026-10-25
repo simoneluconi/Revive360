@@ -227,4 +227,8 @@
     <string name="pano_saved">360° photo saved in the %1$s folder</string>
     <string name="pano_hint">Drag to look around, pinch to zoom, double tap to face the front lens again.</string>
     <string name="pano_full">Full screen</string>
+    <string name="gallery_tab_camera">On the camera</string>
+    <string name="gallery_tab_phone">On the phone</string>
+    <string name="phone_subtitle">Photos and videos saved by the app</string>
+    <string name="phone_empty">Nothing saved yet: what you download or stitch goes in the %1$s folder.</string>
 </resources>

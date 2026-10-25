@@ -16,7 +16,7 @@ class DualFisheyeImage(
     val back: Bitmap,
     /** Front r, g, b then back r, g, b (see [LensGains]). */
     val gains: FloatArray,
-) {
+) : Panorama {
     val side: Int get() = front.height
 
     fun recycle() {

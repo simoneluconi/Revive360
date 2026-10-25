@@ -225,4 +225,8 @@
     <string name="pano_saved">Foto 360° salvata nella cartella %1$s</string>
     <string name="pano_hint">Trascina per guardarti intorno, pizzica per lo zoom, doppio tocco per tornare davanti.</string>
     <string name="pano_full">Schermo intero</string>
+    <string name="gallery_tab_camera">Sulla camera</string>
+    <string name="gallery_tab_phone">Sul telefono</string>
+    <string name="phone_subtitle">Foto e video salvati dall\'app</string>
+    <string name="phone_empty">Ancora niente: quello che scarichi o unisci finisce nella cartella %1$s.</string>
 </resources>
