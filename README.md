@@ -58,8 +58,7 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 Setting it up takes about half an hour, once. You need the camera, its microSD card, an Android
 phone and a computer.
 
-1. **Get the app**: download the APK from the
-   [latest release](https://github.com/simoneluconi/Revive360/releases/latest) on your phone.
+1. **Get the app** from [Google Play](https://play.google.com/store/apps/details?id=com.simoneluconi.revive360).
 2. **Set up the camera**: four commands on the computer do the work, and each one tells you
    what to do next on the camera:
 
