@@ -21,3 +21,24 @@ g360r.conf
 
 # Logs pulled from the camera or the phone
 /logs/
+*.log
+
+# Firmware images and partition dumps (Samsung proprietary, never commit)
+*.bin
+*.img
+*.lzo
+
+# Photos and videos pulled from the camera
+*.SRW
+*.MP4
+
+# Android release artefacts and signing keys
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Local tooling
+/.claude/
+/history-purge-paths.txt
+/history-purge.md
