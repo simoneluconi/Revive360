@@ -379,3 +379,44 @@ void api_debug_shim(req_t *r)
     http_send_json(r, 200, &b);
     sbuf_free(&b);
 }
+
+/*
+ * POST /api/v1/debug/script?name=FILE: runs the card's g360r/FILE (put there
+ * with the upload above) with /bin/sh, as root, for at most 60 s, and answers
+ * its exit code and output (stdout and stderr, the first 60 KB). A development
+ * aid for probing the camera without a flash, like the rest of debug/.
+ */
+void api_debug_script(req_t *r)
+{
+    const char *name = strncmp(r->query, "name=", 5) == 0 ? r->query + 5 : "";
+    char path[512];
+    static char out[61440];
+    char *argv[] = { "/bin/sh", path, NULL };
+    size_t len = strlen(name);
+    int rc;
+    sbuf_t b;
+
+    if (len == 0 || len > 64 || name[0] == '.') {
+        http_send_error(r, 400, "bad_request", "name= must be a file name");
+        return;
+    }
+    for (const char *c = name; *c; c++)
+        if (!isalnum((unsigned char)*c) && !strchr("._-", *c)) {
+            http_send_error(r, 400, "bad_request", "name may only hold letters, digits and ._-");
+            return;
+        }
+    snprintf(path, sizeof path, "%s/g360r/%s", g_srv.ad.storage_root, name);
+    if (access(path, R_OK) != 0) {
+        http_send_error(r, 404, "not_found", "no g360r/%s on the card", name);
+        return;
+    }
+    out[0] = 0;
+    rc = run_cmd(argv, 60000, out, sizeof out);
+    LOGI("debug: script %s -> rc=%d (%zu bytes out)", name, rc, strlen(out));
+    sbuf_init(&b);
+    sbuf_printf(&b, "{\"rc\":%d,\"out\":", rc);
+    json_str(&b, out);
+    sbuf_puts(&b, "}");
+    http_send_json(r, 200, &b);
+    sbuf_free(&b);
+}

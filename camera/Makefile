@@ -82,3 +82,16 @@ plugin: $(OUT)/libg360r_plugin.so
 $(OUT)/libg360r_plugin.so: shim/g360r_plugin.c
 	@mkdir -p $(OUT)
 	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -o $@ $< -nostdlib -Wl,--no-undefined $(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2
+
+# g360r-ble: the Bluetooth LE side (ble/g360r_ble.c), a dynamic program on the
+# camera's own glibc 2.13 and GLib 2.32 (SYSROOT, with /usr/lib's GLib family);
+# its own entry point (ble/start.S): our toolchain's crt1 wants a newer glibc.
+ble: $(OUT)/g360r-ble
+$(OUT)/g360r-ble: ble/g360r_ble.c ble/start.S ble/glib_min.h
+	@mkdir -p $(OUT)
+	$(CC_ARM) -O2 -Wall -Wextra -fno-stack-protector -U_FORTIFY_SOURCE -no-pie -nostdlib -nostartfiles \
+		-o $@ ble/start.S ble/g360r_ble.c -Wl,--dynamic-linker=/lib/ld-linux.so.3 -Wl,--no-undefined \
+		-Wl,-rpath-link=$(SYSROOT)/lib:$(SYSROOT)/usr/lib \
+		$(SYSROOT)/usr/lib/libgio-2.0.so.0 $(SYSROOT)/usr/lib/libgobject-2.0.so.0 $(SYSROOT)/usr/lib/libglib-2.0.so.0 \
+		$(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/ld-linux.so.3 -lgcc
+	@$(CROSS)readelf -V $@ | grep -oE "GLIBC_[0-9.]+" | sort -uV | tr '\n' ' '; echo "<- glibc versions needed (camera has 2.13)"

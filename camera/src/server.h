@@ -130,6 +130,7 @@ void api_debug_vconf(req_t *r);
 void api_debug_shim(req_t *r);
 void api_debug_upload(req_t *r);
 void api_debug_restart(req_t *r);
+void api_debug_script(req_t *r);
 
 /* liveview.c (§5.14) */
 void api_liveview(req_t *r);

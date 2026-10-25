@@ -280,6 +280,23 @@ out:
     return rc;
 }
 
+/* A request over the Wi-Fi (not from the camera itself) keeps it on when it was
+ * switched on over Bluetooth: the launcher reads seconds since boot from here */
+static void note_wifi_activity(const char *peer)
+{
+    static int64_t last;
+    int64_t now = now_ms_mono();
+    FILE *f;
+
+    if (strncmp(peer, "127.", 4) == 0 || now - last < 10000)
+        return;
+    last = now;
+    if ((f = fopen("/tmp/g360r/wifi.activity", "w"))) {
+        fprintf(f, "%lld\n", (long long)(now / 1000));
+        fclose(f);
+    }
+}
+
 /* ------------------------------------------------------------ threads */
 
 static void *conn_thread(void *arg)
@@ -296,6 +313,7 @@ static void *conn_thread(void *arg)
 
     rc = read_request(r);
     g_srv.last_request_ms = now_ms_mono();
+    note_wifi_activity(r->peer);
     if (rc == 0) {
         api_dispatch(r);
     } else if (rc == 413) {

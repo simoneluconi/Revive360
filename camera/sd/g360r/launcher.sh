@@ -79,6 +79,28 @@ cfg() {
     if [ -n "$v" ]; then echo "$v"; else echo "$2"; fi
 }
 
+# The Wi-Fi passphrase: the camera makes one when the card has none (the phone
+# gets it over Bluetooth while pairing is open, nobody types it)
+ensure_psk() {
+    p=$(cfg psk "")
+    if [ ${#p} -ge 8 ] && [ "$p" != CHANGE_ME ]; then
+        return 0
+    fi
+    p=$(tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | dd bs=16 count=1 2>/dev/null)
+    if [ ${#p} -lt 16 ]; then
+        log "WARNING: could not make a Wi-Fi passphrase"
+        return 1
+    fi
+    if grep -q '^[[:space:]]*psk[[:space:]]*=' "$CONF" 2>/dev/null; then
+        sed "s/^[[:space:]]*psk[[:space:]]*=.*/psk=$p/" "$CONF" > "$CONF.new"
+    else
+        { cat "$CONF" 2>/dev/null; echo "psk=$p"; } > "$CONF.new"
+    fi
+    # rm first: the card's exFAT keeps both entries when mv replaces a file
+    rm -f "$CONF" && mv "$CONF.new" "$CONF" && sync
+    log "new Wi-Fi passphrase made (16 characters)"
+}
+
 beep() {
     n=$1; wav=$2; i=0
     [ -x /usr/bin/paplay ] && [ -e "$wav" ] || return 0
@@ -245,6 +267,7 @@ log "info.ini: $(tr '\n' ' ' < /etc/info.ini 2>/dev/null)"
 if [ ! -f "$CONF" ]; then
     log "WARNING: $CONF missing - run the SD preparation script (no passphrase = no softAP)"
 fi
+ensure_psk
 log "config (psk hidden):"
 sed 's/^\([[:space:]]*psk[[:space:]]*=\).*/\1********/' "$CONF" 2>/dev/null | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' | sed 's/^/    /' >> "$LOG"
 log "cgroup: $(tr '\n' ' ' < /proc/self/cgroup)"
@@ -289,19 +312,72 @@ log "wlan0 present after ${i}s: $([ -d /sys/class/net/wlan0 ] && echo yes || ech
 # The softAP bring-up lives in netup.sh (not part of this delivery yet). It
 # must define netup() (returns 0 and sets AP_SSID AP_IF AP_IP AP_STRATEGY) and
 # dhcp_check() (called every 5 s by the supervisor).
+# wifi=on: the access point comes up now and stays. wifi=ble: it stays off until
+# a phone asks over Bluetooth (g360r-ble writes $RUN/wifi.want), and goes off
+# again after wifi_idle seconds with no request over it. The supervisor below
+# applies what is wanted and reports $RUN/wifi.state (off|starting|on|failed).
 NET_ERROR="--net-error"
-if [ -f "$RUN/netup.sh" ]; then
-    . "$RUN/netup.sh"
+WIFI_MODE=$(cfg wifi ble)
+WIFI_IDLE=$(cfg wifi_idle 600)
+wifi_state() { echo "$1" > "$RUN/wifi.state"; }
+wifi_up() {
+    wifi_state starting
     if netup; then
         NET_ERROR=""
+        wifi_state on
+        cut -d. -f1 /proc/uptime > "$RUN/wifi.activity"
         milestone "softAP up: ssid=$AP_SSID if=$AP_IF ip=$AP_IP strategy=$AP_STRATEGY"
+        return 0
+    fi
+    wifi_state failed
+    milestone "softAP FAILED"
+    return 1
+}
+wifi_down() {
+    _netup_teardown
+    logrun /usr/bin/wlan.sh stop
+    wifi_state off
+    milestone "softAP off"
+}
+if [ -f "$RUN/netup.sh" ]; then
+    . "$RUN/netup.sh"
+    # The network's name, for the Bluetooth side to hand over while pairing
+    _netup_ssid > "$RUN/wifi.ssid" 2>/dev/null
+    if [ "$WIFI_MODE" = on ]; then
+        echo on > "$RUN/wifi.want"
+        wifi_up || milestone "starting the server anyway for the log"
     else
-        milestone "softAP FAILED; starting the server anyway for the log"
+        echo off > "$RUN/wifi.want"
+        wifi_state off
+        NET_ERROR=""
+        milestone "Wi-Fi on demand (wifi=ble): off until a phone asks over Bluetooth"
     fi
 else
     milestone "no netup.sh: network bring-up not installed; server starts in error state"
 fi
 command -v dhcp_check >/dev/null 2>&1 || dhcp_check() { :; }
+
+# ------------------------------------------------------------ Bluetooth
+
+# g360r-ble: advertises the camera and negotiates the Wi-Fi (protocol section 6).
+# From the card, else the firmware's copy; restarted if it dies.
+BLE_BIN="$RUN/g360r-ble"
+for b in "$SD_DIR/bin/g360r-ble" "$SD_DIR/g360r-ble" /usr/share/g360r/g360r-ble; do
+    if [ -f "$b" ]; then
+        cp "$b" "$BLE_BIN" && chmod 0755 "$BLE_BIN"
+        break
+    fi
+done
+start_ble() {
+    [ -x "$BLE_BIN" ] || return 1
+    rm -f "$RUN/ble.state"
+    setsid "$BLE_BIN" --conf "$CONF" --dir "$RUN" --log "$LOGDIR/ble.log" </dev/null >/dev/null 2>&1 &
+    BLE_PID=$!
+    log "bluetooth helper started (pid $BLE_PID)"
+}
+BLE_PID=""
+start_ble || log "no g360r-ble: no Bluetooth side"
+BLE_STARTED=$(cut -d. -f1 /proc/uptime)
 
 # ------------------------------------------------------------ server
 
@@ -372,10 +448,48 @@ fi
 # ------------------------------------------------------------ supervise
 
 restarts=0
+ble_restarts=0
 tick=0
 while :; do
-    sleep 5
+    sleep 1
     tick=$((tick + 1))
+    # What a phone asked over Bluetooth
+    want=$(cat "$RUN/wifi.want" 2>/dev/null)
+    have=$(cat "$RUN/wifi.state" 2>/dev/null)
+    if [ "$want" = on ] && [ "$have" != on ] && [ "$have" != starting ] &&        { [ "$have" != failed ] || [ $((tick % 30)) -eq 0 ]; }; then
+        wifi_up
+    elif [ "$want" = off ] && [ "$have" = on ]; then
+        wifi_down
+    fi
+    if [ $((tick % 5)) -ne 0 ]; then
+        continue
+    fi
+    # Without the Bluetooth side nobody could switch the Wi-Fi on: then it stays on
+    if [ "$WIFI_MODE" != on ] && [ "$(cat "$RUN/wifi.want" 2>/dev/null)" != on ]; then
+        up=$(cut -d. -f1 /proc/uptime)
+        if [ "$(cat "$RUN/ble.state" 2>/dev/null)" = failed ] || \
+           { [ "$(cat "$RUN/ble.state" 2>/dev/null)" != ready ] && [ $((up - BLE_STARTED)) -gt 60 ]; }; then
+            log "the Bluetooth side is not working: Wi-Fi on for good"
+            WIFI_MODE=on
+            echo on > "$RUN/wifi.want"
+        fi
+    fi
+    # wifi=ble: off again after wifi_idle s with no request over it
+    if [ "$WIFI_MODE" != on ] && [ "$(cat "$RUN/wifi.state" 2>/dev/null)" = on ]; then
+        last=$(cat "$RUN/wifi.activity" 2>/dev/null || echo 0)
+        # Seconds since boot on both sides: setting the clock must not count as idle time
+        if [ $(( $(cut -d. -f1 /proc/uptime) - last )) -gt "$WIFI_IDLE" ]; then
+            log "Wi-Fi unused for ${WIFI_IDLE}s: off"
+            echo off > "$RUN/wifi.want"
+        fi
+    fi
+    if [ -n "$BLE_PID" ] && ! kill -0 "$BLE_PID" 2>/dev/null; then
+        ble_restarts=$((ble_restarts + 1))
+        if [ $ble_restarts -le 10 ]; then
+            log "bluetooth helper died, restarting"
+            start_ble
+        fi
+    fi
     watchdog_off
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
         wait "$SERVER_PID" 2>/dev/null
@@ -388,11 +502,11 @@ while :; do
             milestone "server keeps dying; giving up restarts"
         fi
     fi
-    if [ -z "$NET_ERROR" ]; then
+    if [ -z "$NET_ERROR" ] && [ "$(cat "$RUN/wifi.state" 2>/dev/null)" = on ]; then
         dhcp_check
     fi
     # Every minute: keep low-battery auto-off enabled, flush the log.
-    if [ $((tick % 12)) -eq 0 ]; then
+    if [ $((tick % 60)) -eq 0 ]; then
         vconf_reset
         sync
     fi
