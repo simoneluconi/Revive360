@@ -8,9 +8,11 @@ import com.simoneluconi.revive360.EventLog
 import com.simoneluconi.revive360.media.MediaSaver
 import com.simoneluconi.revive360.media.SavedFiles
 import com.simoneluconi.revive360.media.ThumbCache
+import com.simoneluconi.revive360.media.VideoThumbnails
 import com.simoneluconi.revive360.protocol.CameraClient
 import com.simoneluconi.revive360.protocol.CameraException
 import com.simoneluconi.revive360.protocol.CameraFile
+import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.protocol.CameraInfo
 import com.simoneluconi.revive360.protocol.CameraStatus
 import com.simoneluconi.revive360.protocol.CaptureMode
@@ -476,7 +478,8 @@ class CameraController(
             thumbs.get(key) ?: run {
                 val client = client ?: return@withContext null
                 val bytes = try {
-                    client.thumbnail(file.path)
+                    // Videos have no thumbnail on the camera: their first frame, decoded here
+                    if (file.kind == FileKind.VIDEO) VideoThumbnails.firstFrame(client, file) else client.thumbnail(file.path)
                 } catch (e: Exception) {
                     // Not remembered as missing: a dropped link is not a file without thumbnail
                     return@withContext null

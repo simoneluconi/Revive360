@@ -263,7 +263,7 @@ fun Thumbnail(file: CameraFile, connected: Boolean, modifier: Modifier = Modifie
     val controller = LocalActions.current.app.controller
     val colors = LocalAppColors.current
     var image by remember(file.path, file.size, file.mtime) { mutableStateOf<ImageBitmap?>(null) }
-    val wantsThumb = file.kind == FileKind.PHOTO || file.kind == FileKind.RAW
+    val wantsThumb = file.kind != FileKind.OTHER
     LaunchedEffect(file.path, file.size, file.mtime, connected) {
         if (wantsThumb && image == null) image = controller.thumbnail(file)
     }

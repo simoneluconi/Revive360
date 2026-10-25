@@ -98,6 +98,21 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
         }
     }
 
+    /** Bytes [offset] to [offset] + [length] of [path] (protocol §5.5 `Range`); fewer at the end, none past it. */
+    fun readRange(path: String, offset: Long, length: Int): ByteArray {
+        val connection = open("GET", "/files/${CameraPaths.encode(path)}", READ_TIMEOUT_MS)
+        try {
+            connection.setRequestProperty("Range", "bytes=$offset-${offset + length - 1}")
+            val code = connection.responseCode
+            if (code == 416) return ByteArray(0)
+            // A 200 would be the whole file: not what a reader of small pieces wants
+            if (code != 206) throw if (code in 200..299) IOException("the camera ignored Range") else failure(connection, code)
+            return connection.inputStream.use { it.readBytes() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun copy(input: InputStream, out: FileOutputStream, start: Long, total: Long, progress: (Long, Long) -> Unit) {
         val buffer = ByteArray(BUFFER_BYTES)
         var done = start

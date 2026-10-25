@@ -379,7 +379,10 @@ fun InfoRow(label: String, value: String, mono: Boolean = false) {
     }
 }
 
-/** A slider drawn like the rest of the app (foundation has none). */
+/**
+ * A slider drawn like the rest of the app (foundation has none). [onChange] follows the finger,
+ * [onDone] comes when it lifts (a tap or the end of a drag): for a value to send once.
+ */
 @Composable
 fun ValueSlider(
     value: Int,
@@ -387,9 +390,11 @@ fun ValueSlider(
     onChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    onDone: (() -> Unit)? = null,
 ) {
     val colors = LocalAppColors.current
     val change by rememberUpdatedState(onChange)
+    val done by rememberUpdatedState(onDone)
     val fraction = ((value - range.first).toFloat() / (range.last - range.first)).coerceIn(0f, 1f)
     BoxWithConstraints(modifier.fillMaxWidth().height(36.dp)) {
         val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
@@ -404,11 +409,17 @@ fun ValueSlider(
                 .height(36.dp)
                 .pointerInput(enabled, range) {
                     if (!enabled) return@pointerInput
-                    detectTapGestures { change(valueAt(it.x)) }
+                    detectTapGestures {
+                        change(valueAt(it.x))
+                        done?.invoke()
+                    }
                 }
                 .pointerInput(enabled, range) {
                     if (!enabled) return@pointerInput
-                    detectHorizontalDragGestures { pointer, _ -> change(valueAt(pointer.position.x)) }
+                    detectHorizontalDragGestures(
+                        onDragEnd = { done?.invoke() },
+                        onDragCancel = { done?.invoke() },
+                    ) { pointer, _ -> change(valueAt(pointer.position.x)) }
                 },
             contentAlignment = Alignment.CenterStart,
         ) {

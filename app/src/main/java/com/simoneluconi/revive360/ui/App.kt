@@ -189,13 +189,14 @@ private fun MessageBanner(message: Message?, modifier: Modifier, onGone: () -> U
     }
 }
 
-/** A screen with a back button, a title and scrolling content. */
+/** A screen with a back button, a title, scrolling content and an optional fixed [bottomBar]. */
 @Composable
 fun ScreenScaffold(
     title: String,
     showBack: Boolean = true,
     scroll: Boolean = true,
     actions: @Composable () -> Unit = {},
+    bottomBar: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val nav = LocalActions.current
@@ -214,12 +215,20 @@ fun ScreenScaffold(
         }
         Column(
             Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .weight(1f)
                 .then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(horizontal = 16.dp)
                 .padding(bottom = if (scroll) 32.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content,
         )
+        if (bottomBar != null) {
+            Hairline()
+            Column(
+                Modifier.fillMaxWidth().background(LocalAppColors.current.surface).padding(horizontal = 16.dp, vertical = 10.dp),
+                content = bottomBar,
+            )
+        }
     }
 }
