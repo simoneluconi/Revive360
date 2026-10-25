@@ -81,7 +81,7 @@ def og_card(path, title, subtitle, lines, badge):
         size -= 1
     draw.text((76, 560), badge, font=font(size, 600), fill=(200, 222, 255))
     # Two screenshots on the right, in rounded phone frames
-    for i, name in enumerate(("home", "viewer360")):
+    for i, name in enumerate(("viewer360", "home")):
         shot = Image.open(SHOTS / f"{name}.png").convert("RGB")
         sh = 500
         sw = round(shot.width * sh / shot.height)
