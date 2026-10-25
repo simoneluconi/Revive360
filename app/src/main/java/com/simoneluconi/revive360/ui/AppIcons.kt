@@ -52,6 +52,7 @@ object AppIcons {
     val Chevron = icon("M9 6l6 6-6 6")
     val Close = icon("M6 6l12 12M18 6L6 18")
     val Check = icon("M5 12.5l4.5 4.5L19 7.5")
+    val Live = icon("M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z", circle(12f, 12f, 3f))
     val SelectAll = icon("M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z", "M8 12.5l3 3 5-6")
     val SelectNone = icon("M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z")
     val Refresh = icon("M20 11a8 8 0 1 0-2.3 5.7", "M20 4v7h-7")

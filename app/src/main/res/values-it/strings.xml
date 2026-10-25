@@ -66,6 +66,11 @@
     <string name="value_seconds">%1$s s</string>
     <string name="value_minutes">%1$s min</string>
     <string name="value_max">Max</string>
+    <string name="liveview_title">Anteprima dal vivo</string>
+    <string name="liveview_connecting">Avvio del flusso della fotocamera…</string>
+    <string name="liveview_failed">L\'anteprima si è interrotta: %1$s</string>
+    <string name="liveview_info">%1$d×%2$d · %3$d fps</string>
+    <string name="liveview_hint">Le due lenti come le vede la fotocamera. Per scattare o registrare la fotocamera chiude l\'anteprima.</string>
     <string name="value_never">Mai</string>
     <string name="setting_ev">Esposizione</string>
     <string name="setting_iso_limit">Limite ISO</string>

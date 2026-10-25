@@ -68,6 +68,11 @@
     <string name="value_seconds">%1$s s</string>
     <string name="value_minutes">%1$s min</string>
     <string name="value_max">Max</string>
+    <string name="liveview_title">Live view</string>
+    <string name="liveview_connecting">Starting the camera\'s stream…</string>
+    <string name="liveview_failed">The live view stopped: %1$s</string>
+    <string name="liveview_info">%1$d×%2$d · %3$d fps</string>
+    <string name="liveview_hint">Both lenses as the camera sees them. The camera closes the live view to take a shot or record.</string>
     <string name="value_never">Never</string>
     <string name="setting_ev">Exposure</string>
     <string name="setting_iso_limit">ISO limit</string>

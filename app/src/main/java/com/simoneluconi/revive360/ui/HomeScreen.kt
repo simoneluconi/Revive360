@@ -375,7 +375,13 @@ private fun CaptureBar(info: CameraInfo, shot: ShotChoice, changer: SettingChang
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
+        // The live view on the right, the gallery's counterpart
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            if (v.caps.liveview && !recording) {
+                RoundIconButton(AppIcons.Live, label = stringResource(R.string.liveview_title), size = 56.dp,
+                    background = colors.surface2) { nav.navigate(Screen.LiveView) }
+            }
+        }
     }
     Spacer(Modifier.height(6.dp))
     Label(

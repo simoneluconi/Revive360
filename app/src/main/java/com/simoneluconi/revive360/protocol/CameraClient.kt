@@ -7,6 +7,14 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** An open live view: its container type and bytes; [close] ends it (the camera then stops its stream). */
+class LiveStream(val contentType: String, val input: InputStream, private val disconnect: () -> Unit) : java.io.Closeable {
+    override fun close() {
+        runCatching { input.close() }
+        disconnect()
+    }
+}
+
 /** Opens a connection: through the camera's Wi-Fi `Network` in the app, plainly in tests and on the simulator. */
 fun interface Connector {
     fun open(url: URL): HttpURLConnection
@@ -98,6 +106,21 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
         }
     }
 
+    /**
+     * The live view stream (protocol §5.14), open until [LiveStream.close]. The camera's stream starts
+     * its camcorder a few seconds after the request: the read timeout leaves room for it.
+     */
+    fun openLiveView(): LiveStream {
+        val connection = open("GET", "/api/v1/liveview", LIVE_READ_TIMEOUT_MS)
+        val code = connection.responseCode
+        if (code != 200) {
+            val failure = failure(connection, code)
+            connection.disconnect()
+            throw failure
+        }
+        return LiveStream(connection.contentType ?: "", connection.inputStream) { connection.disconnect() }
+    }
+
     /** Bytes [offset] to [offset] + [length] of [path] (protocol §5.5 `Range`); fewer at the end, none past it. */
     fun readRange(path: String, offset: Long, length: Int): ByteArray {
         val connection = open("GET", "/files/${CameraPaths.encode(path)}", READ_TIMEOUT_MS)
@@ -179,6 +202,7 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
     private companion object {
         const val CONNECT_TIMEOUT_MS = 5_000
         const val READ_TIMEOUT_MS = 10_000
+        const val LIVE_READ_TIMEOUT_MS = 15_000
         /** The camera's capture timeout is 30 s (protocol §5.3). */
         const val CAPTURE_READ_TIMEOUT_MS = 45_000
         const val DOWNLOAD_READ_TIMEOUT_MS = 20_000

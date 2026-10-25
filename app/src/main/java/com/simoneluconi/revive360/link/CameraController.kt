@@ -19,6 +19,7 @@ import com.simoneluconi.revive360.protocol.CaptureMode
 import com.simoneluconi.revive360.protocol.CaptureResult
 import com.simoneluconi.revive360.protocol.Connector
 import com.simoneluconi.revive360.protocol.LedState
+import com.simoneluconi.revive360.protocol.LiveStream
 import com.simoneluconi.revive360.protocol.Protocol
 import com.simoneluconi.revive360.protocol.CameraSettings
 import com.simoneluconi.revive360.settings.AppSettings
@@ -398,6 +399,12 @@ class CameraController(
             EventLog.log("Settings: read failed (${e.message})")
             throw e
         }
+    }
+
+    /** Opens the live view (protocol §5.14); the caller closes it. Blocking: call off the main thread. */
+    fun openLiveView(): LiveStream {
+        EventLog.log("Live view: opening")
+        return requireClient().openLiveView()
     }
 
     /** Changes one camera setting; the flow takes the values the camera answers. */
