@@ -50,3 +50,6 @@ CLAUDE.local.md
 /docs/BUILD_HANDOFF.md
 /history-purge-paths.txt
 /history-purge.md
+
+# Python bytecode
+__pycache__/

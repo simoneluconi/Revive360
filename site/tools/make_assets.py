@@ -6,6 +6,7 @@ the Manrope font as WOFF2.
 """
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
 
@@ -21,13 +22,10 @@ BLUE_BOTTOM = (0x3D, 0x8F, 0xEA)
 
 def gradient(w, h):
     """Diagonal gradient from the top left to the bottom right, like the launcher icon."""
-    img = Image.new("RGB", (w, h))
-    px = img.load()
-    for y in range(h):
-        for x in range(w):
-            t = (x / w + y / h) / 2
-            px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(BLUE_TOP, BLUE_BOTTOM))
-    return img
+    t = (np.arange(w)[None, :] / w + np.arange(h)[:, None] / h) / 2
+    top, bottom = np.array(BLUE_TOP, float), np.array(BLUE_BOTTOM, float)
+    rgb = top + (bottom - top) * t[..., None]
+    return Image.fromarray(np.round(rgb).astype(np.uint8), "RGB")
 
 
 def draw_camera(draw, cx, cy, scale, width):
@@ -107,10 +105,10 @@ def main():
     icon(192).save(OUT / "icon-192.png", optimize=True)
     icon(180).save(OUT / "apple-touch-icon.png", optimize=True)
     icon(32).save(OUT / "favicon-32.png", optimize=True)
-    og_card(OUT / "og-en.png", "Revive360", "for Samsung Gear 360",
+    og_card(OUT / "og-en.png", "Revive360", "for Gear 360",
             ["Your Gear 360 works again,", "with any Android phone."],
             "Free · Open source · No account · Not affiliated with Samsung")
-    og_card(OUT / "og-it.png", "Revive360", "per Samsung Gear 360",
+    og_card(OUT / "og-it.png", "Revive360", "per Gear 360",
             ["La tua Gear 360 torna a funzionare,", "con qualsiasi telefono Android."],
             "Gratis · Open source · Senza account · Non affiliata a Samsung")
     f = TTFont(str(FONT))

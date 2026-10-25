@@ -1,4 +1,4 @@
-# Revive360 – for Samsung Gear 360
+# Revive360 – for Gear 360
 
 **Your Samsung Gear 360 works again: with any Android phone, free, and with no Samsung account.**
 

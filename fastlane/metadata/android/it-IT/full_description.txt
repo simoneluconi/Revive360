@@ -1,0 +1,33 @@
+Revive360 fa tornare a funzionare la fotocamera Samsung Gear 360 (2016, SM-C200), con qualsiasi telefono Android.
+
+Le app Samsung per la Gear 360 non funzionano più sui telefoni di oggi. Revive360 è un'app gratuita e open source che riporta in vita la fotocamera: scatta dal telefono, guarda quello che vede la fotocamera, cambia le impostazioni e ottieni vere foto a 360°.
+
+IMPORTANTE: LA FOTOCAMERA HA BISOGNO DI UN PICCOLO COMPONENTE
+Revive360 parla con un piccolo componente da installare una volta sola sulla fotocamera, dal computer, tramite la sua scheda microSD. La guida gratuita ti accompagna in circa mezz'ora, e il software originale Samsung della fotocamera si può sempre rimettere. Senza il componente l'app non può collegarsi alla fotocamera.
+Guida all'installazione (in inglese): https://github.com/simoneluconi/Revive360
+
+COSA PUOI FARE
+• Scattare foto, video, time-lapse e video in loop dal telefono, con l'autoscatto
+• Vedere la live view della fotocamera prima di scattare
+• Cambiare le impostazioni della fotocamera: obiettivo, dimensione, autoscatto, esposizione, bilanciamento del bianco e altro
+• Copiare foto e video sul telefono, o cancellarli dalla fotocamera, uno o tanti alla volta
+• Trasformare le foto della fotocamera in vere foto a 360° che Google Foto e le altre app riconoscono
+• Guardarti intorno in una foto a 360°, raddrizzarla, scegliere un'inquadratura o creare un "little planet", e salvarla come foto normale
+
+SEMPLICE
+• Funziona con qualsiasi telefono Android (Android 10 o successivo): non serve un Samsung
+• Si associa da sola via Bluetooth: niente da digitare
+• Il Wi-Fi della fotocamera resta acceso solo quando serve all'app, per risparmiare la sua batteria
+
+PRIVATA
+• Niente account, niente pubblicità, niente statistiche
+• Il telefono parla direttamente con la fotocamera: niente passa da internet
+
+FOTOCAMERE SUPPORTATE
+• Samsung Gear 360 (2016, SM-C200)
+• La Gear 360 (2017, SM-R210) non è ancora supportata
+
+GRATIS E OPEN SOURCE
+Revive360 è software libero con licenza GNU GPL v3. Codice sorgente, guida e segnalazioni: https://github.com/simoneluconi/Revive360
+
+Revive360 è un progetto indipendente, non realizzato, affiliato o approvato da Samsung. Samsung e Gear 360 sono marchi di Samsung Electronics, citati solo per indicare con quale fotocamera funziona l'app.

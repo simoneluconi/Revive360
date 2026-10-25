@@ -1,0 +1,33 @@
+Revive360 makes the Samsung Gear 360 (2016, SM-C200) camera work again, with any Android phone.
+
+Samsung's Gear 360 apps no longer work on today's phones. Revive360 is a free, open source app that brings the camera back: shoot from your phone, see what the camera sees, change its settings and get real 360° photos.
+
+IMPORTANT: THE CAMERA NEEDS A SMALL ADD-ON
+Revive360 talks to a small add-on that you install once on the camera, from a computer, through its microSD card. The free install guide walks you through it in about half an hour, and Samsung's original camera software can always be put back. Without the add-on the app cannot connect to the camera.
+Install guide: https://github.com/simoneluconi/Revive360
+
+WHAT YOU CAN DO
+• Shoot photos, videos, time-lapses and looping videos from your phone, with the self-timer
+• See the camera's live view before you shoot
+• Change the camera's settings: lens, size, self-timer, exposure, white balance and more
+• Copy photos and videos to your phone, or delete them from the camera, one or many at a time
+• Turn the camera's photos into real 360° photos that Google Photos and other apps recognise
+• Look around a 360° photo, straighten it, pick a frame or make a "little planet", and save it as a normal photo
+
+SIMPLE
+• Works with any Android phone (Android 10 or later): it does not have to be a Samsung
+• Pairs by itself over Bluetooth: nothing to type
+• The camera's Wi-Fi is on only while the app needs it, to save its battery
+
+PRIVATE
+• No account, no ads, no analytics
+• The phone talks straight to the camera: nothing goes to the internet
+
+SUPPORTED CAMERAS
+• Samsung Gear 360 (2016, SM-C200)
+• The Gear 360 (2017, SM-R210) is not supported yet
+
+FREE AND OPEN SOURCE
+Revive360 is free software under the GNU GPL v3. Source code, install guide and issue tracker: https://github.com/simoneluconi/Revive360
+
+Revive360 is an independent project, not made, affiliated with or endorsed by Samsung. Samsung and Gear 360 are trademarks of Samsung Electronics, used only to say which camera the app works with.
