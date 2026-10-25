@@ -225,10 +225,21 @@
     <string name="pano_save">Save 360° photo</string>
     <string name="pano_saving">Joining the two lenses…</string>
     <string name="pano_saved">360° photo saved in the %1$s folder</string>
-    <string name="pano_hint">Drag to look around, pinch to zoom, double tap to face the front lens again.</string>
+    <string name="pano_hint">Drag to look around, pinch to zoom, double tap to go back.</string>
     <string name="pano_full">Full screen</string>
     <string name="gallery_tab_camera">On the camera</string>
     <string name="gallery_tab_phone">On the phone</string>
     <string name="phone_subtitle">Photos and videos saved by the app</string>
     <string name="phone_empty">Nothing saved yet: what you download or stitch goes in the %1$s folder.</string>
+    <string name="pano_mode_normal">Normal</string>
+    <string name="pano_mode_planet">Little planet</string>
+    <string name="pano_mode_tunnel">Tunnel</string>
+    <string name="pano_straighten">Straighten</string>
+    <string name="pano_straighten_value">%1$+.1f°</string>
+    <string name="pano_first_view">Set first view</string>
+    <string name="pano_first_view_done">The 360 photo will open looking here</string>
+    <string name="pano_reset">Undo edits</string>
+    <string name="pano_frame">Save framing</string>
+    <string name="pano_frame_title">Save what you see</string>
+    <string name="pano_frame_message">An ordinary photo of the current view, in the shape you choose.</string>
 </resources>

@@ -41,7 +41,10 @@ import com.simoneluconi.revive360.ui.theme.LocalAppColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** What the app saved on the phone: photos open in the 360 viewer, videos in the phone's player. */
+/**
+ * What the app saved on the phone: 360 photos open in the 360 viewer, videos and framings in the
+ * phone's own apps.
+ */
 @Composable
 fun PhoneGallery(modifier: Modifier = Modifier) {
     val nav = LocalActions.current
@@ -66,10 +69,10 @@ fun PhoneGallery(modifier: Modifier = Modifier) {
         ) {
             items(list, key = { it.uri.toString() }) { item ->
                 PhoneTile(item) {
-                    if (item.kind == FileKind.VIDEO) {
+                    if (item.kind == FileKind.VIDEO || item.isFlat) {
                         runCatching {
                             context.startActivity(
-                                Intent(Intent.ACTION_VIEW).setDataAndType(item.uri, "video/*")
+                                Intent(Intent.ACTION_VIEW).setDataAndType(item.uri, if (item.isFlat) "image/*" else "video/*")
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
                             )
                         }

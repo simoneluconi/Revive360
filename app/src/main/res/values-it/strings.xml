@@ -223,10 +223,21 @@
     <string name="pano_save">Salva foto 360°</string>
     <string name="pano_saving">Unisco le due lenti…</string>
     <string name="pano_saved">Foto 360° salvata nella cartella %1$s</string>
-    <string name="pano_hint">Trascina per guardarti intorno, pizzica per lo zoom, doppio tocco per tornare davanti.</string>
+    <string name="pano_hint">Trascina per guardarti intorno, pizzica per lo zoom, doppio tocco per tornare all\'inizio.</string>
     <string name="pano_full">Schermo intero</string>
     <string name="gallery_tab_camera">Sulla camera</string>
     <string name="gallery_tab_phone">Sul telefono</string>
     <string name="phone_subtitle">Foto e video salvati dall\'app</string>
     <string name="phone_empty">Ancora niente: quello che scarichi o unisci finisce nella cartella %1$s.</string>
+    <string name="pano_mode_normal">Normale</string>
+    <string name="pano_mode_planet">Pianetino</string>
+    <string name="pano_mode_tunnel">Tunnel</string>
+    <string name="pano_straighten">Raddrizza</string>
+    <string name="pano_straighten_value">%1$+.1f°</string>
+    <string name="pano_first_view">Vista iniziale</string>
+    <string name="pano_first_view_done">La foto 360° si aprirà guardando qui</string>
+    <string name="pano_reset">Annulla modifiche</string>
+    <string name="pano_frame">Salva inquadratura</string>
+    <string name="pano_frame_title">Salva quello che vedi</string>
+    <string name="pano_frame_message">Una foto normale della vista attuale, nel formato che scegli.</string>
 </resources>

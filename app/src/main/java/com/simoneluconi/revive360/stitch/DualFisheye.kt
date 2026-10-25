@@ -82,6 +82,8 @@ object Mat3 {
         return multiply(rz, multiply(rx, ry))
     }
 
+    fun transpose(m: FloatArray): FloatArray = floatArrayOf(m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8])
+
     fun multiply(a: FloatArray, b: FloatArray): FloatArray {
         val out = FloatArray(9)
         for (c in 0 until 3) for (r in 0 until 3) {

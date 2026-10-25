@@ -6,8 +6,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
- * Writes an equirectangular JPEG that 360 viewers recognise: the Photo Sphere XMP (GPano) block,
- * plus the original's shooting details (date, exposure, camera) copied from its Exif.
+ * Writes the JPEGs made from a camera picture with the original's shooting details (date, exposure,
+ * camera) copied from its Exif; an equirectangular one also gets the Photo Sphere XMP (GPano) block
+ * that 360 viewers recognise.
  */
 object Jpeg360 {
     private const val QUALITY = 93
@@ -26,13 +27,20 @@ object Jpeg360 {
         ExifInterface.TAG_GPS_TIMESTAMP, ExifInterface.TAG_GPS_DATESTAMP,
     )
 
-    fun write(bitmap: Bitmap, original: File?, target: File, initialHeadingDeg: Float = 0f) {
+    /** [initialPitchDeg]: where a viewer looks first, positive up. */
+    fun write(bitmap: Bitmap, original: File?, target: File, initialPitchDeg: Float = 0f) =
+        write(bitmap, original, target, xmpSegment(bitmap.width, bitmap.height, initialPitchDeg))
+
+    /** An ordinary picture (a framing of the sphere): no 360 metadata. */
+    fun writeFlat(bitmap: Bitmap, original: File?, target: File) = write(bitmap, original, target, null)
+
+    private fun write(bitmap: Bitmap, original: File?, target: File, xmp: ByteArray?) {
         val jpeg = ByteArrayOutputStream(bitmap.width * bitmap.height / 3).also {
             check(bitmap.compress(Bitmap.CompressFormat.JPEG, QUALITY, it)) { "JPEG encoding failed" }
         }.toByteArray()
         target.outputStream().use { out ->
             out.write(jpeg, 0, 2)                       // SOI
-            out.write(xmpSegment(bitmap.width, bitmap.height, initialHeadingDeg))
+            if (xmp != null) out.write(xmp)
             var pos = 2
             // The encoder's own JFIF header goes: the Exif written next takes its place
             while (pos + 4 <= jpeg.size && jpeg[pos] == 0xFF.toByte() && jpeg[pos + 1] == 0xE0.toByte()) {
@@ -53,7 +61,7 @@ object Jpeg360 {
         to.saveAttributes()
     }
 
-    private fun xmpSegment(width: Int, height: Int, headingDeg: Float): ByteArray {
+    private fun xmpSegment(width: Int, height: Int, pitchDeg: Float): ByteArray {
         val xmp = """<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -66,7 +74,8 @@ object Jpeg360 {
    GPano:CroppedAreaImageHeightPixels="$height"
    GPano:CroppedAreaLeftPixels="0"
    GPano:CroppedAreaTopPixels="0"
-   GPano:InitialViewHeadingDegrees="${"%.1f".format(java.util.Locale.ROOT, headingDeg)}"
+   GPano:InitialViewHeadingDegrees="0"
+   GPano:InitialViewPitchDegrees="${"%.1f".format(java.util.Locale.ROOT, pitchDeg)}"
    GPano:StitchingSoftware="Revive360"/>
  </rdf:RDF>
 </x:xmpmeta>

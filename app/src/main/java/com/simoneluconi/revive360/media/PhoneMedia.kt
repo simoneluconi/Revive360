@@ -23,8 +23,13 @@ data class PhoneItem(
 
     val baseName: String get() = name.substringBeforeLast('.')
 
+    /** An ordinary picture made from the sphere (a framing): opens in the phone's own viewer. */
+    val isFlat: Boolean get() = kind == FileKind.PHOTO && !isStitched && !ORIGINAL.matches(baseName)
+
     companion object {
         const val STITCHED_SUFFIX = "_360"
+        /** A camera's own name: DCF, four digits last (360_0042, SAM_0042) */
+        private val ORIGINAL = Regex(""".+_\d{4}""")
     }
 }
 
