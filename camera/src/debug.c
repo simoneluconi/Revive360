@@ -157,6 +157,68 @@ void api_debug_vconf(req_t *r)
 
 #define SHIM_SOCK "/tmp/g360r/shim.sock"
 
+/*
+ * PUT /api/v1/debug/upload?name=FILE: writes the body (up to UPLOAD_MAX) to
+ * the card's g360r/FILE, through FILE.part and a rename. A development aid:
+ * a new plugin goes onto the card over Wi-Fi and the running one loads it
+ * ("chain FILE"), no card swap. FILE is a plain name ([A-Za-z0-9._-], not
+ * starting with a dot).
+ */
+void api_debug_upload(req_t *r)
+{
+    const char *name = strncmp(r->query, "name=", 5) == 0 ? r->query + 5 : "";
+    char path[512], part[520], buf[16384];
+    long left;
+    FILE *f;
+    size_t len = strlen(name);
+
+    if (len == 0 || len > 64 || name[0] == '.') {
+        http_send_error(r, 400, "bad_request", "name= must be a file name");
+        return;
+    }
+    for (const char *c = name; *c; c++)
+        if (!isalnum((unsigned char)*c) && !strchr("._-", *c)) {
+            http_send_error(r, 400, "bad_request", "name may only hold letters, digits and ._-");
+            return;
+        }
+    if (r->content_length < 0) {
+        http_send_error(r, 411, "length_required", "the upload needs a Content-Length");
+        return;
+    }
+    snprintf(path, sizeof path, "%s/g360r/%s", g_srv.ad.storage_root, name);
+    snprintf(part, sizeof part, "%s.part", path);
+    if (!(f = fopen(part, "wb"))) {
+        http_send_error(r, 500, "internal", "cannot write %s: %s", part, strerror(errno));
+        return;
+    }
+    fwrite(r->body, 1, r->body_len, f);
+    left = r->content_length - (long)r->body_len;
+    while (r->body_streamed && left > 0) {
+        ssize_t n = recv(r->fd, buf, left < (long)sizeof buf ? (size_t)left : sizeof buf, 0);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            break;
+        fwrite(buf, 1, (size_t)n, f);
+        left -= n;
+    }
+    if (fclose(f) != 0 || left > 0 || rename(part, path) != 0) {
+        unlink(part);
+        http_send_error(r, 500, "internal", "upload of %s incomplete (%ld bytes missing)", name, left);
+        return;
+    }
+    LOGI("debug: uploaded %s (%ld bytes)", path, r->content_length);
+    {
+        sbuf_t b;
+        sbuf_init(&b);
+        sbuf_puts(&b, "{\"written\":");
+        json_str(&b, path);
+        sbuf_printf(&b, ",\"bytes\":%ld}", r->content_length);
+        http_send_json(r, 200, &b);
+        sbuf_free(&b);
+    }
+}
+
 void api_debug_shim(req_t *r)
 {
     jobj_t o;

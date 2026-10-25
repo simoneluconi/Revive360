@@ -18,6 +18,11 @@
  *   remotestop          record stop
  *   recording           1 while recording (time-lapse: while its interval capture runs)
  *   runstate            Ui_Get_Common_Run_State()
+ *   dlnastate | dlnastart | dlnastop   the stock remote viewfinder service
+ *   mpegstop            stops its live stream session
+ *   powerstop | powerrestart   holds off / re-arms the auto power off timer
+ *   chain FILE          loads FILE (in the card's g360r/) as a second plugin
+ *   x TEXT              hands TEXT to that plugin
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -177,6 +182,119 @@ static int recording(char *resp, size_t len)
     return 0;
 }
 
+/* An exported static void(void) of the app */
+static int call_static(const char *mangled, const char *what, char *resp, size_t len)
+{
+    void (*f)(void) = (void (*)(void))app_fn(mangled);
+    if (!f) {
+        snprintf(resp, len, "error no %s", mangled);
+        return -1;
+    }
+    f();
+    snprintf(resp, len, "ok %s", what);
+    return 0;
+}
+
+/* ------------------------------------------------ remote viewfinder (DLNA/UPnP) */
+
+/* CUINETDlnaMan: the Samsung phone app's Wi-Fi remote, a UPnP MediaServer with
+ * the RVF (remote viewfinder) services and the live stream over HTTP
+ * (docs/firmware/13). Started here without CUINETFuncDLNA::start_network,
+ * which would bring up the stock softAP/Wi-Fi Direct over ours. The instance
+ * keeps "started" at +4. */
+static int dlna(int start, int stop, char *resp, size_t len)
+{
+    void *(*inst)(void) = (void *(*)(void))app_fn("_ZN13CUINETDlnaMan4InstEv");
+    void (*begin)(void *, int, int) = (void (*)(void *, int, int))app_fn("_ZN13CUINETDlnaMan9StartDlnaEbb");
+    void (*end)(void *, int) = (void (*)(void *, int))app_fn("_ZN13CUINETDlnaMan8StopDlnaEb");
+    void (*desc_url)(char **) = (void (*)(char **))app_fn("DlnaGetDeviceDescUrl");
+    char url[128] = "", *p = url;
+    void *self;
+    int was;
+
+    if (!inst || !begin || !end || !desc_url || !(self = inst())) {
+        snprintf(resp, len, "error a DLNA function is missing");
+        return -1;
+    }
+    was = *((unsigned char *)self + 4);
+    if (start && !was)
+        begin(self, 1, 0);      /* RVF, a card present */
+    if (stop && was)
+        end(self, 0);
+    if (*((unsigned char *)self + 4))
+        desc_url(&p);
+    snprintf(resp, len, "ok dlna was=%d now=%d url=%s", was, *((unsigned char *)self + 4), url);
+    return 0;
+}
+
+/* The live stream's camcorder session (CUINETFuncDLNA::dlna_mpeg_stop): the
+ * DLNA stack runs it when a client leaves cleanly, not when the socket just
+ * drops; a session left running feeds the next client from mid-stream (no
+ * stream header, the stack refuses it), so g360rd stops it around every one */
+static int mpeg_stop(char *resp, size_t len)
+{
+    void *(*inst)(void) = (void *(*)(void))app_fn("_ZN14CUINETFuncDLNA4InstEv");
+    void (*stop)(void *, int) = (void (*)(void *, int))app_fn("_ZN14CUINETFuncDLNA14dlna_mpeg_stopEi");
+    void *self;
+
+    if (!inst || !stop || !(self = inst())) {
+        snprintf(resp, len, "error no dlna_mpeg_stop");
+        return -1;
+    }
+    stop(self, 0);
+    snprintf(resp, len, "ok mpegstop");
+    return 0;
+}
+
+/* ------------------------------------------------ chained plugin */
+
+/* The shim (in the firmware) loads one plugin for good. This one can load
+ * another and hand it "x TEXT" requests, so a new plugin needs no card swap:
+ * g360rd uploads it to the card, "chain FILE" loads a fresh copy of it. */
+static int (*g_chain)(const char *, char *, size_t);
+
+#define CHAIN_DIR "/opt/storage/sdcard/g360r/"
+
+static int chain_load(const char *name, char *resp, size_t len)
+{
+    static int loads;
+    char from[256], to[64], buf[8192];
+    FILE *in, *out;
+    size_t n;
+    void *h;
+    int (*f)(const char *, char *, size_t);
+
+    for (const char *c = name; *c; c++)
+        if (*c == '/' || (c == name && *c == '.')) {
+            snprintf(resp, len, "error chain takes a file name in %s", CHAIN_DIR);
+            return -1;
+        }
+    snprintf(from, sizeof from, "%s%s", CHAIN_DIR, name);
+    /* A new name each time: dlopen hands back the library it already has for a path */
+    snprintf(to, sizeof to, "/tmp/g360r/chain-%d.so", ++loads);
+    if (!(in = fopen(from, "rb")) || !(out = fopen(to, "wb"))) {
+        if (in)
+            fclose(in);
+        snprintf(resp, len, "error cannot copy %s to %s", from, to);
+        return -1;
+    }
+    while ((n = fread(buf, 1, sizeof buf, in)) > 0)
+        fwrite(buf, 1, n, out);
+    fclose(in);
+    fclose(out);
+    if (!(h = dlopen(to, RTLD_NOW | RTLD_LOCAL))) {
+        snprintf(resp, len, "error dlopen: %s", dlerror());
+        return -1;
+    }
+    if (!(f = (int (*)(const char *, char *, size_t))dlsym(h, "g360r_plugin_request"))) {
+        snprintf(resp, len, "error no g360r_plugin_request in %s", from);
+        return -1;
+    }
+    g_chain = f;    /* the previous one stays mapped: its code may still be on a stack */
+    snprintf(resp, len, "ok chain %s loaded (%s)", name, to);
+    return 0;
+}
+
 /* ------------------------------------------------ requests */
 
 int g360r_plugin_request(const char *req, char *resp, size_t len)
@@ -216,6 +334,28 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         return remote_shot(0, resp, len);
     if (n >= 1 && strcmp(verb, "recording") == 0)
         return recording(resp, len);
+    if (n >= 1 && strcmp(verb, "dlnastate") == 0)
+        return dlna(0, 0, resp, len);
+    if (n >= 1 && strcmp(verb, "dlnastart") == 0)
+        return dlna(1, 0, resp, len);
+    if (n >= 1 && strcmp(verb, "dlnastop") == 0)
+        return dlna(0, 1, resp, len);
+    if (n >= 1 && strcmp(verb, "mpegstop") == 0)
+        return mpeg_stop(resp, len);
+    /* The auto power off timer, as the stock remote holds it while connected */
+    if (n >= 1 && strcmp(verb, "powerstop") == 0)
+        return call_static("_ZN10CUINETUtil14StopPowerTimerEv", "powerstop", resp, len);
+    if (n >= 1 && strcmp(verb, "powerrestart") == 0)
+        return call_static("_ZN10CUINETUtil17RestartPowerTimerEv", "powerrestart", resp, len);
+    if (strncmp(req, "chain ", 6) == 0)
+        return chain_load(req + 6, resp, len);
+    if (strncmp(req, "x ", 2) == 0) {
+        if (!g_chain) {
+            snprintf(resp, len, "error no chained plugin");
+            return -1;
+        }
+        return g_chain(req + 2, resp, len);
+    }
     if (n >= 1 && strcmp(verb, "runstate") == 0) {
         get_fn run = (get_fn)app_fn("_Z23Ui_Get_Common_Run_Statev");
         if (!run) {

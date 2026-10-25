@@ -11,6 +11,8 @@
 
 #define HDR_MAX   8192          /* protocol §2: header block max 8 KiB */
 #define BODY_MAX  4096          /* protocol §2: JSON body max 4 KiB */
+#define UPLOAD_PATH "/api/v1/debug/upload"
+#define UPLOAD_MAX (8L * 1024 * 1024)   /* its body is read by the handler, from the socket */
 
 /* ------------------------------------------------------------ global state */
 
@@ -45,6 +47,7 @@ typedef struct {
     char   allow[64];      /* set before a 405: value of the Allow header */
     char   body[BODY_MAX + 1];
     size_t body_len;
+    int    body_streamed;  /* an upload: body[] holds what came with the headers, the rest is on fd */
 } req_t;
 
 const char *http_reason(int status);
@@ -118,6 +121,11 @@ void api_debug_dfms(req_t *r);
 void api_debug_st(req_t *r);
 void api_debug_vconf(req_t *r);
 void api_debug_shim(req_t *r);
+void api_debug_upload(req_t *r);
+
+/* liveview.c (§5.14) */
+void api_liveview(req_t *r);
+extern volatile int g_liveview;   /* a live view stream is being served */
 
 /* settings.c (§5.12) */
 void api_settings(req_t *r);

@@ -135,7 +135,7 @@ A missing key means "not supported" (`false`, empty list).
 | `capture.resolution_settable` | bool | If true, `resolution` in §5.3 accepts a value from `photo_resolutions`. |
 | `video_modes` | list of `WxH@fps` | Informational (the settable list is the `video_size` setting). |
 | `record` | bool | §5.13 is available (start/stop a video recording). |
-| `liveview` | bool | Reserved; always `false` in v1. |
+| `liveview` | bool | §5.14 is available. |
 | `files.*` | bool | Gates the file endpoints of §5.4–§5.7. `range` = downloads honour `Range`. |
 | `status.battery` / `status.storage` / `status.battery_temperature` | bool | Which parts of §5.2 are filled in. |
 | `leds` | list of LED channel objects | One entry per independently controllable LED. `id` is opaque (used in §5.8); `label` is for display; `role` is one of `status_red`, `status_green`, `status_blue`, `front`, `rear`, `charge`, `unknown`; `states` lists what §5.8 accepts for it. Empty = no LED control. |
@@ -164,7 +164,7 @@ Setting ids and their tokens (an adapter offers a subset):
 | `audio` | `off`, `on` | Sound in videos. |
 | `beep` | `off`, `low`, `mid`, `high` | Camera sound volume. |
 | `led` | `off`, `on` | The camera's indicator LEDs. |
-| `auto_power_off` | minutes (`1`, `3`, `5`, `30`) | Idle time before the camera switches off. |
+| `auto_power_off` | minutes (`1`, `3`, `5`, `30`) or `never` | Idle time before the camera switches off. The camera never switches off while a client talks to the server. |
 
 Values above are illustrative; each camera adapter reports its own. A not-yet-confirmed hardware
 mapping is reported honestly (e.g. `role: "unknown"`, `label: "LED 3"`).
@@ -438,6 +438,16 @@ Only when `capabilities.record`. `{"action": "start"}` starts a video recording 
 too, like §5.3: `{ "recording": { "active": false }, "files": [ ... ] }`. `409 busy` to start while
 recording or capturing; stopping when nothing records answers `200` with `active: false`.
 
+### 5.14 `GET /api/v1/liveview`
+
+Only when `capabilities.liveview`. Answers `200` and then the camera's live picture as it comes,
+without `Content-Length` (the one exception to §2): the client reads until it closes the connection
+or the camera ends the stream. `Content-Type` names the container the camera produces (the C200:
+`video/x-avi`, the Samsung remote viewfinder stream). One client at a time: `409 busy` while another one watches, or
+while a capture or a recording runs. While the live view is on, `POST /api/v1/capture` and
+`POST /api/v1/record` answer `409 busy`: the client closes the live view first. Settings may change
+during it; a mode or size change can end the stream.
+
 ## 6. Camera-side behaviour (informative)
 
 Not part of the wire contract, documented so both sides agree on what the user sees:
@@ -462,5 +472,5 @@ Not part of the wire contract, documented so both sides agree on what the user s
 
 ## 8. Reserved for later versions
 
-Not implemented in v1; names reserved so v1 code does not collide: `POST /api/v1/record`,
-`GET /api/v1/liveview`, `POST /api/v1/settings`, `GET /api/v1/events`, `POST /api/v1/power`.
+Not implemented in v1; names reserved so v1 code does not collide: `GET /api/v1/events`,
+`POST /api/v1/power`.

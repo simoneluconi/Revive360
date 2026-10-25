@@ -203,8 +203,10 @@ static const c200_setting_t C200_SETTINGS[] = {
     { "audio", 26, -1, 0x10e, 2, { "off", "on" }, { 0, 1 } },
     { "beep", 16, -1, 0x14, 4, { "off", "low", "mid", "high" }, { 0, 1, 2, 3 } },
     { "led", 17, -1, 0x21e, 2, { "off", "on" }, { 0, 1 } },
-    { "auto_power_off", 18, -1, 0xd, 4, { "1", "3", "5", "30" }, { 1, 2, 3, 5 } },
+    /* "never" is ours: the camera's power timer held off (keep_awake below) */
+    { "auto_power_off", 18, -1, 0xd, 5, { "1", "3", "5", "30", "never" }, { 1, 2, 3, 5, 1000 } },
 };
+#define VALUE_NEVER 1000
 #define N_C200_SETTINGS ((int)(sizeof C200_SETTINGS / sizeof C200_SETTINGS[0]))
 
 #define KEY_LENS        0x21a
@@ -228,11 +230,55 @@ static int c200_menu(const c200_setting_t *s)
     return lens == LENS_VALUE_DUAL ? s->menu : s->menu_single;
 }
 
+/* ------------------------------------------------------------ power timer */
+
+/* The camera switches itself off after its auto power off time without a key
+ * press. The stock phone app held that timer off while connected
+ * (CUINETUtil::StopPowerTimer); so does this, while a client talks to us or
+ * records or watches the live view, and always with auto_power_off "never",
+ * kept on the card (keep_awake). The camera re-arms the timer on its own
+ * events (a shot, a menu), hence the period. */
+#define AWAKE_PERIOD_S  15
+#define CLIENT_AWAKE_MS 20000
+
+static char g_keep_awake_path[300];
+
+static int keep_awake(void)
+{
+    return access(g_keep_awake_path, F_OK) == 0;
+}
+
+static void *c200_awake_thread(void *arg)
+{
+    char reply[256];
+    int held = 0;
+    (void)arg;
+    for (;;) {
+        int client = g_srv.last_request_ms && now_ms_mono() - g_srv.last_request_ms < CLIENT_AWAKE_MS;
+        if (keep_awake() || client || g_liveview || g_srv.recording) {
+            if (shim_plugin("powerstop", reply, sizeof reply) == 0 && !held)
+                LOGI("c200: power timer held off (%s)", keep_awake() ? "never" : "a client");
+            held = 1;
+        } else if (held) {
+            /* Back to the camera's own auto power off time */
+            if (shim_plugin("powerrestart", reply, sizeof reply) == 0)
+                LOGI("c200: power timer running again");
+            held = 0;
+        }
+        sleep(AWAKE_PERIOD_S);
+    }
+    return NULL;
+}
+
 static int c200_get_setting(adapter_t *a, const char *id, char *out, size_t outlen)
 {
     const c200_setting_t *s = c200_setting(id);
     int v, best = -1;
     (void)a;
+    if (s && strcmp(id, "auto_power_off") == 0 && keep_awake()) {
+        snprintf(out, outlen, "never");
+        return 0;
+    }
     if (!s || shim_ui_get(s->key, &v) < 0)
         return -1;
     for (int i = 0; i < s->n; i++) {
@@ -280,6 +326,8 @@ static int c200_setting_available(adapter_t *a, const char *id, const char **out
         }
         p = end;
     }
+    if (strcmp(id, "auto_power_off") == 0 && n < max)
+        out[n++] = "never";
     return n;
 }
 
@@ -296,6 +344,19 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
     if (v < 0) {
         snprintf(err, errlen, "no value for %s=%s", id, value);
         return -1;
+    }
+    if (strcmp(id, "auto_power_off") == 0) {
+        if (v == VALUE_NEVER) {
+            FILE *f = fopen(g_keep_awake_path, "w");
+            if (!f) {
+                snprintf(err, errlen, "cannot write %s", g_keep_awake_path);
+                return -1;
+            }
+            fclose(f);
+            shim_plugin("powerstop", reply, sizeof reply);
+            return 0;
+        }
+        unlink(g_keep_awake_path);   /* the camera's time again (the thread re-arms it) */
     }
     snprintf(req, sizeof req, "netset %d %d", c200_menu(s), v);
     if (shim_plugin(req, reply, sizeof reply) < 0) {
@@ -348,6 +409,41 @@ static int c200_record(adapter_t *a, int start, char *err, size_t errlen)
     return 0;
 }
 
+/* ------------------------------------------------------------ live view */
+
+/* The Samsung phone app's remote viewfinder (docs/firmware/13): its DLNA
+ * service in di-camera-app, started without its own network bring-up, serves
+ * the live picture on port 7679. A session left running would feed the next
+ * client from mid-stream, so it is stopped before and after each one. */
+#define LIVEVIEW_PORT 7679
+#define LIVEVIEW_PATH "/livestream_high.avi"
+
+static int c200_liveview_open(adapter_t *a, char *host, size_t hostlen, int *port, char *path, size_t pathlen,
+                              char *err, size_t errlen)
+{
+    char reply[256];
+    const char *u;
+    (void)a;
+    /* "ok dlna was=0 now=1 url=http://192.168.107.1:7676/smp_2_" */
+    if (shim_plugin("dlnastart", reply, sizeof reply) < 0 || !(u = strstr(reply, "url=http://"))) {
+        snprintf(err, errlen, "the camera's stream service did not start: %s", reply);
+        return -1;
+    }
+    u += strlen("url=http://");
+    snprintf(host, hostlen, "%.*s", (int)strcspn(u, ":/"), u);
+    shim_plugin("mpegstop", reply, sizeof reply);
+    *port = LIVEVIEW_PORT;
+    snprintf(path, pathlen, "%s", LIVEVIEW_PATH);
+    return 0;
+}
+
+static void c200_liveview_close(adapter_t *a)
+{
+    char reply[256];
+    (void)a;
+    shim_plugin("mpegstop", reply, sizeof reply);
+}
+
 void adapter_c200_init(adapter_t *a, const config_t *cfg)
 {
     static const char *const qualities[] = { "sfine" };
@@ -394,6 +490,19 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
             a->set_setting = c200_set_setting;
             a->setting_available = c200_setting_available;
             a->record = c200_record;
+            if (config_get_int(cfg, "liveview_enable", 1)) {
+                a->liveview_open = c200_liveview_open;
+                a->liveview_close = c200_liveview_close;
+            }
+            snprintf(g_keep_awake_path, sizeof g_keep_awake_path, "%s/g360r/keep_awake", a->storage_root);
+            {
+                pthread_t th;
+                pthread_attr_t at;
+                pthread_attr_init(&at);
+                pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+                pthread_attr_setstacksize(&at, 128 * 1024);
+                pthread_create(&th, &at, c200_awake_thread, NULL);
+            }
         }
     }
     adapter_discover_leds(a, "/sys/class/leds", 5, cfg);

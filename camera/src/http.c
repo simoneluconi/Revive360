@@ -245,6 +245,15 @@ static int read_request(req_t *r)
     if (r->content_length > 0) {
         size_t have = got - hdr_len;
         if (r->content_length > BODY_MAX) {
+            /* The debug upload reads its own body; it keeps what came along */
+            if (strcmp(r->method, "PUT") == 0 && strcmp(r->path, UPLOAD_PATH) == 0 &&
+                r->content_length <= UPLOAD_MAX && have <= BODY_MAX) {
+                memcpy(r->body, buf + hdr_len, have);
+                r->body_len = have;
+                r->body_streamed = 1;
+                r->body[r->body_len] = 0;
+                goto out;
+            }
             rc = 413;
             goto out;
         }

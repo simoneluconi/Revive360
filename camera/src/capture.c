@@ -316,6 +316,11 @@ void api_capture(req_t *r)
         http_send_error(r, 409, "busy", "a video recording is in progress");
         return;
     }
+    if (g_liveview) {
+        /* The camera's stream runs its camcorder: the client closes the live view first */
+        http_send_error(r, 409, "busy", "the live view is on");
+        return;
+    }
 
     /* Serialize. */
     if (pthread_mutex_trylock(&g_cap_mu) != 0) {
@@ -417,6 +422,10 @@ static void record_start(req_t *r, adapter_t *a)
 
     if (g_srv.recording) {
         http_send_error(r, 409, "busy", "already recording");
+        return;
+    }
+    if (g_liveview) {
+        http_send_error(r, 409, "busy", "the live view is on");
         return;
     }
     if (a->get_setting && a->get_setting(a, "mode", mode, sizeof mode) == 0 &&

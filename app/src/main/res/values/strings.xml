@@ -68,6 +68,7 @@
     <string name="value_seconds">%1$s s</string>
     <string name="value_minutes">%1$s min</string>
     <string name="value_max">Max</string>
+    <string name="value_never">Never</string>
     <string name="setting_ev">Exposure</string>
     <string name="setting_iso_limit">ISO limit</string>
     <string name="setting_white_balance">White balance</string>

@@ -40,7 +40,7 @@ void api_capabilities_json(sbuf_t *b)
     sbuf_printf(b, ",\"resolution_settable\":%s}", a->resolution_settable ? "true" : "false");
     sbuf_puts(b, ",\"video_modes\":");
     str_list(b, a->video_modes, a->n_video_modes);
-    sbuf_printf(b, ",\"record\":%s,\"liveview\":false", a->record ? "true" : "false");
+    sbuf_printf(b, ",\"record\":%s,\"liveview\":%s", a->record ? "true" : "false", a->liveview_open ? "true" : "false");
     sbuf_printf(b, ",\"files\":{\"list\":true,\"download\":true,\"range\":true,\"delete\":%s,\"thumbnails\":%s}",
                 a->files_delete ? "true" : "false", a->thumbnails ? "true" : "false");
     sbuf_printf(b, ",\"status\":{\"battery\":%s,\"storage\":true,\"battery_temperature\":%s}",
@@ -211,6 +211,10 @@ void api_dispatch(req_t *r)
         if (allow(r, "POST")) api_debug_vconf(r);
     } else if (strcmp(p, "/api/v1/debug/shim") == 0) {
         if (allow(r, "POST")) api_debug_shim(r);
+    } else if (strcmp(p, UPLOAD_PATH) == 0) {
+        if (allow(r, "PUT")) api_debug_upload(r);
+    } else if (strcmp(p, "/api/v1/liveview") == 0) {
+        if (allow(r, "GET")) api_liveview(r);
     } else if (strcmp(p, "/api/v1/log") == 0) {
         if (allow(r, "GET")) api_log(r);
     } else if (prefix(p, "/api/v1/thumb/")) {

@@ -217,7 +217,7 @@ const char *const SET360_METERING[] = { "multi", "center", "spot" };
 const char *const SET360_ONOFF[] = { "off", "on" };
 const char *const SET360_SHARPNESS[] = { "1", "2" };
 const char *const SET360_BEEP[] = { "off", "low", "mid", "high" };
-const char *const SET360_POWER_OFF[] = { "1", "3", "5", "30" };
+const char *const SET360_POWER_OFF[] = { "1", "3", "5", "30", "never" };
 
 #define N(x) ((int)(sizeof x / sizeof x[0]))
 

@@ -109,8 +109,10 @@ object Format {
             "max" -> resources.getString(R.string.value_max)
             else -> if (token.toDoubleOrNull() != null) resources.getString(R.string.value_minutes, token) else token
         }
-        SettingIds.AUTO_POWER_OFF ->
-            if (token.toDoubleOrNull() != null) resources.getString(R.string.value_minutes, token) else token
+        SettingIds.AUTO_POWER_OFF -> when (token) {
+            "never" -> resources.getString(R.string.value_never)
+            else -> if (token.toDoubleOrNull() != null) resources.getString(R.string.value_minutes, token) else token
+        }
         SettingIds.EV -> if (token.toDoubleOrNull() == 0.0) "0" else token
         SettingIds.ISO_LIMIT -> "ISO $token"
         SettingIds.SHARPNESS -> "+$token"
