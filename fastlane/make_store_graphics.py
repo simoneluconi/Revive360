@@ -93,7 +93,7 @@ def feature_graphic(t, out):
     while draw.textlength(tag, font=font(size, 500)) > 560:
         size -= 1
     draw.text((64, 360), tag, font=font(size, 500), fill="white")
-    for i, name in enumerate(("home", "viewer360")):
+    for i, name in enumerate(("viewer360", "home")):
         shot = Image.open(SHOTS / f"{name}.png").convert("RGB")
         sh = 400
         sw = round(shot.width * sh / shot.height)
