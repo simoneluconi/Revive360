@@ -332,131 +332,139 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
             }
         }
 
-        if (!flat) {
-            // Straighten: turns the picture about the middle of the screen, kept with the picture
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Label(
-                    if (straightenFrom != null) stringResource(R.string.pano_straighten_value, straighten / 2f)
-                    else stringResource(R.string.pano_straighten),
-                    Modifier.width(118.dp), size = 14.sp, color = colors.text2,
-                )
-                ValueSlider(
-                    value = straighten,
-                    range = -STRAIGHTEN_STEPS..STRAIGHTEN_STEPS,
-                    onChange = { v ->
-                        val p = panorama ?: return@ValueSlider
-                        val from = straightenFrom ?: (edit to p.view).also { straightenFrom = it }
-                        straighten = v
-                        val next = from.first.rolled(from.first.level, from.second, Math.toRadians(v / 2.0).toFloat())
-                        edit = next
-                        p.setView(p.view.copy(level = next.level))
-                    },
-                    onDone = {
-                        if (straightenFrom != null) keep(edit)
-                        straightenFrom = null
-                        straighten = 0
-                    },
-                    modifier = Modifier.weight(1f),
-                    enabled = picture != null,
-                )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton(stringResource(R.string.pano_first_view), Modifier.weight(1f), enabled = picture != null) {
-                    val v = panorama?.view ?: return@PillButton
-                    keep(edit.copy(heading = v.yaw, pitch = v.pitch))
-                    panorama?.home = firstView()
-                    nav.message(resources.getString(R.string.pano_first_view_done), MessageKind.GOOD)
+        // The same height for both: switching does not resize the picture or move the buttons
+        Column(
+            Modifier.fillMaxWidth().height(CONTROLS_HEIGHT).padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (!flat) {
+                // Straighten: turns the picture about the middle of the screen, kept with the picture
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Label(
+                        if (straightenFrom != null) stringResource(R.string.pano_straighten_value, straighten / 2f)
+                        else stringResource(R.string.pano_straighten),
+                        Modifier.width(118.dp), size = 14.sp, color = colors.text2,
+                    )
+                    ValueSlider(
+                        value = straighten,
+                        range = -STRAIGHTEN_STEPS..STRAIGHTEN_STEPS,
+                        onChange = { v ->
+                            val p = panorama ?: return@ValueSlider
+                            val from = straightenFrom ?: (edit to p.view).also { straightenFrom = it }
+                            straighten = v
+                            val next = from.first.rolled(from.first.level, from.second, Math.toRadians(v / 2.0).toFloat())
+                            edit = next
+                            p.setView(p.view.copy(level = next.level))
+                        },
+                        onDone = {
+                            if (straightenFrom != null) keep(edit)
+                            straightenFrom = null
+                            straighten = 0
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = picture != null,
+                    )
                 }
-                PillButton(stringResource(R.string.pano_reset), Modifier.weight(1f), enabled = picture != null && edit != PanoramaEdit()) {
-                    keep(PanoramaEdit())
-                    panorama?.home = firstView()
-                    panorama?.setView(firstView())
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PillButton(stringResource(R.string.pano_first_view), Modifier.weight(1f), enabled = picture != null) {
+                        val v = panorama?.view ?: return@PillButton
+                        keep(edit.copy(heading = v.yaw, pitch = v.pitch))
+                        panorama?.home = firstView()
+                        nav.message(resources.getString(R.string.pano_first_view_done), MessageKind.GOOD)
+                    }
+                    PillButton(stringResource(R.string.pano_reset), Modifier.weight(1f), enabled = picture != null && edit != PanoramaEdit()) {
+                        keep(PanoramaEdit())
+                        panorama?.home = firstView()
+                        panorama?.setView(firstView())
+                    }
                 }
-            }
-            PillButton(
-                stringResource(if (saving) R.string.pano_saving else R.string.pano_save),
-                Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                icon = AppIcons.Sphere,
-                style = ButtonStyle.PRIMARY,
-                enabled = ready && picture is DualFisheyeImage,
-            ) {
-                val image = picture as? DualFisheyeImage ?: return@PillButton
-                val local = original ?: return@PillButton
-                val from = source ?: return@PillButton
-                val e = edit
-                save("360 photo") {
-                    val stitched = Stitcher.equirect(image, model, image.side * 2, e.exportOrientation())
-                    try {
-                        publish("${from.baseName}${PhoneItem.STITCHED_SUFFIX}.jpg") {
-                            // Our pitch looks down when positive, the metadata's up
-                            Jpeg360.write(stitched, local, it, -Math.toDegrees(e.pitch.toDouble()).toFloat())
+                Spacer(Modifier.weight(1f))
+                PillButton(
+                    stringResource(if (saving) R.string.pano_saving else R.string.pano_save),
+                    Modifier.fillMaxWidth(),
+                    icon = AppIcons.Sphere,
+                    style = ButtonStyle.PRIMARY,
+                    enabled = ready && picture is DualFisheyeImage,
+                ) {
+                    val image = picture as? DualFisheyeImage ?: return@PillButton
+                    val local = original ?: return@PillButton
+                    val from = source ?: return@PillButton
+                    val e = edit
+                    save("360 photo") {
+                        val stitched = Stitcher.equirect(image, model, image.side * 2, e.exportOrientation())
+                        try {
+                            publish("${from.baseName}${PhoneItem.STITCHED_SUFFIX}.jpg") {
+                                // Our pitch looks down when positive, the metadata's up
+                                Jpeg360.write(stitched, local, it, -Math.toDegrees(e.pitch.toDouble()).toFloat())
+                            }
+                        } finally {
+                            stitched.recycle()
                         }
-                    } finally {
-                        stitched.recycle()
                     }
                 }
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ViewMode.entries.forEach { m ->
-                    Chip(stringResource(m.label), selected = mode == m) {
-                        val p = panorama ?: return@Chip
-                        framing = currentFraming().copy(style = m.name)
-                        val next = m.preset(p.view).copy(roll = p.view.roll)
-                        p.home = m.preset(firstView())
-                        p.setView(next)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ViewMode.entries.forEach { m ->
+                        Chip(stringResource(m.label), selected = mode == m) {
+                            val p = panorama ?: return@Chip
+                            framing = currentFraming().copy(style = m.name)
+                            val next = m.preset(p.view).copy(roll = p.view.roll)
+                            p.home = m.preset(firstView())
+                            p.setView(next)
+                        }
                     }
                 }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Label(stringResource(R.string.pano_format), size = 14.sp, color = colors.text2)
-                FRAMES.forEach { (label, ratio) ->
-                    Chip(label, selected = framing.ratio == ratio) {
-                        framing = currentFraming().copy(ratio = ratio, frameX = -1f, frameY = -1f, frameHeight = -1f)
-                        edits.lastRatio = ratio
-                        frame = placedFrame(viewer)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Label(stringResource(R.string.pano_format), size = 14.sp, color = colors.text2)
+                    FRAMES.forEach { (label, ratio) ->
+                        Chip(label, selected = framing.ratio == ratio) {
+                            framing = currentFraming().copy(ratio = ratio, frameX = -1f, frameY = -1f, frameHeight = -1f)
+                            edits.lastRatio = ratio
+                            frame = placedFrame(viewer)
+                        }
                     }
                 }
-            }
-            // Rotate: turns this framing only (the 360 photo keeps its own level)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val roll = Math.toDegrees((panorama?.view?.roll ?: framing.roll).toDouble()).toFloat()
-                Label(stringResource(R.string.pano_rotate_value, roll), Modifier.width(118.dp), size = 14.sp, color = colors.text2)
-                var rollSteps by remember(key) { mutableIntStateOf((roll * 2).toInt()) }
-                ValueSlider(
-                    value = rollSteps,
-                    range = -ROTATE_STEPS..ROTATE_STEPS,
-                    onChange = { v ->
-                        rollSteps = v
-                        panorama?.let { p -> p.setView(p.view.copy(roll = Math.toRadians(v / 2.0).toFloat())) }
-                    },
-                    onDone = { keepFraming() },
-                    modifier = Modifier.weight(1f),
-                    enabled = picture != null,
-                )
-            }
-            PillButton(
-                stringResource(if (saving) R.string.pano_saving_flat else R.string.pano_save_flat),
-                Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                icon = AppIcons.Photo,
-                style = ButtonStyle.PRIMARY,
-                enabled = ready && frame != null,
-            ) {
-                val image = picture ?: return@PillButton
-                val v = panorama?.view ?: return@PillButton
-                val f = frame ?: return@PillButton
-                val local = original
-                val from = source ?: return@PillButton
-                keepFraming()
-                val window = frameWindow(f, viewer)
-                val (w, h) = frameSize(image, v, window)
-                val stamp = java.text.SimpleDateFormat("HHmmss", java.util.Locale.ROOT).format(java.util.Date())
-                save("Framing ${w}x$h") {
-                    val picked = ViewRenderer.render(image, model, v, w, h, window)
-                    try {
-                        publish("${from.baseName}_${mode.fileTag}_$stamp.jpg") { Jpeg360.writeFlat(picked, local, it) }
-                    } finally {
-                        picked.recycle()
+                // Rotate: turns this framing only (the 360 photo keeps its own level)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val roll = Math.toDegrees((panorama?.view?.roll ?: framing.roll).toDouble()).toFloat()
+                    Label(stringResource(R.string.pano_rotate_value, roll), Modifier.width(118.dp), size = 14.sp, color = colors.text2)
+                    var rollSteps by remember(key) { mutableIntStateOf((roll * 2).toInt()) }
+                    ValueSlider(
+                        value = rollSteps,
+                        range = -ROTATE_STEPS..ROTATE_STEPS,
+                        onChange = { v ->
+                            rollSteps = v
+                            panorama?.let { p -> p.setView(p.view.copy(roll = Math.toRadians(v / 2.0).toFloat())) }
+                        },
+                        onDone = { keepFraming() },
+                        modifier = Modifier.weight(1f),
+                        enabled = picture != null,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                PillButton(
+                    stringResource(if (saving) R.string.pano_saving_flat else R.string.pano_save_flat),
+                    Modifier.fillMaxWidth(),
+                    icon = AppIcons.Photo,
+                    style = ButtonStyle.PRIMARY,
+                    enabled = ready && frame != null,
+                ) {
+                    val image = picture ?: return@PillButton
+                    val v = panorama?.view ?: return@PillButton
+                    val f = frame ?: return@PillButton
+                    val local = original
+                    val from = source ?: return@PillButton
+                    keepFraming()
+                    val window = frameWindow(f, viewer)
+                    val (w, h) = frameSize(image, v, window)
+                    val stamp = java.text.SimpleDateFormat("HHmmss", java.util.Locale.ROOT).format(java.util.Date())
+                    save("Framing ${w}x$h") {
+                        val picked = ViewRenderer.render(image, model, v, w, h, window)
+                        try {
+                            publish("${from.baseName}_${mode.fileTag}_$stamp.jpg") { Jpeg360.writeFlat(picked, local, it) }
+                        } finally {
+                            picked.recycle()
+                        }
                     }
                 }
             }
@@ -483,6 +491,9 @@ private const val HALF_PI = (Math.PI / 2).toFloat()
 /** Half degrees each way. */
 private const val STRAIGHTEN_STEPS = 60
 private const val ROTATE_STEPS = 360
+
+/** Room for the taller set of controls (the normal photo's) with its bottom margin. */
+private val CONTROLS_HEIGHT = 232.dp
 
 private val FRAMES = listOf("16:9" to 16f / 9f, "4:3" to 4f / 3f, "1:1" to 1f, "9:16" to 9f / 16f)
 
