@@ -37,6 +37,7 @@ g360r.conf
 *.aab
 *.jks
 *.keystore
+/keystore.properties
 
 # Samsung's firmware images: kept locally in firmware/, never published
 /firmware/*

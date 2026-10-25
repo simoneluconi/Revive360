@@ -18,9 +18,9 @@ you exactly what to do on the camera.
   running and [Git](https://git-scm.com/downloads) installed (on Windows, the commands below go
   in **Git Bash**);
 - an **Android phone** with Android 10 or later, of any brand (it does not have to be a Samsung),
-  with **the app** on it. There is no ready-made download yet: open this folder in
-  [Android Studio](https://developer.android.com/studio), connect the phone with USB debugging
-  on and press **Run** (or run `./gradlew installDebug`);
+  with **the app** on it: download `Revive360-*.apk` from the
+  [latest release](https://github.com/simoneluconi/Revive360/releases/latest) on the phone
+  and open it (Android asks once to allow installing apps from the browser);
 - **Samsung's original firmware file** `C200GLU0AQK1_171121_1257_REV00_user.bin`: download it from
   the [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93)
   and put it in the `firmware/stock` folder of this project. We cannot share it ourselves: it is
