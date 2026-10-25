@@ -43,7 +43,7 @@ Camera side:
 
 The controller detects the model at start and reports it (`adapter`, `adapter_status`) in
 `GET /api/v1/info`. Contributions for other models and firmware versions are welcome: start from
-`camera/src/adapter_r210.c` and the notes in [docs/firmware/](docs/firmware/).
+`camera/src/adapter_r210.c` and the notes in [docs/firmware/](firmware/).
 
 ## How it works
 
@@ -63,15 +63,15 @@ The controller detects the model at start and reports it (`adapter`, `adapter_st
 - The modified firmware starts `g360rd` at boot (systemd unit `g360r.service`) when the SD card
   holds a configuration file; without it the camera behaves exactly like stock.
 - `g360rd` brings up a WPA2 access point named `G360R-XXXXXX` (last three bytes of the camera's MAC)
-  and serves the protocol in [docs/protocol.md](docs/protocol.md).
+  and serves the protocol in [docs/protocol.md](protocol.md).
 - For anything the stock camera app owns (shots, recording, settings, live view) `g360rd` sends
   requests to `libg360r_shim.so`, which systemd preloads into Samsung's `di-camera-app`. The shim
   runs them on the app's main loop through `libg360r_plugin.so`, which it loads from the SD card,
   so the plugin can change without a reflash.
 - The app only speaks the protocol; it does not know which camera model is behind it.
 
-More background: [docs/00_overview.md](docs/00_overview.md) (analysis overview) and the research
-notes in [docs/firmware/](docs/firmware/).
+More background: [docs/00_overview.md](00_overview.md) (analysis overview) and the research
+notes in [docs/firmware/](firmware/).
 
 ## Build
 
@@ -86,7 +86,7 @@ Requirements: Android Studio (or its bundled JDK, `jbr`, as `JAVA_HOME`) and the
 
 ### Camera controller
 
-Docker toolchain, see [camera/README.md](camera/README.md):
+Docker toolchain, see [camera/README.md](../camera/README.md):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File camera\build.ps1          # build
@@ -94,7 +94,7 @@ powershell -ExecutionPolicy Bypass -File camera\build.ps1 -Smoke   # build + smo
 ```
 
 `g360rd-host serve --sim <dir>` runs the whole controller against a simulated camera on the PC, so
-the app can be developed without hardware ([Sim mode](camera/README.md#sim-mode-no-camera)).
+the app can be developed without hardware ([Sim mode](../camera/README.md#sim-mode-no-camera)).
 
 ## Project layout
 
