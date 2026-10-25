@@ -125,6 +125,14 @@
     <string name="delete_title">Eliminare dalla fotocamera?</string>
     <string name="delete_message">%1$s verrà rimosso dalla scheda SD. Le copie sul telefono restano.</string>
     <string name="delete_done">%1$s eliminato</string>
+    <string name="gallery_selected">%1$d selezionati</string>
+    <string name="select_all">Seleziona tutto</string>
+    <string name="select_none">Deseleziona tutto</string>
+    <string name="selection_close">Fine</string>
+    <string name="delete_many_title">Eliminare %1$d file dalla fotocamera?</string>
+    <string name="delete_many_message">Verranno rimossi dalla scheda SD. Le copie sul telefono restano.</string>
+    <string name="delete_many_done">%1$d eliminati</string>
+    <string name="delete_many_partial">%1$d eliminati, %2$d non riusciti: %3$s</string>
 
     <!-- Settings -->
     <string name="settings_title">Impostazioni</string>

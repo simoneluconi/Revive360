@@ -48,14 +48,16 @@ import com.simoneluconi.revive360.link.LinkState
 import com.simoneluconi.revive360.protocol.Battery
 import com.simoneluconi.revive360.protocol.CameraFile
 import com.simoneluconi.revive360.protocol.CameraInfo
+import com.simoneluconi.revive360.protocol.CameraSettings
 import com.simoneluconi.revive360.protocol.CaptureMode
 import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.protocol.SettingDef
 import com.simoneluconi.revive360.protocol.SettingIds
-import com.simoneluconi.revive360.protocol.CameraSettings
+import com.simoneluconi.revive360.protocol.SettingValues
 import com.simoneluconi.revive360.protocol.ShootingModes
 import com.simoneluconi.revive360.protocol.Storage
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -288,28 +290,15 @@ private fun CaptureCard(info: CameraInfo) {
     val shootingMode = if (caps.setting(SettingIds.MODE) != null) values?.get(SettingIds.MODE) else ShootingModes.PHOTO
     val recordMode = caps.record && ShootingModes.records(shootingMode)
 
+    val changer = remember(controller) {
+        SettingChanger(scope, controller::setSetting) { nav.message(Format.error(resources, it), MessageKind.BAD) }
+    }
+    changer.locked = busy || recording
+
     Card {
         Label(stringResource(R.string.capture_title), size = 13.sp, color = colors.text2, weight = FontWeight.Bold)
-        if (caps.settings.isNotEmpty()) {
-            CameraSettings(caps.settings, settings, shootingMode, locked = busy || recording)
-        }
-        if (caps.captureModes.size > 1 && !recordMode) {
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                caps.captureModes.forEach { m ->
-                    Chip(Format.mode(resources, m), selected = m == mode) { modeWire = m.wire }
-                }
-            }
-        }
-        // Quality applies to the JPEG: not offered for RAW alone
-        if (caps.photoQualities.size > 1 && mode != CaptureMode.RAW && !recordMode) {
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                caps.photoQualities.forEach { q ->
-                    Chip(Format.quality(resources, q), selected = q == quality) { quality = q }
-                }
-            }
-        }
+        // Above the shutter only what keeps its height: the button must not move with the rows below
+        caps.setting(SettingIds.MODE)?.let { ModeChips(it, settings, changer) }
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             if (recordMode || recording) {
@@ -356,6 +345,24 @@ private fun CaptureCard(info: CameraInfo) {
             },
             Modifier.fillMaxWidth(), size = 13.sp, color = colors.text2, align = TextAlign.Center,
         )
+        if (caps.settings.isNotEmpty()) SettingRows(caps.settings, settings, shootingMode, changer)
+        if (caps.captureModes.size > 1 && !recordMode) {
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                caps.captureModes.forEach { m ->
+                    Chip(Format.mode(resources, m), selected = m == mode) { modeWire = m.wire }
+                }
+            }
+        }
+        // Quality applies to the JPEG: not offered for RAW alone
+        if (caps.photoQualities.size > 1 && mode != CaptureMode.RAW && !recordMode) {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                caps.photoQualities.forEach { q ->
+                    Chip(Format.quality(resources, q), selected = q == quality) { quality = q }
+                }
+            }
+        }
         val shot = last?.files.orEmpty()
         if (shot.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
@@ -382,32 +389,54 @@ private fun elapsedSeconds(reported: Long?): Long {
 }
 
 /**
- * The camera's settings (protocol §5.12): the shooting mode, then the settings that matter in it.
- * Changes go to the camera, which answers the values in force; nothing changes while [locked].
+ * Changes to the camera's settings (protocol §5.12), one at a time: the camera answers the values in
+ * force. Nothing changes while [locked].
  */
-@Composable
-private fun CameraSettings(defs: List<SettingDef>, settings: CameraSettings?, mode: String?, locked: Boolean) {
-    val values = settings?.values
-    val nav = LocalActions.current
-    val controller = nav.app.controller
-    val resources = LocalResources.current
-    val colors = LocalAppColors.current
-    val scope = rememberCoroutineScope()
-    var pending by remember { mutableStateOf<String?>(null) }   // setting id being changed
+private class SettingChanger(
+    private val scope: CoroutineScope,
+    private val send: suspend (String, String) -> Unit,
+    private val failed: (Exception) -> Unit,
+) {
+    /** The setting id being changed */
+    var pending by mutableStateOf<String?>(null)
+        private set
+    var locked = false
 
-    fun change(id: String, token: String) {
+    fun change(values: SettingValues?, id: String, token: String) {
         if (locked || pending != null || values?.get(id) == token) return
         pending = id
         scope.launch {
             try {
-                controller.setSetting(id, token)
+                send(id, token)
             } catch (e: Exception) {
-                nav.message(Format.error(resources, e), MessageKind.BAD)
+                failed(e)
             } finally {
                 pending = null
             }
         }
     }
+}
+
+/** The shooting mode chips: above the shutter, so the button stays put while the rows below change */
+@Composable
+private fun ModeChips(def: SettingDef, settings: CameraSettings?, changer: SettingChanger) {
+    val resources = LocalResources.current
+    Spacer(Modifier.height(10.dp))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        def.values.forEach { token ->
+            Chip(Format.settingValue(resources, def.id, token), selected = token == settings?.values?.get(def.id)) {
+                changer.change(settings?.values, def.id, token)
+            }
+        }
+    }
+}
+
+/** The settings that matter in the shooting [mode], as the camera offers them now. */
+@Composable
+private fun SettingRows(defs: List<SettingDef>, settings: CameraSettings?, mode: String?, changer: SettingChanger) {
+    val values = settings?.values
+    val resources = LocalResources.current
+    val colors = LocalAppColors.current
 
     // What matters per mode; unknown ids are shown everywhere
     val shown = defs.filter { def ->
@@ -420,16 +449,6 @@ private fun CameraSettings(defs: List<SettingDef>, settings: CameraSettings?, mo
             else -> true
         }
     }
-    defs.firstOrNull { it.id == SettingIds.MODE }?.let { def ->
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            def.values.forEach { token ->
-                Chip(Format.settingValue(resources, def.id, token), selected = token == values?.get(def.id)) {
-                    change(def.id, token)
-                }
-            }
-        }
-    }
     shown.forEach { full ->
         // What the camera offers now (the sizes of its current lens), and the value in force
         val now = settings?.offered(full) ?: full.values
@@ -437,7 +456,7 @@ private fun CameraSettings(defs: List<SettingDef>, settings: CameraSettings?, mo
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label(Format.settingTitle(resources, def.id) ?: def.id, size = 13.sp, color = colors.text2)
-            if (pending == def.id) {
+            if (changer.pending == def.id) {
                 Spacer(Modifier.width(8.dp))
                 Spinner(size = 14.dp)
             }
@@ -446,7 +465,7 @@ private fun CameraSettings(defs: List<SettingDef>, settings: CameraSettings?, mo
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             def.values.forEach { token ->
                 Chip(Format.settingValue(resources, def.id, token), selected = token == values?.get(def.id)) {
-                    change(def.id, token)
+                    changer.change(values, def.id, token)
                 }
             }
         }

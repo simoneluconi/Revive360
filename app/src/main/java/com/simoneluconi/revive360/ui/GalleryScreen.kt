@@ -1,7 +1,9 @@
 package com.simoneluconi.revive360.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -55,7 +58,44 @@ fun GalleryScreen() {
     val downloads by controller.downloads.collectAsStateWithLifecycle()
     val saved by controller.saved.keys.collectAsStateWithLifecycle()
     val connected = state is LinkState.Connected
+    val canDelete = (state as? LinkState.Connected)?.info?.capabilities?.delete == true
     var refreshing by remember { mutableStateOf(false) }
+    // Selection: a long press starts it, taps then toggle; paths, so a refresh keeps it
+    var selected by remember { mutableStateOf<Set<String>?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    val list = files
+    // Files gone from the card leave the selection
+    val chosen = selected?.let { sel -> list.orEmpty().filter { it.path in sel } }
+
+    BackHandler(enabled = selected != null) { selected = null }
+
+    fun deleteChosen(targets: List<CameraFile>) {
+        deleting = true
+        scope.launch {
+            var done = 0
+            var lastError: Exception? = null
+            for (file in targets) {
+                try {
+                    controller.delete(file)
+                    done++
+                } catch (e: Exception) {
+                    lastError = e
+                }
+            }
+            deleting = false
+            selected = null
+            val failed = targets.size - done
+            if (failed == 0) {
+                nav.message(resources.getString(R.string.delete_many_done, done), MessageKind.GOOD)
+            } else {
+                nav.message(
+                    resources.getString(R.string.delete_many_partial, done, failed, lastError?.let { Format.error(resources, it) } ?: ""),
+                    MessageKind.BAD,
+                )
+            }
+        }
+    }
 
     fun refresh() {
         if (refreshing) return
@@ -74,17 +114,32 @@ fun GalleryScreen() {
     LaunchedEffect(connected) { if (connected) refresh() }
 
     ScreenScaffold(
-        title = stringResource(R.string.gallery_title),
+        title = chosen?.let { stringResource(R.string.gallery_selected, it.size) } ?: stringResource(R.string.gallery_title),
         scroll = false,
         actions = {
-            if (refreshing) {
+            if (chosen != null) {
+                val all = chosen.size == list.orEmpty().size
+                RoundIconButton(
+                    if (all) AppIcons.SelectNone else AppIcons.SelectAll,
+                    label = stringResource(if (all) R.string.select_none else R.string.select_all),
+                ) { selected = if (all) emptySet() else list.orEmpty().map { it.path }.toSet() }
+                Spacer(Modifier.width(8.dp))
+                if (deleting) {
+                    Spinner()
+                } else if (canDelete && chosen.isNotEmpty()) {
+                    RoundIconButton(AppIcons.Trash, label = stringResource(R.string.delete_action), tint = colors.bad) {
+                        confirmDelete = true
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                RoundIconButton(AppIcons.Close, label = stringResource(R.string.selection_close)) { selected = null }
+            } else if (refreshing) {
                 Spinner()
             } else if (connected) {
                 RoundIconButton(AppIcons.Refresh, label = stringResource(R.string.action_refresh)) { refresh() }
             }
         },
     ) {
-        val list = files
         when {
             list == null && !connected -> EmptyNote(stringResource(R.string.gallery_not_connected))
             list == null -> EmptyNote(stringResource(R.string.gallery_loading))
@@ -97,15 +152,31 @@ fun GalleryScreen() {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(list, key = { it.path }) { file ->
+                    val sel = selected
                     FileTile(
                         file = file,
                         progress = downloads[file.path],
                         saved = controller.savedKey(file) in saved,
                         connected = connected,
-                    ) { nav.navigate(Screen.File(file.path)) }
+                        selected = sel?.let { file.path in it },
+                        onLongClick = { selected = (sel ?: emptySet()) + file.path },
+                    ) {
+                        if (sel == null) nav.navigate(Screen.File(file.path))
+                        else selected = if (file.path in sel) sel - file.path else sel + file.path
+                    }
                 }
             }
         }
+    }
+    if (confirmDelete && chosen != null) {
+        ConfirmDialog(
+            title = stringResource(R.string.delete_many_title, chosen.size),
+            message = stringResource(R.string.delete_many_message),
+            confirm = stringResource(R.string.delete_action),
+            cancel = stringResource(R.string.action_cancel),
+            danger = true,
+            onDismiss = { confirmDelete = false },
+        ) { deleteChosen(chosen) }
     }
 }
 
@@ -116,18 +187,42 @@ private fun EmptyNote(text: String) {
     }
 }
 
+/** A file of the grid; [selected] is null outside selection, else whether this one is chosen. */
 @Composable
-private fun FileTile(file: CameraFile, progress: DownloadProgress?, saved: Boolean, connected: Boolean, onClick: () -> Unit) {
+private fun FileTile(
+    file: CameraFile,
+    progress: DownloadProgress?,
+    saved: Boolean,
+    connected: Boolean,
+    selected: Boolean?,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit,
+) {
     val colors = LocalAppColors.current
+    val shape = RoundedCornerShape(16.dp)
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(2f)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .background(colors.surface)
-            .pressable(label = file.name, onClick = onClick),
+            .then(if (selected == true) Modifier.border(3.dp, colors.accent, shape) else Modifier)
+            .pressable(label = file.name, onLongClick = onLongClick, onClick = onClick),
     ) {
         Thumbnail(file, connected, Modifier.fillMaxSize())
+        if (selected != null) {
+            // Selection: the others dimmed, a check mark in the corner
+            if (!selected) Box(Modifier.fillMaxSize().background(colors.bg.copy(alpha = 0.35f)))
+            Box(Modifier.align(Alignment.TopStart).padding(6.dp)) {
+                Box(
+                    Modifier.size(24.dp).clip(CircleShape)
+                        .background(if (selected) colors.accent else colors.bg.copy(alpha = 0.8f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (selected) Icon(AppIcons.Check, colors.bg, size = 16.dp)
+                }
+            }
+        }
         // Name and badges on a strip at the bottom, readable over any picture
         Box(
             Modifier

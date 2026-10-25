@@ -127,6 +127,14 @@
     <string name="delete_title">Delete from the camera?</string>
     <string name="delete_message">%1$s will be removed from the SD card. Copies on the phone stay.</string>
     <string name="delete_done">%1$s deleted</string>
+    <string name="gallery_selected">%1$d selected</string>
+    <string name="select_all">Select all</string>
+    <string name="select_none">Select none</string>
+    <string name="selection_close">Done</string>
+    <string name="delete_many_title">Delete %1$d files from the camera?</string>
+    <string name="delete_many_message">They will be removed from the SD card. Copies on the phone stay.</string>
+    <string name="delete_many_done">%1$d deleted</string>
+    <string name="delete_many_partial">%1$d deleted, %2$d failed: %3$s</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
