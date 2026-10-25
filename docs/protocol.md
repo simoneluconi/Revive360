@@ -440,11 +440,15 @@ recording or capturing; stopping when nothing records answers `200` with `active
 
 ### 5.14 `GET /api/v1/liveview`
 
-Only when `capabilities.liveview`. Answers `200` and then the camera's live picture as it comes,
+Only when `capabilities.liveview`. `?quality=high|middle|low` (default `high`) picks one of the
+camera's streams (the C200: about 22, 12 and less Mbit/s). Answers `200` and then the camera's live picture as it comes,
 without `Content-Length` (the one exception to §2): the client reads until it closes the connection
 or the camera ends the stream. `Content-Type` names the container the camera produces (the C200:
-`video/x-avi`, the Samsung remote viewfinder stream). One client at a time: `409 busy` while another one watches, or
-while a capture or a recording runs. While the live view is on, `POST /api/v1/capture` and
+`video/x-avi`, the Samsung remote viewfinder stream). One client at a time: a new request takes the
+stream over from the current client (that one's connection ends); `409 busy` while a capture or a
+recording runs. The camera may take several seconds to start its stream. After the client leaves,
+the server keeps the camera's stream for a short while, so a client that comes back resumes at the
+next key frame without waiting. While the live view is on, `POST /api/v1/capture` and
 `POST /api/v1/record` answer `409 busy`: the client closes the live view first. Settings may change
 during it; a mode or size change can end the stream.
 
