@@ -11,8 +11,8 @@
 #   ./install.sh status   [card]    what is on the card now
 #
 # [card] is a drive letter (E:) or a mount point. Left out, the only removable card
-# connected is used. Nothing on the card is ever formatted or deleted: the camera's
-# photos stay, files of ours that are no longer wanted are renamed.
+# connected is used. The card is never formatted and the camera's photos stay: only
+# files of ours are written, and ours that are no longer needed are removed.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -55,19 +55,20 @@ card_dir() {
     echo "${arg%/}"
 }
 
-# Moves a file aside (name.off, or name.N.off when taken): never deletes anything.
-put_aside() {
-    local f=$1 to="$1.off" n=1
-    [ -e "$f" ] || return 0
-    while [ -e "$to" ]; do to="$1.$n.off"; n=$((n + 1)); done
-    mv "$f" "$to"
-    step "moved aside: ${f##*/} -> ${to##*/}"
+# Removes a file or folder of ours, when there.
+drop() {
+    [ -e "$1" ] || return 0
+    rm -rf "$1"
+    step "removed: ${1#"$2"/}"
 }
 
-# The factory SD hook's trigger files: only the activation step may have them.
-disarm() {
-    put_aside "$1/info.tg"
-    put_aside "$1/cmd.tg"
+# The factory SD hook's trigger files (only the activation step may have them) and what
+# the earlier steps leave behind: the flashed image, the activation script and its marks.
+tidy() {
+    local f
+    for f in info.tg cmd.tg info.tg.done smc200.bin.flashed fwupgrade.txt.done              g360r/p8_hook g360r/p8_invalidate.done; do
+        drop "$1/$f" "$1"
+    done
 }
 
 # Text the camera reads: LF line endings, no BOM.
@@ -119,8 +120,8 @@ flash_instructions() {
     step "1. Battery charged to near full, USB cable UNPLUGGED."
     step "2. Card in the camera, camera OFF."
     step "3. Hold the Shutter (OK) button and press the power button."
-    step "4. \"FW update\" appears: press OK. From now on do not press power: it would cancel."
-    step "5. Wait: \"Check for updates\", a progress bar, \"Updated\", then it restarts by itself."
+    step "4. The update starts by itself: from now on do not press any button (power cancels it)."
+    step "   Wait: \"Check for updates\", a progress bar, \"Updated\", then it restarts by itself."
     step "   The 3 red LEDs during the update are normal. Keep the card in until it has restarted."
 }
 
@@ -153,8 +154,7 @@ cmd_flash() {
     [ -f "$IMAGE" ] || die "no $IMAGE yet: run ./install.sh build first"
     say "Preparing $card for the firmware update"
     check_camera "$card"
-    disarm "$card"
-    put_aside "$card/smc200.bin.flashed"
+    tidy "$card"
     copy_checked "$IMAGE" "$card/smc200.bin"
     : > "$card/fwupgrade.txt"
     step "created fwupgrade.txt"
@@ -167,19 +167,13 @@ cmd_activate() {
     local card
     card=$(card_dir "${1:-}")
     say "Preparing $card for the activation"
-    if [ -e "$card/smc200.bin" ]; then
-        put_aside "$card/smc200.bin.flashed"
-        mv "$card/smc200.bin" "$card/smc200.bin.flashed"
-        step "smc200.bin -> smc200.bin.flashed"
-    fi
-    if [ -e "$card/fwupgrade.txt" ]; then
-        mv -f "$card/fwupgrade.txt" "$card/fwupgrade.txt.done"
-        step "fwupgrade.txt -> fwupgrade.txt.done"
-    fi
+    # The update is done: its image and trigger would start it again
+    drop "$card/smc200.bin" "$card"
+    drop "$card/fwupgrade.txt" "$card"
+    tidy "$card"
     mkdir -p "$card/g360r/p8_hook" "$card/g360r/log"
     cp camera/fw/p8_invalidate.sh "$card/g360r/p8_hook/p8_invalidate.sh"
     lf "$card/g360r/p8_hook/p8_invalidate.sh"
-    disarm "$card"
     printf 'cmd.tg\n' > "$card/info.tg"
     printf 'shell script /sdcard/g360r/p8_hook/p8_invalidate.sh\n' > "$card/cmd.tg"
     sync
@@ -200,7 +194,7 @@ cmd_sd() {
     [ -f "$PLUGIN" ] || die "no $PLUGIN yet: run ./install.sh build first"
     [ -f "$BLE" ] || die "no $BLE yet: run ./install.sh build first"
     say "Preparing $card for everyday use"
-    disarm "$card"
+    tidy "$card"
     mkdir -p "$card/g360r/bin" "$card/g360r/log"
     local f
     for f in "$SD_SRC"/g360r/*; do [ -f "$f" ] && cp "$f" "$card/g360r/"; done
@@ -234,8 +228,7 @@ cmd_stock() {
     card=$(card_dir "${1:-}")
     [ -f "$STOCK" ] || die "no $STOCK: put Samsung's firmware in firmware/stock/"
     say "Preparing $card to go back to Samsung's firmware"
-    disarm "$card"
-    put_aside "$card/smc200.bin.flashed"
+    tidy "$card"
     copy_checked "$STOCK" "$card/smc200.bin"
     : > "$card/fwupgrade.txt"
     step "created fwupgrade.txt"

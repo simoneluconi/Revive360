@@ -55,7 +55,7 @@ Then on the camera, as the script tells you:
 
 1. battery charged to near full, USB cable unplugged, card in, camera off;
 2. **hold the Shutter (OK) button and press the power button**;
-3. **"FW update"** appears: press **OK**, then do not touch anything;
+3. the update starts by itself: from now on **do not touch anything**;
 4. it shows a progress bar, **"Updated"**, and restarts by itself (the 3 red LEDs are normal).
 
 ## 3. Activate it
@@ -110,7 +110,7 @@ Put the card in the computer and run:
 It says what the card is set up for and shows the camera's latest log lines.
 
 - **3 beeps:** an error. Switch off and run `./install.sh status`.
-- **No "FW update" screen:** the USB cable is plugged in, or the battery is not charged enough.
+- **No update screen (it starts as usual):** the USB cable is plugged in, or the battery is not charged enough.
 - **Nothing happens after switching on:** wait a full minute (the 30 seconds start). Still
   nothing: hold power, take the card out, switch on without it; the camera starts as Samsung's.
 - **A factory screen with codes and the battery level:** expected during step 3 only, while the

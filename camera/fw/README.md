@@ -61,9 +61,9 @@ decompress it while flashing).
    battery icon does not map 1:1 to it (half or low can fail the check). **USB cable unplugged**: with
    USB at boot the camera goes to the USB/MTP path and shows no prompt.
 3. With the camera off: press and hold **Shutter** (the red OK button), then press the power button
-   (**Back**) to switch on. Menu is not needed (confirmed on the hardware, second flash). Once the
-   prompt is on screen do **not** press Back again (it cancels).
-4. "FW update" appears → press OK → "Check for updates" with a progress bar → "Updated" → the camera
+   (**Back**) to switch on. Menu is not needed (confirmed on the hardware, second flash). The update
+   starts by itself, there is no prompt to confirm; do **not** press Back again (it cancels).
+4. "Check for updates" with a progress bar → "Updated" → the camera
    restarts by itself. The **3 red LEDs** during the update are the normal progress indicator, not an
    error. Keep the SD card in until the restart is over: the flasher reads `smc200.bin` from it.
 
