@@ -100,6 +100,20 @@ object SettingIds {
     const val TIMER = "timer"
     const val TIMELAPSE_INTERVAL = "timelapse_interval"
     const val LOOP_TIME = "loop_time"
+    const val EV = "ev"
+    const val ISO_LIMIT = "iso_limit"
+    const val WHITE_BALANCE = "white_balance"
+    const val METERING = "metering"
+    const val HDR = "hdr"
+    const val SHARPNESS = "sharpness"
+    const val WIND_CUT = "wind_cut"
+    const val AUDIO = "audio"
+    const val BEEP = "beep"
+    const val LED = "led"
+    const val AUTO_POWER_OFF = "auto_power_off"
+
+    /** Picture and camera settings, kept out of the way of the shooting ones */
+    val ADVANCED = setOf(EV, ISO_LIMIT, WHITE_BALANCE, METERING, HDR, SHARPNESS, WIND_CUT, AUDIO, BEEP, LED, AUTO_POWER_OFF)
 }
 
 /** Shooting modes (values of the `mode` setting). */

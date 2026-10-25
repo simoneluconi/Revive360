@@ -172,8 +172,8 @@ typedef struct {
     int menu_single;   /* the single-lens menu, -1 when the same for both */
     int key;           /* the UI key the menu writes */
     int n;
-    const char *tok[10];
-    int val[10];
+    const char *tok[16];
+    int val[16];
 } c200_setting_t;
 
 static const c200_setting_t C200_SETTINGS[] = {
@@ -189,6 +189,21 @@ static const c200_setting_t C200_SETTINGS[] = {
     { "timelapse_interval", 24, -1, 0x224, 7, { "0.5", "1", "2", "5", "10", "30", "60" },
       { 0, 1, 2, 3, 4, 6, 7 } },
     { "loop_time", 25, -1, 0x21b, 4, { "5", "30", "60", "max" }, { 0, 1, 2, 3 } },
+    /* EV items are -3.0 … +3.0 in 0.1 (value 30 = 0.0); the 0.5 steps of the protocol */
+    { "ev", 3, -1, 0xc9, 13,
+      { "-3.0", "-2.5", "-2.0", "-1.5", "-1.0", "-0.5", "0.0", "+0.5", "+1.0", "+1.5", "+2.0", "+2.5", "+3.0" },
+      { 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60 } },
+    { "iso_limit", 4, -1, 0x111, 5, { "400", "800", "1600", "3200", "6400" }, { 1, 2, 3, 4, 5 } },
+    { "white_balance", 5, -1, 0xd3, 6,
+      { "auto", "daylight", "cloudy", "incandescent", "fluorescent", "underwater" }, { 0, 3, 4, 2, 5, 11 } },
+    { "metering", 6, -1, 0x105, 3, { "multi", "center", "spot" }, { 0, 1, 2 } },
+    { "hdr", 20, -1, 0x106, 2, { "off", "on" }, { 0, 1 } },
+    { "sharpness", 22, -1, 0x222, 2, { "1", "2" }, { 0, 1 } },
+    { "wind_cut", 21, -1, 0x10f, 2, { "off", "on" }, { 0, 1 } },
+    { "audio", 26, -1, 0x10e, 2, { "off", "on" }, { 0, 1 } },
+    { "beep", 16, -1, 0x14, 4, { "off", "low", "mid", "high" }, { 0, 1, 2, 3 } },
+    { "led", 17, -1, 0x21e, 2, { "off", "on" }, { 0, 1 } },
+    { "auto_power_off", 18, -1, 0xd, 4, { "1", "3", "5", "30" }, { 1, 2, 3, 5 } },
 };
 #define N_C200_SETTINGS ((int)(sizeof C200_SETTINGS / sizeof C200_SETTINGS[0]))
 
@@ -216,7 +231,7 @@ static int c200_menu(const c200_setting_t *s)
 static int c200_get_setting(adapter_t *a, const char *id, char *out, size_t outlen)
 {
     const c200_setting_t *s = c200_setting(id);
-    int v;
+    int v, best = -1;
     (void)a;
     if (!s || shim_ui_get(s->key, &v) < 0)
         return -1;
@@ -225,6 +240,13 @@ static int c200_get_setting(adapter_t *a, const char *id, char *out, size_t outl
             snprintf(out, outlen, "%s", s->tok[i]);
             return 0;
         }
+        /* EV set on the camera in 0.1 steps: the nearest 0.5 step */
+        if (strcmp(id, "ev") == 0 && (best < 0 || abs(s->val[i] - v) < abs(s->val[best] - v)))
+            best = i;
+    }
+    if (best >= 0) {
+        snprintf(out, outlen, "%s", s->tok[best]);
+        return 0;
     }
     LOGW("c200: %s has value %d, which has no protocol token", id, v);
     return -1;

@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -431,42 +432,64 @@ private fun ModeChips(def: SettingDef, settings: CameraSettings?, changer: Setti
     }
 }
 
-/** The settings that matter in the shooting [mode], as the camera offers them now. */
+/**
+ * The settings that matter in the shooting [mode], as the camera offers them now: the shooting
+ * ones, then the picture and camera ones behind "More settings".
+ */
 @Composable
 private fun SettingRows(defs: List<SettingDef>, settings: CameraSettings?, mode: String?, changer: SettingChanger) {
-    val values = settings?.values
-    val resources = LocalResources.current
     val colors = LocalAppColors.current
+    var more by rememberSaveable { mutableStateOf(false) }
+    val video = mode == ShootingModes.VIDEO || mode == ShootingModes.LOOPING
 
     // What matters per mode; unknown ids are shown everywhere
     val shown = defs.filter { def ->
         when (def.id) {
             SettingIds.MODE -> false
-            SettingIds.PHOTO_SIZE, SettingIds.TIMER -> mode == ShootingModes.PHOTO
+            SettingIds.PHOTO_SIZE, SettingIds.TIMER, SettingIds.HDR -> mode == ShootingModes.PHOTO
             SettingIds.VIDEO_SIZE -> ShootingModes.records(mode)
             SettingIds.TIMELAPSE_INTERVAL -> mode == ShootingModes.TIMELAPSE
             SettingIds.LOOP_TIME -> mode == ShootingModes.LOOPING
+            SettingIds.WIND_CUT, SettingIds.AUDIO -> video
             else -> true
         }
     }
-    shown.forEach { full ->
-        // What the camera offers now (the sizes of its current lens), and the value in force
-        val now = settings?.offered(full) ?: full.values
-        val def = full.copy(values = full.values.filter { it in now || it == values?.get(full.id) })
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Label(Format.settingTitle(resources, def.id) ?: def.id, size = 13.sp, color = colors.text2)
-            if (changer.pending == def.id) {
-                Spacer(Modifier.width(8.dp))
-                Spinner(size = 14.dp)
-            }
+    val (advanced, basic) = shown.partition { it.id in SettingIds.ADVANCED }
+    basic.forEach { SettingRow(it, settings, changer) }
+    if (advanced.isEmpty()) return
+    Spacer(Modifier.height(12.dp))
+    Row(
+        Modifier.fillMaxWidth().pressable(label = stringResource(R.string.settings_more)) { more = !more },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Label(stringResource(if (more) R.string.settings_less else R.string.settings_more), Modifier.weight(1f),
+            size = 14.sp, weight = FontWeight.Bold, color = colors.accent)
+        Icon(AppIcons.Chevron, colors.accent, Modifier.rotate(if (more) 90f else 0f), size = 18.dp)
+    }
+    if (more) advanced.forEach { SettingRow(it, settings, changer) }
+}
+
+/** One setting: its title and a chip per value the camera offers now (and the value in force). */
+@Composable
+private fun SettingRow(full: SettingDef, settings: CameraSettings?, changer: SettingChanger) {
+    val values = settings?.values
+    val resources = LocalResources.current
+    val colors = LocalAppColors.current
+    val now = settings?.offered(full) ?: full.values
+    val def = full.copy(values = full.values.filter { it in now || it == values?.get(full.id) })
+    Spacer(Modifier.height(10.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Label(Format.settingTitle(resources, def.id) ?: def.id, size = 13.sp, color = colors.text2)
+        if (changer.pending == def.id) {
+            Spacer(Modifier.width(8.dp))
+            Spinner(size = 14.dp)
         }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            def.values.forEach { token ->
-                Chip(Format.settingValue(resources, def.id, token), selected = token == values?.get(def.id)) {
-                    changer.change(values, def.id, token)
-                }
+    }
+    Spacer(Modifier.height(6.dp))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        def.values.forEach { token ->
+            Chip(Format.settingValue(resources, def.id, token), selected = token == values?.get(def.id)) {
+                changer.change(values, def.id, token)
             }
         }
     }

@@ -154,6 +154,17 @@ Setting ids and their tokens (an adapter offers a subset):
 | `timer` | `off`, `on`, or seconds (`2`, `5`, `10`) | Self-timer before a still. |
 | `timelapse_interval` | seconds (`0.5` … `60`) | Interval between time-lapse frames. |
 | `loop_time` | minutes (`5` … `120`) or `max` | Length of a looping-video segment. |
+| `ev` | signed steps (`-3.0` … `0.0` … `+3.0`) | Exposure compensation. |
+| `iso_limit` | ISO (`400` … `6400`) | Highest ISO the auto exposure may use. |
+| `white_balance` | `auto`, `daylight`, `cloudy`, `incandescent`, `fluorescent`, `underwater` | White balance. |
+| `metering` | `multi`, `center`, `spot` | Metering mode. |
+| `hdr` | `off`, `on` | HDR stills. |
+| `sharpness` | levels (`1`, `2`) | Sharpening strength. |
+| `wind_cut` | `off`, `on` | Wind noise filter (video). |
+| `audio` | `off`, `on` | Sound in videos. |
+| `beep` | `off`, `low`, `mid`, `high` | Camera sound volume. |
+| `led` | `off`, `on` | The camera's indicator LEDs. |
+| `auto_power_off` | minutes (`1`, `3`, `5`, `30`) | Idle time before the camera switches off. |
 
 Values above are illustrative; each camera adapter reports its own. A not-yet-confirmed hardware
 mapping is reported honestly (e.g. `role: "unknown"`, `label: "LED 3"`).

@@ -57,6 +57,17 @@ object Format {
         SettingIds.TIMER -> resources.getString(R.string.setting_timer)
         SettingIds.TIMELAPSE_INTERVAL -> resources.getString(R.string.setting_timelapse_interval)
         SettingIds.LOOP_TIME -> resources.getString(R.string.setting_loop_time)
+        SettingIds.EV -> resources.getString(R.string.setting_ev)
+        SettingIds.ISO_LIMIT -> resources.getString(R.string.setting_iso_limit)
+        SettingIds.WHITE_BALANCE -> resources.getString(R.string.setting_white_balance)
+        SettingIds.METERING -> resources.getString(R.string.setting_metering)
+        SettingIds.HDR -> resources.getString(R.string.setting_hdr)
+        SettingIds.SHARPNESS -> resources.getString(R.string.setting_sharpness)
+        SettingIds.WIND_CUT -> resources.getString(R.string.setting_wind_cut)
+        SettingIds.AUDIO -> resources.getString(R.string.setting_audio)
+        SettingIds.BEEP -> resources.getString(R.string.setting_beep)
+        SettingIds.LED -> resources.getString(R.string.setting_led)
+        SettingIds.AUTO_POWER_OFF -> resources.getString(R.string.setting_auto_power_off)
         else -> null
     }
 
@@ -98,7 +109,38 @@ object Format {
             "max" -> resources.getString(R.string.value_max)
             else -> if (token.toDoubleOrNull() != null) resources.getString(R.string.value_minutes, token) else token
         }
-        else -> token
+        SettingIds.AUTO_POWER_OFF ->
+            if (token.toDoubleOrNull() != null) resources.getString(R.string.value_minutes, token) else token
+        SettingIds.EV -> if (token.toDoubleOrNull() == 0.0) "0" else token
+        SettingIds.ISO_LIMIT -> "ISO $token"
+        SettingIds.SHARPNESS -> "+$token"
+        SettingIds.WHITE_BALANCE -> when (token) {
+            "auto" -> resources.getString(R.string.wb_auto)
+            "daylight" -> resources.getString(R.string.wb_daylight)
+            "cloudy" -> resources.getString(R.string.wb_cloudy)
+            "incandescent" -> resources.getString(R.string.wb_incandescent)
+            "fluorescent" -> resources.getString(R.string.wb_fluorescent)
+            "underwater" -> resources.getString(R.string.wb_underwater)
+            else -> token
+        }
+        SettingIds.METERING -> when (token) {
+            "multi" -> resources.getString(R.string.metering_multi)
+            "center" -> resources.getString(R.string.metering_center)
+            "spot" -> resources.getString(R.string.metering_spot)
+            else -> token
+        }
+        SettingIds.BEEP -> when (token) {
+            "off" -> resources.getString(R.string.beep_off)
+            "low" -> resources.getString(R.string.beep_low)
+            "mid" -> resources.getString(R.string.beep_mid)
+            "high" -> resources.getString(R.string.beep_high)
+            else -> token
+        }
+        else -> when (token) {
+            "off" -> resources.getString(R.string.value_off)
+            "on" -> resources.getString(R.string.value_on)
+            else -> token
+        }
     }
 
     /** Elapsed recording time, m:ss or h:mm:ss. */

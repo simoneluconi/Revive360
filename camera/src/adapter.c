@@ -208,6 +208,16 @@ const char *const SET360_VIDEO_SIZE[] = { "3840x1920@30", "2880x1440@30", "2560x
 const char *const SET360_TIMER[] = { "off", "2", "5", "10" };
 const char *const SET360_TIMELAPSE[] = { "0.5", "1", "2", "5", "10", "30", "60" };
 const char *const SET360_LOOP[] = { "5", "30", "60", "max" };
+/* Exposure and the rest: the camera has EV in 0.1 steps, offered in 0.5 */
+const char *const SET360_EV[] = { "-3.0", "-2.5", "-2.0", "-1.5", "-1.0", "-0.5", "0.0", "+0.5",
+                                  "+1.0", "+1.5", "+2.0", "+2.5", "+3.0" };
+const char *const SET360_ISO[] = { "400", "800", "1600", "3200", "6400" };
+const char *const SET360_WB[] = { "auto", "daylight", "cloudy", "incandescent", "fluorescent", "underwater" };
+const char *const SET360_METERING[] = { "multi", "center", "spot" };
+const char *const SET360_ONOFF[] = { "off", "on" };
+const char *const SET360_SHARPNESS[] = { "1", "2" };
+const char *const SET360_BEEP[] = { "off", "low", "mid", "high" };
+const char *const SET360_POWER_OFF[] = { "1", "3", "5", "30" };
 
 #define N(x) ((int)(sizeof x / sizeof x[0]))
 
@@ -220,4 +230,14 @@ void adapter_add_360_setting(adapter_t *a, const char *id)
     else if (strcmp(id, "timer") == 0) def(a, id, SET360_TIMER, N(SET360_TIMER));
     else if (strcmp(id, "timelapse_interval") == 0) def(a, id, SET360_TIMELAPSE, N(SET360_TIMELAPSE));
     else if (strcmp(id, "loop_time") == 0) def(a, id, SET360_LOOP, N(SET360_LOOP));
+    else if (strcmp(id, "ev") == 0) def(a, id, SET360_EV, N(SET360_EV));
+    else if (strcmp(id, "iso_limit") == 0) def(a, id, SET360_ISO, N(SET360_ISO));
+    else if (strcmp(id, "white_balance") == 0) def(a, id, SET360_WB, N(SET360_WB));
+    else if (strcmp(id, "metering") == 0) def(a, id, SET360_METERING, N(SET360_METERING));
+    else if (strcmp(id, "hdr") == 0 || strcmp(id, "wind_cut") == 0 || strcmp(id, "audio") == 0 ||
+             strcmp(id, "led") == 0)
+        def(a, id, SET360_ONOFF, N(SET360_ONOFF));
+    else if (strcmp(id, "sharpness") == 0) def(a, id, SET360_SHARPNESS, N(SET360_SHARPNESS));
+    else if (strcmp(id, "beep") == 0) def(a, id, SET360_BEEP, N(SET360_BEEP));
+    else if (strcmp(id, "auto_power_off") == 0) def(a, id, SET360_POWER_OFF, N(SET360_POWER_OFF));
 }

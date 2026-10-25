@@ -20,7 +20,7 @@
 
 #define MAX_LEDS   8
 #define MAX_LIST   8
-#define MAX_SETTINGS        10
+#define MAX_SETTINGS        24
 #define MAX_SETTING_VALUES  16
 
 /* One camera setting of protocol §5.12: id and accepted tokens. */
@@ -105,7 +105,8 @@ void adapter_discover_leds(adapter_t *a, const char *leds_dir, int max, const co
 int  adapter_storage_mounted(const adapter_t *a);
 
 /* Adds one Gear 360 setting (mode, lens, photo_size, video_size, timer,
- * timelapse_interval, loop_time) with its protocol tokens. */
+ * timelapse_interval, loop_time, ev, iso_limit, white_balance, metering, hdr,
+ * sharpness, wind_cut, audio, beep, led, auto_power_off) with its protocol tokens. */
 void adapter_add_360_setting(adapter_t *a, const char *id);
 
 /* Adapter constructors (adapter_*.c) */
