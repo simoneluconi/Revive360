@@ -139,6 +139,18 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         snprintf(resp, len, "ok lens %ld", item);
         return 0;
     }
+    if (n >= 2 && strcmp(verb, "movsize") == 0) {
+        /* The menu value alone did not reach the recorder (a 60 fps choice still
+         * recorded at 30): this pushes the size to the camcorder attributes */
+        int_fn movie = (int_fn)app_fn("_Z22UI_Set_Attr_Movie_Size14eUS_MOVIE_SIZE");
+        if (!movie) {
+            snprintf(resp, len, "error no UI_Set_Attr_Movie_Size");
+            return -1;
+        }
+        movie((int)item);
+        snprintf(resp, len, "ok movsize %ld", item);
+        return 0;
+    }
     if (n >= 1 && strcmp(verb, "runstate") == 0) {
         get_fn run = (get_fn)app_fn("_Z23Ui_Get_Common_Run_Statev");
         if (!run) {

@@ -235,6 +235,15 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
         snprintf(err, errlen, "%s", reply);
         return -1;
     }
+    /* The movie size menu value alone did not reach the recorder (2560x1280@60
+     * still recorded at 30 fps): push it to the camcorder attributes too */
+    if (strcmp(id, "video_size") == 0) {
+        snprintf(req, sizeof req, "movsize %d", v);
+        if (shim_plugin(req, reply, sizeof reply) < 0) {
+            snprintf(err, errlen, "%s", reply);
+            return -1;
+        }
+    }
     /* A mode change needs every attribute re-propagated, as the app's mode handler does */
     if (strcmp(id, "mode") == 0 && shim_plugin("allsend", reply, sizeof reply) < 0) {
         snprintf(err, errlen, "%s", reply);
