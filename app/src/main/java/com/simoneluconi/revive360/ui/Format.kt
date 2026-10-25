@@ -155,6 +155,7 @@ object Format {
     fun state(resources: Resources, state: LinkState): String = when (state) {
         LinkState.NotPaired -> resources.getString(R.string.state_not_paired)
         LinkState.Idle -> resources.getString(R.string.state_idle)
+        LinkState.Waking -> resources.getString(R.string.state_waking)
         LinkState.Joining -> resources.getString(R.string.state_joining)
         LinkState.Handshake -> resources.getString(R.string.state_handshake)
         is LinkState.Connected -> resources.getString(R.string.state_connected)

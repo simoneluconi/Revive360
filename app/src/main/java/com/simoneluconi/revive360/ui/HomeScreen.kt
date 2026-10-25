@@ -176,7 +176,7 @@ private fun ConnectionCard(state: LinkState, savedName: String?) {
     val dot = when (state) {
         is LinkState.Connected -> colors.good
         is LinkState.Failed -> colors.bad
-        LinkState.Joining, LinkState.Handshake -> colors.warn
+        LinkState.Waking, LinkState.Joining, LinkState.Handshake -> colors.warn
         else -> colors.text2
     }
     Card {
@@ -195,7 +195,7 @@ private fun ConnectionCard(state: LinkState, savedName: String?) {
                 }
             }
             when (state) {
-                LinkState.Joining, LinkState.Handshake -> Spinner()
+                LinkState.Waking, LinkState.Joining, LinkState.Handshake -> Spinner()
                 is LinkState.Failed, LinkState.Idle ->
                     RoundIconButton(AppIcons.Refresh, label = stringResource(R.string.action_retry), background = colors.surface2) {
                         nav.app.controller.connect()

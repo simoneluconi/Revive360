@@ -23,6 +23,7 @@
     <!-- Link states -->
     <string name="state_not_paired">Non configurata</string>
     <string name="state_idle">Non connessa</string>
+    <string name="state_waking">Accendo il Wi-Fi della fotocamera…</string>
     <string name="state_joining">Cerco il Wi-Fi della fotocamera…</string>
     <string name="state_handshake">Sul Wi-Fi della fotocamera, in attesa…</string>
     <string name="state_connected">Connessa</string>
@@ -132,9 +133,8 @@
 
     <!-- Pairing -->
     <string name="pair_title">Configurazione</string>
-    <string name="pair_step_sd">Copia i file di Revive360 sulla scheda SD della fotocamera (vedi camera/README.md). Lo strumento di preparazione stampa un codice di 8 cifre.</string>
-    <string name="pair_step_power">Inserisci la scheda nella fotocamera e accendila. Aspetta circa un minuto, finché il suo Wi-Fi non è attivo.</string>
-    <string name="pair_step_code">Inserisci qui il codice e cerca la fotocamera. Android mostra una sua finestra una sola volta: scegli la rete G360R.</string>
+    <string name="pair_step_sd">Prepara la scheda SD della fotocamera con ./install.sh (vedi la guida d\'installazione) e inseriscila.</string>
+    <string name="pair_step_power">Accendi la fotocamera: per 3 minuti accetta un nuovo telefono. Se è accesa da più tempo, spegnila e riaccendila.</string>
     <string name="pair_code_label">CODICE DELLA FOTOCAMERA</string>
     <string name="pair_code_placeholder">Codice di 8 cifre</string>
     <string name="pair_code_invalid">Almeno %1$d caratteri</string>
@@ -244,4 +244,17 @@
     <string name="pano_rotate_value">Ruota %1$+.1f°</string>
     <string name="pano_save_flat">Salva foto</string>
     <string name="pano_saving_flat">Salvataggio…</string>
+    <string name="pair_step_find">Tocca Cerca la fotocamera e scegli la tua. Poi Android mostra una sua finestra una sola volta: scegli la rete G360R.</string>
+    <string name="pair_searching">Cerco…</string>
+    <string name="pair_none">Nessuna fotocamera trovata. È accesa e vicina, con il Bluetooth del telefono attivo?</string>
+    <string name="pair_choose">SCEGLI LA TUA FOTOCAMERA</string>
+    <string name="pair_use">Associa</string>
+    <string name="pair_connecting">Mi collego alla fotocamera…</string>
+    <string name="pair_wifi_on">Accendo il Wi-Fi della fotocamera…</string>
+    <string name="pair_pick_network">Scegli la rete %1$s nella finestra di Android</string>
+    <string name="pair_closed">La fotocamera accetta un nuovo telefono solo nei primi 3 minuti dopo l\'accensione: spegnila, riaccendila e riprova.</string>
+    <string name="pair_failed">Associazione non riuscita: %1$s</string>
+    <string name="pair_permission">Per trovare la fotocamera l\'app ha bisogno del permesso Bluetooth.</string>
+    <string name="pair_manual">Fotocamera senza Bluetooth? Inserisci il codice</string>
+    <string name="pair_find_wifi">Cerca il Wi-Fi della fotocamera</string>
 </resources>

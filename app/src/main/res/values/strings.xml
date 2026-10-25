@@ -25,6 +25,7 @@
     <!-- Link states -->
     <string name="state_not_paired">Not set up</string>
     <string name="state_idle">Not connected</string>
+    <string name="state_waking">Switching the camera\'s Wi-Fi on…</string>
     <string name="state_joining">Looking for the camera\'s Wi-Fi…</string>
     <string name="state_handshake">On the camera\'s Wi-Fi, waiting for it…</string>
     <string name="state_connected">Connected</string>
@@ -134,9 +135,8 @@
 
     <!-- Pairing -->
     <string name="pair_title">Set up</string>
-    <string name="pair_step_sd">Copy the Revive360 files to the camera\'s SD card (see camera/README.md). The preparation tool prints an 8-digit code.</string>
-    <string name="pair_step_power">Put the card in the camera and turn it on. Wait about a minute, until its Wi-Fi is up.</string>
-    <string name="pair_step_code">Enter the code here and find the camera. Android shows its own window once: pick the G360R network.</string>
+    <string name="pair_step_sd">Prepare the camera\'s SD card with ./install.sh (see the install guide) and put it in the camera.</string>
+    <string name="pair_step_power">Switch the camera on: for 3 minutes it accepts a new phone. If it has been on longer, switch it off and on again.</string>
     <string name="pair_code_label">CAMERA CODE</string>
     <string name="pair_code_placeholder">8-digit code</string>
     <string name="pair_code_invalid">At least %1$d characters</string>
@@ -246,4 +246,17 @@
     <string name="pano_rotate_value">Rotate %1$+.1f°</string>
     <string name="pano_save_flat">Save photo</string>
     <string name="pano_saving_flat">Saving…</string>
+    <string name="pair_step_find">Tap Find the camera and pick yours. Then Android shows its own window once: pick the G360R network.</string>
+    <string name="pair_searching">Searching…</string>
+    <string name="pair_none">No camera found. Is it on and close by, with the phone\'s Bluetooth on?</string>
+    <string name="pair_choose">PICK YOUR CAMERA</string>
+    <string name="pair_use">Pair</string>
+    <string name="pair_connecting">Connecting to the camera…</string>
+    <string name="pair_wifi_on">Switching the camera\'s Wi-Fi on…</string>
+    <string name="pair_pick_network">Pick the network %1$s in Android\'s window</string>
+    <string name="pair_closed">The camera accepts a new phone only in the first 3 minutes after it is switched on: switch it off and on again, then try again.</string>
+    <string name="pair_failed">Pairing failed: %1$s</string>
+    <string name="pair_permission">The app needs the Bluetooth permission to find the camera.</string>
+    <string name="pair_manual">Camera without Bluetooth? Enter its code</string>
+    <string name="pair_find_wifi">Find the camera\'s Wi-Fi</string>
 </resources>

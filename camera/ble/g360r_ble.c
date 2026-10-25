@@ -6,7 +6,7 @@
  * camera's own BlueZ (Tizen 5.30: GattManager1.RegisterService, the object model
  * of Tizen's libbluetooth-api):
  *
- *   INFO  read   {"v":1,"name":...,"wifi":"off|starting|on|failed","pair":bool}
+ *   INFO  read   {"v":1,"name":...,"ssid":...,"wifi":"off|starting|on|failed","pair":bool}
  *   WIFI  read   {"ssid":...,"psk":...} while pairing is open, else {"pair":false}
  *   CMD   write  one byte: 1 = Wi-Fi on, 0 = Wi-Fi off
  *
@@ -165,12 +165,16 @@ static void json_text(char *out, size_t cap, const char *s)
     out[n] = 0;
 }
 
+/* The network's name is no secret (it is broadcast while on): a phone that paired over the
+ * Wi-Fi alone finds its camera among others by it */
 static void info_value(char *out, size_t cap)
 {
-    char wifi[32];
+    char wifi[32], ssid[64], es[140];
     read_state("wifi.state", wifi, sizeof wifi);
-    snprintf(out, cap, "{\"v\":1,\"name\":\"%s\",\"wifi\":\"%s\",\"pair\":%s}", g_name, wifi[0] ? wifi : "off",
-             pairing_open() ? "true" : "false");
+    read_state("wifi.ssid", ssid, sizeof ssid);
+    json_text(es, sizeof es, ssid);
+    snprintf(out, cap, "{\"v\":1,\"name\":\"%s\",\"ssid\":\"%s\",\"wifi\":\"%s\",\"pair\":%s}", g_name, es,
+             wifi[0] ? wifi : "off", pairing_open() ? "true" : "false");
 }
 
 static void wifi_value(char *out, size_t cap)

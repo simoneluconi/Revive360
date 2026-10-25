@@ -26,6 +26,8 @@ data class PairedCamera(
     val name: String? = null,
     val model: String? = null,
     val firmware: String? = null,
+    /** The camera's Bluetooth address: the app asks there for its Wi-Fi (protocol §6). */
+    val bluetooth: String? = null,
 ) {
     /** What the user sees in lists: the camera's own name, else its network. */
     val label: String get() = name?.takeIf { it.isNotEmpty() } ?: ssid ?: model ?: "Gear 360"
@@ -123,6 +125,7 @@ class CameraStore(context: Context) {
         c.name?.let { put("name", it) }
         c.model?.let { put("model", it) }
         c.firmware?.let { put("firmware", it) }
+        c.bluetooth?.let { put("bluetooth", it) }
     }
 
     private fun fromJson(o: JSONObject): PairedCamera? {
@@ -136,6 +139,7 @@ class CameraStore(context: Context) {
             name = opt("name"),
             model = opt("model"),
             firmware = opt("firmware"),
+            bluetooth = opt("bluetooth"),
         )
     }
 

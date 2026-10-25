@@ -26,6 +26,7 @@ import com.simoneluconi.revive360.protocol.CameraSettings
 import com.simoneluconi.revive360.settings.AppSettings
 import com.simoneluconi.revive360.settings.CameraStore
 import com.simoneluconi.revive360.settings.PairedCamera
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,6 +71,8 @@ sealed interface LinkState {
     data object NotPaired : LinkState
     /** Paired, not connected: the app is in the background, or the user hasn't connected yet. */
     data object Idle : LinkState
+    /** Asking the camera over Bluetooth to switch its Wi-Fi on (protocol §6). */
+    data object Waking : LinkState
     /** Waiting for the camera's Wi-Fi (the system is searching, or showing its dialog). */
     data object Joining : LinkState
     /** On the camera's Wi-Fi, waiting for its server to answer. */
@@ -148,6 +151,7 @@ class CameraController(
     private var session: Job? = null
     private var releaseJob: Job? = null
     private var rejoinJob: Job? = null
+    private var wakeJob: Job? = null
     private var rejoinAttempts = 0
     private var foreground = false
     private val downloadJobs = HashMap<String, Job>()
@@ -163,7 +167,7 @@ class CameraController(
         releaseJob = null
         // A request still searching is left alone: a new one would cancel a join in progress
         val state = _state.value
-        if (session == null && state != LinkState.Joining && state != LinkState.Handshake) connect()
+        if (session == null && state != LinkState.Waking && state != LinkState.Joining && state != LinkState.Handshake) connect()
     }
 
     /** Lets the camera's Wi-Fi go shortly after the app leaves the screen, unless a download runs. */
@@ -199,7 +203,76 @@ class CameraController(
             startSession(CameraClient(host, port, Connector { it.openConnection() as HttpURLConnection }))
             return
         }
-        network.request(camera!!, object : CameraNetwork.Listener {
+        val target = camera!!
+        if (!CameraBle.allowed(context)) {
+            requestNetwork(target)
+            return
+        }
+        // The camera keeps its Wi-Fi off until asked: over Bluetooth first, then the network
+        _state.value = LinkState.Waking
+        wakeJob = scope.launch {
+            wakeWifi(target)
+            if (store.camera.value?.id != target.id || _state.value != LinkState.Waking) return@launch
+            _state.value = LinkState.Joining
+            requestNetwork(target)
+        }
+    }
+
+    /**
+     * Asks the camera over Bluetooth to switch its Wi-Fi on and waits until it says it is. A
+     * camera paired before it had Bluetooth is first found among those nearby by its network's
+     * name. Failing here is no failure to connect: the Wi-Fi may be on anyway (wifi=on).
+     */
+    private suspend fun wakeWifi(camera: PairedCamera) {
+        val address = camera.bluetooth ?: findBluetooth(camera) ?: return
+        repeat(WAKE_ATTEMPTS) { attempt ->
+            try {
+                BleSession.open(context, address).use { ble ->
+                    var wifi = ble.info().wifi
+                    if (wifi != "on") {
+                        EventLog.log("Bluetooth: asking the camera to switch its Wi-Fi on")
+                        ble.setWifi(true)
+                        val until = System.currentTimeMillis() + WAKE_TIMEOUT_MS
+                        while (wifi != "on" && wifi != "failed" && System.currentTimeMillis() < until) {
+                            delay(1_000)
+                            wifi = ble.info().wifi
+                        }
+                    }
+                    EventLog.log("Bluetooth: the camera's Wi-Fi is $wifi")
+                }
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                EventLog.log("Bluetooth: ${e.message}")
+                if (attempt < WAKE_ATTEMPTS - 1) delay(1_000)
+            }
+        }
+    }
+
+    /** The Bluetooth address of a camera paired over its Wi-Fi alone, matched by network name. */
+    private suspend fun findBluetooth(camera: PairedCamera): String? {
+        val ssid = camera.ssid ?: return null
+        for (seen in CameraBle.scan(context, SCAN_MS)) {
+            val info = try {
+                BleSession.open(context, seen.address).use { it.info() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                EventLog.log("Bluetooth: ${seen.address} did not answer (${e.message})")
+                continue
+            }
+            if (info.ssid == ssid) {
+                EventLog.log("Bluetooth: ${camera.label} is ${seen.address}")
+                store.update { if (it.id == camera.id) it.copy(bluetooth = seen.address) else it }
+                return seen.address
+            }
+        }
+        return null
+    }
+
+    private fun requestNetwork(camera: PairedCamera) {
+        network.request(camera, object : CameraNetwork.Listener {
             override fun onLink(frequencyMhz: Int, linkMbps: Int) {
                 _link.value = WifiLink(frequencyMhz, linkMbps)
             }
@@ -248,6 +321,7 @@ class CameraController(
 
     private fun disconnect(next: LinkState) {
         rejoinJob?.cancel()
+        wakeJob?.cancel()
         _link.value = null
         network.release()
         stopSession()
@@ -366,9 +440,13 @@ class CameraController(
     // ---- pairing ----
 
     /** Pairs a new camera, or sets up [replaceId] again, and switches to it. */
-    fun pair(passphrase: String, found: CompanionWifi.Found?, replaceId: String? = null) {
-        EventLog.log("Pairing: ${found?.ssid ?: "any ${Protocol.SSID_PREFIX} network"}${found?.bssid?.let { " ($it)" } ?: ""}")
-        val camera = PairedCamera(id = UUID.randomUUID().toString(), passphrase = passphrase, ssid = found?.ssid, bssid = found?.bssid)
+    fun pair(passphrase: String, found: CompanionWifi.Found?, replaceId: String? = null, ssid: String? = null, bluetooth: String? = null) {
+        EventLog.log("Pairing: ${found?.ssid ?: ssid ?: "any ${Protocol.SSID_PREFIX} network"}${found?.bssid?.let { " ($it)" } ?: ""}" +
+            (bluetooth?.let { ", Bluetooth $it" } ?: ""))
+        val camera = PairedCamera(
+            id = UUID.randomUUID().toString(), passphrase = passphrase, ssid = found?.ssid ?: ssid, bssid = found?.bssid,
+            bluetooth = bluetooth,
+        )
         store.add(camera, replaceId)
         resetCameraState()
         connect()
@@ -634,6 +712,10 @@ class CameraController(
         const val BACKGROUND_RELEASE_MS = 20_000L
         const val ORIGINALS_KEPT = 6
         const val REJOIN_MS = 3_000L
+        const val WAKE_ATTEMPTS = 2
+        /** The access point takes a few seconds; more on a 2.4 GHz fallback */
+        const val WAKE_TIMEOUT_MS = 30_000L
+        const val SCAN_MS = 5_000L
         /** Refused or timed-out requests in a row before the app shows the camera as not found */
         const val REJOIN_ATTEMPTS = 20
         const val HELLO_ATTEMPTS = 15

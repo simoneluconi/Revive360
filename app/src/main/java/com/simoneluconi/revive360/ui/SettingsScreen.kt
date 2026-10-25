@@ -1,5 +1,11 @@
 package com.simoneluconi.revive360.ui
 
+import com.simoneluconi.revive360.EventLog
+import com.simoneluconi.revive360.link.BleSession
+import com.simoneluconi.revive360.link.CameraBle
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -239,6 +245,77 @@ private fun DeveloperCard() {
                     app.controller.connect()
                 }
             }
+        }
+    }
+    BleScanCard()
+}
+
+/** Debug builds: looks for cameras advertising the Bluetooth control service. */
+@Composable
+private fun BleScanCard() {
+    val context = LocalContext.current
+    val colors = LocalAppColors.current
+    var scanning by remember { mutableStateOf(false) }
+    var found by remember { mutableStateOf<List<CameraBle.Seen>>(emptyList()) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var gattResult by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    fun scan() {
+        scanning = true
+        found = emptyList()
+        problem = null
+        CameraBle.scan(context, 8_000, onSeen = { found = found + it }) { error ->
+            problem = error
+            scanning = false
+        }
+    }
+    val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        if (granted.values.all { it }) scan() else problem = "permission refused"
+    }
+    Card {
+        Label("Bluetooth: cameras advertising the control service", size = 14.sp, color = colors.text2)
+        Spacer(Modifier.height(10.dp))
+        found.forEach { cam ->
+            Label("${cam.name ?: "?"}  ${cam.address}  ${cam.rssi} dBm", size = 14.sp, mono = true)
+            PillButton("Wi-Fi on") {
+                gattResult = "asking for the Wi-Fi…"
+                scope.launch {
+                    gattResult = try {
+                        BleSession.open(context, cam.address).use { s ->
+                            s.setWifi(true)
+                            var state = s.info().wifi
+                            repeat(30) {
+                                if (state == "on" || state == "failed") return@repeat
+                                kotlinx.coroutines.delay(1_000)
+                                state = s.info().wifi
+                            }
+                            "Wi-Fi: $state"
+                        }
+                    } catch (e: Exception) {
+                        "failed: ${e.message}"
+                    }.also { EventLog.log("Bluetooth test: $it") }
+                }
+            }
+            PillButton("Read over GATT") {
+                gattResult = "connecting…"
+                scope.launch {
+                    gattResult = try {
+                        BleSession.open(context, cam.address).use { s ->
+                            val info = s.info()
+                            val wifi = s.wifi()
+                            "info: $info / wifi: ${wifi?.let { "${it.ssid}, ${it.passphrase.length} chars" } ?: "pairing closed"}"
+                        }
+                    } catch (e: Exception) {
+                        "failed: ${e.message}"
+                    }.also { EventLog.log("Bluetooth test: $it") }
+                }
+            }
+        }
+        gattResult?.let { Label(it, size = 13.sp, mono = true) }
+        problem?.let { Label(it, size = 14.sp, color = colors.bad) }
+        Spacer(Modifier.height(10.dp))
+        PillButton(if (scanning) "Searching…" else "Search via Bluetooth", enabled = !scanning) {
+            permissions.launch(CameraBle.permissions())
         }
     }
 }
