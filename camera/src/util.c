@@ -126,28 +126,33 @@ void trim(char *s)
 
 /* Optional access trace (trace=<file> in the config): one line per step or
  * file access, written and fsync'd BEFORE the access, so a hardware reset
- * still leaves the last attempted access on the card. */
-static int g_trace_fd = -1;
+ * still leaves the last attempted access on the card. The file is opened per
+ * line: an fd kept open on the card blocks its unmount at power-off. */
+static char g_trace_path[512];
 
 void trace_start(const char *path)
 {
-    if (g_trace_fd < 0 && path && *path)
-        g_trace_fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+    if (!g_trace_path[0] && path && *path)
+        snprintf(g_trace_path, sizeof g_trace_path, "%s", path);
 }
 
 void trace_note(const char *what, const char *path)
 {
     char line[600];
-    int n;
+    int n, fd;
     ssize_t w;
-    if (g_trace_fd < 0)
+    if (!g_trace_path[0])
         return;
     n = snprintf(line, sizeof line, "%lld %s %s\n", (long long)now_ms_mono(), what, path ? path : "");
     if (n > (int)sizeof line - 1)
         n = (int)sizeof line - 1;
-    w = write(g_trace_fd, line, (size_t)n);
+    fd = open(g_trace_path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+    if (fd < 0)
+        return;
+    w = write(fd, line, (size_t)n);
     (void)w;
-    fsync(g_trace_fd);
+    fsync(fd);
+    close(fd);
 }
 
 int read_text_file(const char *path, char *out, size_t outlen)

@@ -22,6 +22,7 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -150,9 +151,41 @@ struct job {
 
 /* An optional plugin, loaded at run time from the card, so new requests need no
  * firmware flash: int g360r_plugin_request(const char *req, char *resp, size_t len),
- * called on the main loop for "p <text>" requests. */
+ * called on the main loop for "p <text>" requests.
+ *
+ * It is copied to /tmp first and the copy is loaded: a library mapped from the
+ * card keeps the card busy, and the power-off then hangs on unmounting it (the
+ * camera stays half off until the battery is pulled). */
 typedef int (*plugin_fn)(const char *, char *, size_t);
 static plugin_fn g_plugin;
+
+#define PLUGIN_COPY SHIM_DIR "/libg360r_plugin.so"
+
+static int copy_file(const char *from, const char *to)
+{
+    char buf[8192];
+    ssize_t n;
+    int in = open(from, O_RDONLY | O_CLOEXEC), out, rc = 0;
+    if (in < 0)
+        return -1;
+    unlink(to);
+    out = open(to, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (out < 0) {
+        close(in);
+        return -1;
+    }
+    while ((n = read(in, buf, sizeof buf)) > 0)
+        if (write(out, buf, (size_t)n) != n) {
+            rc = -1;
+            break;
+        }
+    if (n < 0)
+        rc = -1;
+    close(in);
+    if (close(out) < 0)
+        rc = -1;
+    return rc;
+}
 
 static void load_plugin(const char *path, char *resp, size_t len)
 {
@@ -163,7 +196,11 @@ static void load_plugin(const char *path, char *resp, size_t len)
         snprintf(resp, len, "error a plugin is already loaded");
         return;
     }
-    h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (copy_file(path, PLUGIN_COPY) < 0) {
+        snprintf(resp, len, "error cannot copy %s to %s: %s", path, PLUGIN_COPY, strerror(errno));
+        return;
+    }
+    h = dlopen(PLUGIN_COPY, RTLD_NOW | RTLD_LOCAL);
     if (!h) {
         snprintf(resp, len, "error dlopen: %s", dlerror());
         return;
@@ -175,7 +212,7 @@ static void load_plugin(const char *path, char *resp, size_t len)
         return;
     }
     g_plugin = f;
-    snprintf(resp, len, "ok plugin %s loaded", path);
+    snprintf(resp, len, "ok plugin %s loaded (from %s)", path, PLUGIN_COPY);
 }
 
 /* Requests (numbers in decimal or 0x hex):

@@ -1,10 +1,12 @@
 /*
  * Logging: timestamped lines to a file on the SD card (and optionally stderr).
  *
- * The file is opened in append mode and rotated once (to <path>.1) when it
- * grows past LOG_ROTATE_BYTES so a long session cannot fill the card. Lines are
- * flushed immediately; fdatasync() is done from the housekeeping thread so an
- * abrupt power-off loses at most a couple of seconds of log.
+ * The file is opened, appended to and closed for every line: an fd kept open on
+ * the card would keep it busy, and the camera's power-off hangs when it cannot
+ * unmount the card. It is rotated once (to <path>.1) when it grows past
+ * LOG_ROTATE_BYTES so a long session cannot fill the card. fdatasync() is done
+ * from the housekeeping thread so an abrupt power-off loses at most a couple of
+ * seconds of log.
  */
 #include "g360rd.h"
 
@@ -22,7 +24,6 @@
 #define LOG_ROTATE_BYTES (2L * 1024 * 1024)
 
 static pthread_mutex_t g_log_mu = PTHREAD_MUTEX_INITIALIZER;
-static FILE *g_log_fp;
 static char  g_log_path[512];
 static int   g_log_stderr = 1;
 static long  g_log_size;
@@ -32,23 +33,17 @@ void log_open(const char *path, int also_stderr)
 {
     pthread_mutex_lock(&g_log_mu);
     g_log_stderr = also_stderr;
-    if (g_log_fp) {
-        fclose(g_log_fp);
-        g_log_fp = NULL;
-    }
     g_log_path[0] = 0;
     if (path && *path) {
-        snprintf(g_log_path, sizeof g_log_path, "%s", path);
-        g_log_fp = fopen(path, "a");
-        if (g_log_fp) {
+        int fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+        if (fd >= 0) {
             struct stat st;
-            if (fstat(fileno(g_log_fp), &st) == 0)
+            if (fstat(fd, &st) == 0)
                 g_log_size = (long)st.st_size;
-            /* Do not leak the log fd into children (st, dnsmasq ...). */
-            fcntl(fileno(g_log_fp), F_SETFD, FD_CLOEXEC);
+            close(fd);
+            snprintf(g_log_path, sizeof g_log_path, "%s", path);
         } else {
             fprintf(stderr, "g360rd: cannot open log %s: %s\n", path, strerror(errno));
-            g_log_path[0] = 0;
         }
     }
     pthread_mutex_unlock(&g_log_mu);
@@ -62,15 +57,9 @@ const char *log_path(void)
 static void rotate_locked(void)
 {
     char old[600];
-    if (!g_log_fp || !g_log_path[0])
-        return;
-    fclose(g_log_fp);
     snprintf(old, sizeof old, "%s.1", g_log_path);
     unlink(old);
     rename(g_log_path, old);
-    g_log_fp = fopen(g_log_path, "a");
-    if (g_log_fp)
-        fcntl(fileno(g_log_fp), F_SETFD, FD_CLOEXEC);
     g_log_size = 0;
 }
 
@@ -80,7 +69,7 @@ void log_msg(int level, const char *fmt, ...)
     char line[2048];
     struct timeval tv;
     struct tm tm;
-    int n;
+    int n, written = 0;
     va_list ap;
 
     gettimeofday(&tv, NULL);
@@ -99,17 +88,21 @@ void log_msg(int level, const char *fmt, ...)
     }
 
     pthread_mutex_lock(&g_log_mu);
-    if (g_log_fp) {
+    if (g_log_path[0]) {
+        int fd;
         if (g_log_size + n > LOG_ROTATE_BYTES)
             rotate_locked();
-        if (g_log_fp) {
-            fputs(line, g_log_fp);
-            fflush(g_log_fp);
-            g_log_size += n;
-            g_log_dirty = 1;
+        fd = open(g_log_path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+        if (fd >= 0) {
+            if (write(fd, line, (size_t)n) == n) {
+                g_log_size += n;
+                g_log_dirty = 1;
+                written = 1;
+            }
+            close(fd);
         }
     }
-    if (g_log_stderr || !g_log_fp)
+    if (g_log_stderr || !written)
         fputs(line, stderr);
     pthread_mutex_unlock(&g_log_mu);
 }
@@ -117,9 +110,12 @@ void log_msg(int level, const char *fmt, ...)
 void log_flush_sync(void)
 {
     pthread_mutex_lock(&g_log_mu);
-    if (g_log_fp && g_log_dirty) {
-        fflush(g_log_fp);
-        fdatasync(fileno(g_log_fp));
+    if (g_log_path[0] && g_log_dirty) {
+        int fd = open(g_log_path, O_WRONLY | O_APPEND | O_CLOEXEC);
+        if (fd >= 0) {
+            fdatasync(fd);
+            close(fd);
+        }
         g_log_dirty = 0;
     }
     pthread_mutex_unlock(&g_log_mu);

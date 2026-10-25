@@ -8,6 +8,10 @@ Description=Revive360 companion controller (runs only when the SD has g360r/g360
 [Service]
 Type=simple
 ExecStart=/usr/share/g360r/boot.sh
+# At power-off: every process of ours (launcher, g360rd, hostapd, dnsmasq) gets
+# SIGTERM, then SIGKILL after 5 s, so we never hold up the shutdown
+KillMode=control-group
+TimeoutStopSec=5
 
 [Install]
 WantedBy=default.target
