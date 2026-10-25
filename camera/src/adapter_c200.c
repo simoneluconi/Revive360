@@ -194,6 +194,12 @@ static const c200_setting_t C200_SETTINGS[] = {
 #define KEY_MOVIE_SIZE       0x109   /* what the recorder realizes, eUS_MOVIE_SIZE */
 #define KEY_TIMELAPSE_SIZE   0x22a   /* the same for the time-lapse */
 
+/* Video and looping record from the movie standby */
+static int movie_mode(int mode)
+{
+    return mode != MODE_VALUE_PHOTO && mode != MODE_VALUE_TIMELAPSE && mode >= 0;
+}
+
 static const c200_setting_t *c200_setting(const char *id)
 {
     for (int i = 0; i < N_C200_SETTINGS; i++)
@@ -281,27 +287,36 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
         return -1;
     }
     /* A menu value alone does not re-realize the capture/record engine: run
-     * the transition the camera's own menu runs (a2, docs/firmware/12). */
-    if (strcmp(id, "mode") == 0 && strcmp(value, "photo") == 0) {
-        /* From a video mode the app is in its movie sub-state, and only the
-         * movie stop path leaves it (it ends in the photo live view; a live
-         * view restart alone left the next shutter as a movie stop, no photo) */
-        const char *transition = prev_mode != MODE_VALUE_PHOTO ? "recstop" : "photomode";
+     * the transition the camera's own menu runs (a2, docs/firmware/12). Photo
+     * and time-lapse run in the photo live view (the time-lapse is an interval
+     * capture of stills, its menu switch keeps the live view); video and
+     * looping in the movie standby. */
+    if (strcmp(id, "mode") == 0) {
+        int movie = movie_mode(v), was_movie = movie_mode(prev_mode);
+        const char *transition;
+        if (movie)
+            /* from a movie mode the standby is already on: a stop first */
+            transition = was_movie ? "restandby" : "moviestandby";
+        else
+            /* from a movie mode only the movie stop path leaves its sub-state
+             * (it ends in the photo live view; a live view restart alone left
+             * the next shutter as a movie stop, no photo) */
+            transition = was_movie ? "recstop" : "photomode";
         if (shim_plugin("allsend", reply, sizeof reply) < 0 ||
+            (v != MODE_VALUE_PHOTO && c200_movie_size_sync(reply, sizeof reply) < 0) ||
             shim_plugin(transition, reply, sizeof reply) < 0) {
             snprintf(err, errlen, "%s", reply);
             return -1;
         }
-    } else if (strcmp(id, "mode") == 0 || strcmp(id, "lens") == 0 || strcmp(id, "video_size") == 0) {
-        /* A video mode, a lens or a movie size: the recorder realizes the mode
-         * and its size on a new movie standby (from photo the standby itself,
-         * from a video mode a stop first, as the standby is already on) */
-        int is_mode = strcmp(id, "mode") == 0;
-        if (!is_mode && (shim_ui_get(KEY_MODE, &prev_mode) < 0 || prev_mode == MODE_VALUE_PHOTO))
-            return 0;   /* photo: the next switch to a video mode does it */
-        if ((is_mode && shim_plugin("allsend", reply, sizeof reply) < 0) ||
-            c200_movie_size_sync(reply, sizeof reply) < 0 ||
-            shim_plugin(prev_mode == MODE_VALUE_PHOTO ? "moviestandby" : "restandby", reply, sizeof reply) < 0) {
+    } else if (strcmp(id, "lens") == 0 || strcmp(id, "video_size") == 0) {
+        /* The movie size follows the lens and the menu; a movie mode realizes
+         * it on a new standby, the time-lapse when it records, photo on the
+         * next switch to a video mode */
+        int mode = -1;
+        if (shim_ui_get(KEY_MODE, &mode) < 0 || mode == MODE_VALUE_PHOTO)
+            return 0;
+        if (c200_movie_size_sync(reply, sizeof reply) < 0 ||
+            (movie_mode(mode) && shim_plugin("restandby", reply, sizeof reply) < 0)) {
             snprintf(err, errlen, "%s", reply);
             return -1;
         }
