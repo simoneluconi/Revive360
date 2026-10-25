@@ -13,9 +13,7 @@ snapshot back, so step 3 is needed after each one. Recovery is always possible: 
 | Path | What |
 |---|---|
 | `overlay-controller/` | The real controller: `g360r.service` + `boot.sh`; the build adds `g360rd`, `launcher.sh`, `netup.sh`. Plus the shim: `di-camera-app.service.d/g360r-shim.conf` sets `LD_PRELOAD=/usr/lib/libg360r_shim.so` (built with `make shim`) for the stock camera app |
-| `overlay-canary/` | First test overlay: a unit that only logs a heartbeat to the SD (`/sdcard/g360r.on`) |
 | `p8_invalidate.sh` | One-shot SD hook that runs once after a flash: `mkswap /dev/mmcblk0p8` (see step 3) |
-| `flash_diag.sh` | Read-only SD hook: searches every eMMC partition for a marker, logs the partition table |
 | `../tools/fw_build.sh` | Adds an overlay to the stock rootfs and rebuilds the SLP image |
 | `../tools/slp_pack.py` | SLP container: `info`, `roundtrip`, `extract`, `replace` (CRC = `zlib.crc32 ^ 0xFFFFFFFF`) |
 | `../docker/fwtools.Dockerfile` | Build image `g360r-fwtools:1` (lzop, e2fsprogs, python3) |

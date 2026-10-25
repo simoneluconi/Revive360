@@ -79,7 +79,7 @@ The controller detects the model at start and reports it (`adapter`, `adapter_st
 - The app only speaks the protocol; it does not know which camera model is behind it.
 
 More background: [docs/00_overview.md](docs/00_overview.md) (analysis overview) and the research
-notes in [docs/firmware/](docs/firmware/) and [docs/app/](docs/app/).
+notes in [docs/firmware/](docs/firmware/).
 
 ## Screenshots
 
@@ -252,4 +252,9 @@ image.
 
 ## License
 
-**TODO: licence not chosen yet.** Until a licence is added, all rights are reserved by the author.
+Revive360 is free software: you can redistribute it and/or modify it under the terms of
+the GNU General Public License, version 3 or (at your option) any later version. See
+[LICENSE](LICENSE).
+
+Samsung, Gear 360 and the camera firmware are Samsung's. This repository contains none of
+Samsung's firmware or binaries: the firmware tools patch a stock image you download yourself.

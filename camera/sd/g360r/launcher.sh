@@ -202,8 +202,9 @@ raw_probe() {
 }
 
 # prefs_dump (normal mode, prefsdump=1): copy the camera's settings files to the
-# card at every boot, to compare with the ones raw_seed.sh saved in factory mode
-# (where is the photo quality kept, did RAW+fine survive the power-off?)
+# card at every boot, to compare with the ones saved in factory mode during the
+# RAW investigation (where is the photo quality kept, does a setting survive the
+# power-off?)
 prefs_dump() {
     [ "$MODE" = normal ] && [ "$(cfg prefsdump 0)" = "1" ] || return 0
     d=$LOGDIR/prefs_boot
