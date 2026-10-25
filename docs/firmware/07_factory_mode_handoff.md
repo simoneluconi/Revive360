@@ -105,7 +105,7 @@ Sequence (run detached, outside di-camera-app's cgroup):
 Because the restart exits factory mode, it also clears the factory OSD and undoes the
 volatile low-battery-auto-off change.
 
-Probe 3 (tools/sd_probe3/) tests steps 2, 4, 5, 6 without the in-process helper (no drop-in), and then
+Probe 3 (a one-off SD script, since removed) tested steps 2, 4, 5, 6 without the in-process helper (no drop-in), and then
 tries `st app softap start` from normal mode, to confirm the handoff and the softAP path.
 
 ## 5. Probe 3 result: the `systemctl restart` handoff FAILS

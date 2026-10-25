@@ -74,7 +74,7 @@ idx 21..33 : -5908224, -8413461, 2212874, 1380566, -28500000, 255126, 362, 45985
 idx 34..39 : 24232904, 55305408, 0, 0, 0, 7
 ```
 
-Observation: indices 12–20 and 25–33 have the same shape: `+28500000` / `-28500000`, then values around 250k, a small value, then about `46000, -27000, 4300, -9000…-22000, -15000…-8700, -40…-80`. This strongly suggests **one parameter block per lens** (13 values each), plus a header (0..7) and a trailer (34..39). The meaning and fixed-point scale of each field are not visible in the camera code: the camera only copies the values, and the ArcSoft stitcher consumes them. Cross-check with the phone-side "optiAxis" parser in docs/app/03_media_pipeline.md.
+Observation: indices 12–20 and 25–33 have the same shape: `+28500000` / `-28500000`, then values around 250k, a small value, then about `46000, -27000, 4300, -9000…-22000, -15000…-8700, -40…-80`. This strongly suggests **one parameter block per lens** (13 values each), plus a header (0..7) and a trailer (34..39). The meaning and fixed-point scale of each field are not visible in the camera code: the camera only copies the values, and the ArcSoft stitcher consumes them.
 
 ## 4. Orientation data (`vrot` box)
 
