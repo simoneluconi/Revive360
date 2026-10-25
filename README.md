@@ -86,3 +86,6 @@ Free software under the [GNU GPL v3](LICENSE). Revive360 is an independent proje
 made, affiliated with or endorsed by Samsung. Samsung and Gear 360 are trademarks of Samsung
 Electronics; they are used here only to say which camera the app works with. It
 contains no Samsung software: you download Samsung's original firmware yourself.
+
+The app and the website use the [Manrope](https://github.com/googlefonts/manrope) font, under the
+[SIL Open Font License 1.1](docs/manrope-OFL.txt).
