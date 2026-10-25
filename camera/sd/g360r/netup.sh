@@ -113,9 +113,9 @@ _netup_write_hostapd_conf() {
         echo "ctrl_interface=$_netup_hostapd_ctrl"
         echo "ssid=$AP_SSID"
         if [ "$BAND" = 5 ]; then
-            # 5 GHz, 802.11n/ac on a 20 MHz channel: the AP firmware's driver refuses
-            # HT40 ("Driver does not support configured HT capability [HT40*]"), and
-            # so 80 MHz; 5 GHz is still far less crowded than 2.4
+            # 5 GHz, 802.11n/ac: hostapd may not ask for HT40/80 (the driver refuses
+            # "[HT40*]"), but the AP firmware widens the channel on its own (wl status:
+            # "5GHz channel 42 80MHz"; a phone links at up to 433 Mbit/s)
             echo "channel=$CH"
             echo "hw_mode=a"
             echo "ieee80211n=1"

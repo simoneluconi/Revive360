@@ -486,6 +486,7 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
      * in EXIF and libc localtime, first normal-mode test): timeset.c sets the
      * clock so that the camera shows the phone's local time. */
     a->clock_local = 1;
+    a->power = 1;
     a->trigger_capture = c200_capture;
     /* Settings and recording go through the shim inside di-camera-app, which
      * only the modified firmware loads (normal mode) */

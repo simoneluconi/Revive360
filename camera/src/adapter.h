@@ -66,6 +66,7 @@ struct adapter {
     int files_delete;
     int thumbnails;
     int clock_local;            /* the system clock/RTC hold local wall-clock time, not UTC */
+    int power;                  /* §5.15 reboot/off: only on a real camera, never the simulator */
     led_chan_t leds[MAX_LEDS];  int n_leds;
 
     /* Trigger one capture. Must return once the shot was requested (files

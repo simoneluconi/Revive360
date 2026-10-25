@@ -119,6 +119,7 @@ A missing key means "not supported" (`false`, empty list).
   ],
   "debug_log": true,
   "time": true,
+  "power": true,
   "settings": [
     { "id": "mode",       "values": ["photo", "video", "timelapse", "looping"] },
     { "id": "lens",       "values": ["dual", "rear", "front"] },
@@ -141,6 +142,7 @@ A missing key means "not supported" (`false`, empty list).
 | `leds` | list of LED channel objects | One entry per independently controllable LED. `id` is opaque (used in §5.8); `label` is for display; `role` is one of `status_red`, `status_green`, `status_blue`, `front`, `rear`, `charge`, `unknown`; `states` lists what §5.8 accepts for it. Empty = no LED control. |
 | `debug_log` | bool | §5.9 is available. |
 | `time` | bool | §5.10 is available: the app may set the camera clock. |
+| `power` | bool | §5.15 is available: the app may reboot or switch off the camera. |
 | `settings` | list of `{id, values}` | Camera settings of §5.12, in display order. `id` is one of the ids below (an app ignores ids it does not know); `values` are the accepted tokens. Empty = none. |
 
 Setting ids and their tokens (an adapter offers a subset):
@@ -452,6 +454,13 @@ next key frame without waiting. While the live view is on, `POST /api/v1/capture
 `POST /api/v1/record` answer `409 busy`: the client closes the live view first. Settings may change
 during it; a mode or size change can end the stream.
 
+### 5.15 `POST /api/v1/power`
+
+Only when `capabilities.power`. `{"action": "reboot"}` restarts the camera, `{"action": "off"}`
+switches it off. Answers `202 {"action": "reboot"}` before acting: the connection then drops, and
+after a reboot the camera's Wi-Fi is back in about half a minute. A live view ends first; the card
+is unmounted cleanly. `409 busy` while recording.
+
 ## 6. Camera-side behaviour (informative)
 
 Not part of the wire contract, documented so both sides agree on what the user sees:
@@ -476,5 +485,4 @@ Not part of the wire contract, documented so both sides agree on what the user s
 
 ## 8. Reserved for later versions
 
-Not implemented in v1; names reserved so v1 code does not collide: `GET /api/v1/events`,
-`POST /api/v1/power`.
+Not implemented in v1; names reserved so v1 code does not collide: `GET /api/v1/events`.
