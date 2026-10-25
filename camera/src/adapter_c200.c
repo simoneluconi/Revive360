@@ -225,7 +225,7 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
 {
     const c200_setting_t *s = c200_setting(id);
     char req[64], reply[256];
-    int v = -1;
+    int v = -1, prev_mode = MODE_VALUE_PHOTO;
     (void)a;
 
     for (int i = 0; s && i < s->n; i++)
@@ -235,6 +235,8 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
         snprintf(err, errlen, "no value for %s=%s", id, value);
         return -1;
     }
+    if (strcmp(id, "mode") == 0)
+        shim_ui_get(KEY_MODE, &prev_mode);
     if (strcmp(id, "lens") == 0)
         snprintf(req, sizeof req, "lens %d", v);     /* the app's wrapper re-sizes the pipeline */
     else
@@ -248,7 +250,12 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
      * restart the live view; video modes: movie standby, which realizes the
      * camcorder for the mode and its movie size. */
     if (strcmp(id, "mode") == 0) {
-        const char *transition = strcmp(value, "photo") == 0 ? "photomode" : "moviestandby";
+        /* Back to photo from a video mode: the app is in its movie sub-state,
+         * and only the movie stop path leaves it (it ends in the photo live
+         * view; a live view restart alone left the next shutter as a movie
+         * stop, no photo). */
+        const char *transition = strcmp(value, "photo") != 0 ? "moviestandby"
+                                 : prev_mode != MODE_VALUE_PHOTO ? "recstop" : "photomode";
         if (shim_plugin("allsend", reply, sizeof reply) < 0 ||
             shim_plugin(transition, reply, sizeof reply) < 0) {
             snprintf(err, errlen, "%s", reply);
