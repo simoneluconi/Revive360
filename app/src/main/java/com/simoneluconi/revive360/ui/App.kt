@@ -64,6 +64,7 @@ sealed interface Screen {
     data object Settings : Screen
     data object Log : Screen
     data object LiveView : Screen
+    data class Panorama(val path: String) : Screen
 }
 
 /** What screens need from the activity: navigation, short messages, system prompts. */
@@ -146,6 +147,7 @@ fun AppRoot(app: Revive360App, findCamera: ((CompanionWifi.Found?) -> Unit) -> U
                             Screen.Settings -> SettingsScreen()
                             Screen.Log -> LogScreen()
                             Screen.LiveView -> LiveViewScreen()
+                            is Screen.Panorama -> PanoramaScreen(screen.path)
                         }
                     }
                 }

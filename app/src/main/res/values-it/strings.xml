@@ -214,4 +214,15 @@
     <string name="log_copy">Copia</string>
     <string name="log_copied">Log copiato</string>
     <string name="log_empty">Ancora niente</string>
+
+    <!-- 360 viewer and stitching -->
+    <string name="pano_open">Guarda in 360°</string>
+    <string name="pano_fetching">Scarico l\'originale… %1$d%%</string>
+    <string name="pano_preparing">Preparo la foto…</string>
+    <string name="pano_failed">Non riesco ad aprire la foto: %1$s</string>
+    <string name="pano_save">Salva foto 360°</string>
+    <string name="pano_saving">Unisco le due lenti…</string>
+    <string name="pano_saved">Foto 360° salvata nella cartella %1$s</string>
+    <string name="pano_hint">Trascina per guardarti intorno, pizzica per lo zoom, doppio tocco per tornare davanti.</string>
+    <string name="pano_full">Schermo intero</string>
 </resources>

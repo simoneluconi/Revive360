@@ -71,6 +71,15 @@ fun FileScreen(path: String) {
             InfoRow(stringResource(R.string.file_path), file.path, mono = true)
         }
 
+        if (file.kind == FileKind.PHOTO && (caps?.download == true)) {
+            PillButton(
+                stringResource(R.string.pano_open),
+                Modifier.fillMaxWidth(),
+                icon = AppIcons.Sphere,
+                enabled = info != null,
+            ) { nav.navigate(Screen.Panorama(file.path)) }
+        }
+
         val progress = downloads[file.path]
         val isSaved = controller.savedKey(file) in saved
         if (caps?.download == true || progress != null) {

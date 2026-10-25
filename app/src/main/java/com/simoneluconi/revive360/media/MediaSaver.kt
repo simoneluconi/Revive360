@@ -11,34 +11,38 @@ import java.io.File
 
 /**
  * Publishes a downloaded original to the phone's shared storage, untouched (the camera's dual-fisheye
- * files are kept as they are; stitching is a later feature). Photos go to Pictures, videos to Movies,
+ * files are kept as they are; a stitched copy is a file of its own). Photos go to Pictures, videos to Movies,
  * RAW and anything else to Download, each in a "Revive360" folder. No storage permission needed.
  */
 object MediaSaver {
     const val FOLDER = "Revive360"
 
-    fun publish(context: Context, file: CameraFile, source: File): Uri {
+    fun publish(context: Context, file: CameraFile, source: File): Uri =
+        publish(context, file.name, file.kind, mimeType(file), file.mtime, source)
+
+    /** A file made on the phone from a camera file (a stitched 360 photo), next to the originals. */
+    fun publish(context: Context, name: String, kind: FileKind, mime: String, mtime: Long, source: File): Uri {
         val resolver = context.contentResolver
-        val (collection, directory) = when (file.kind) {
+        val (collection, directory) = when (kind) {
             FileKind.PHOTO -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_PICTURES
             FileKind.VIDEO -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_MOVIES
             FileKind.RAW, FileKind.OTHER -> MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_DOWNLOADS
         }
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-            put(MediaStore.MediaColumns.MIME_TYPE, mimeType(file))
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
             put(MediaStore.MediaColumns.RELATIVE_PATH, "$directory/$FOLDER")
             // The camera's time, not the download's: the phone's gallery sorts by when it was shot
-            if (file.mtime > 0) put(MediaStore.MediaColumns.DATE_MODIFIED, file.mtime)
-            if (file.mtime > 0 && file.kind != FileKind.OTHER && file.kind != FileKind.RAW) {
-                put(MediaStore.MediaColumns.DATE_TAKEN, file.mtime * 1000)
+            if (mtime > 0) put(MediaStore.MediaColumns.DATE_MODIFIED, mtime)
+            if (mtime > 0 && kind != FileKind.OTHER && kind != FileKind.RAW) {
+                put(MediaStore.MediaColumns.DATE_TAKEN, mtime * 1000)
             }
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val uri = resolver.insert(collection, values) ?: error("the system refused a new ${file.kind} entry")
+        val uri = resolver.insert(collection, values) ?: error("the system refused a new $kind entry")
         try {
             resolver.openOutputStream(uri)?.use { out -> source.inputStream().use { it.copyTo(out) } }
-                ?: error("can't write ${file.name}")
+                ?: error("can't write $name")
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         } catch (e: Exception) {
             runCatching { resolver.delete(uri, null, null) }

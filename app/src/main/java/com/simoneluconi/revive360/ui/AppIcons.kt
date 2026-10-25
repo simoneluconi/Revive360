@@ -55,6 +55,8 @@ object AppIcons {
     val Live = icon("M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z", circle(12f, 12f, 3f))
     val SelectAll = icon("M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z", "M8 12.5l3 3 5-6")
     val SelectNone = icon("M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z")
+    val Expand = icon("M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5")
+    val Sphere = icon(circle(12f, 12f, 9f), "M3 12c0 2.5 4 4.5 9 4.5s9-2 9-4.5", "M12 3c-2.5 2.4-3.8 5.4-3.8 9s1.3 6.6 3.8 9")
     val Refresh = icon("M20 11a8 8 0 1 0-2.3 5.7", "M20 4v7h-7")
     val List = icon("M9 6h11M9 12h11M9 18h11", circle(4.5f, 6f, 0.8f), circle(4.5f, 12f, 0.8f), circle(4.5f, 18f, 0.8f))
     val Info = icon(circle(12f, 12f, 9f), "M12 11v5", circle(12f, 8f, 0.4f))

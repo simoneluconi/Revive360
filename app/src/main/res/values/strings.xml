@@ -216,4 +216,15 @@
     <string name="log_copy">Copy</string>
     <string name="log_copied">Log copied</string>
     <string name="log_empty">Nothing yet</string>
+
+    <!-- 360 viewer and stitching -->
+    <string name="pano_open">View in 360°</string>
+    <string name="pano_fetching">Downloading the original… %1$d%%</string>
+    <string name="pano_preparing">Preparing the picture…</string>
+    <string name="pano_failed">Can\'t open the photo: %1$s</string>
+    <string name="pano_save">Save 360° photo</string>
+    <string name="pano_saving">Joining the two lenses…</string>
+    <string name="pano_saved">360° photo saved in the %1$s folder</string>
+    <string name="pano_hint">Drag to look around, pinch to zoom, double tap to face the front lens again.</string>
+    <string name="pano_full">Full screen</string>
 </resources>

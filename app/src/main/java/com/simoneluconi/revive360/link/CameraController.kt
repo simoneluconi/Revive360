@@ -39,6 +39,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.security.MessageDigest
 import java.util.UUID
@@ -575,6 +576,27 @@ class CameraController(
         downloadJobs[file.path] = job
     }
 
+    /**
+     * The original of [file] in the app's cache (the 360 viewer and the stitcher read it there),
+     * downloaded if it isn't yet. The few most recent ones are kept.
+     */
+    suspend fun original(file: CameraFile, progress: (Long, Long) -> Unit): File = withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, "originals").apply { mkdirs() }
+        val name = MessageDigest.getInstance("SHA-1").digest(savedKey(file).toByteArray()).joinToString("") { "%02x".format(it) }
+        val done = File(dir, "$name.${file.name.substringAfterLast('.', "bin").lowercase()}")
+        if (done.exists() && done.length() == file.size) return@withContext done.also { it.setLastModified(System.currentTimeMillis()) }
+        val client = client ?: throw IOException("not connected to the camera")
+        val resume = (state.value as? LinkState.Connected)?.info?.capabilities?.range == true
+        val part = File(dir, "$name.part")
+        client.download(file.path, part, resume) { got, total ->
+            ensureActive()
+            progress(got, if (total > 0) total else file.size)
+        }
+        check(part.renameTo(done)) { "can't keep ${file.name}" }
+        dir.listFiles { f -> !f.name.endsWith(".part") }?.sortedByDescending { it.lastModified() }?.drop(ORIGINALS_KEPT)?.forEach { it.delete() }
+        done
+    }
+
     fun cancelDownload(file: CameraFile) {
         downloadJobs.remove(file.path)?.cancel()
         _downloads.update { it - file.path }
@@ -598,6 +620,7 @@ class CameraController(
 
     private companion object {
         const val BACKGROUND_RELEASE_MS = 20_000L
+        const val ORIGINALS_KEPT = 6
         const val REJOIN_MS = 3_000L
         /** Refused or timed-out requests in a row before the app shows the camera as not found */
         const val REJOIN_ATTEMPTS = 20

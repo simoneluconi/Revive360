@@ -169,7 +169,7 @@ fun LiveViewScreen() {
 
 /** Shows or hides the status and navigation bars (swipe brings them back for a moment) */
 @Suppress("DEPRECATION")
-private fun systemBars(view: View, show: Boolean) {
+internal fun systemBars(view: View, show: Boolean) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         val controller = view.windowInsetsController ?: return
         if (show) {
