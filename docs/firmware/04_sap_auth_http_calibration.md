@@ -13,7 +13,7 @@ Source: firmware `C200GLU0APE4`. These binaries were decompiled with Ghidra 12.1
 
 - `ParseSapPeerDescriptionMsg`: the camera's maximum and only accepted SAP version is **`0x201` (513)**.
 - If the peer's AP version is not `0x201`, the camera logs `SAP VERSION MISMATCH`, but continues if the message type is 7 (*counter offer*). Otherwise it rejects with `MAX version = 513`.
-- "Legacy PD" (`ComposeLegacyPeerDescription`, `ParseLegacyPeerDescriptionMsg`, legacy CapEx query) refers to the **format** of the peer description and CapEx. It is not a security bypass.
+- "Legacy PD" (`ComposeLegacyPeerDescription`, `ParseLegacyPeerDescriptionMsg`, legacy CapEx query) refers to the **format** of the peer description and CapEx. It is not a security avoid.
 
 ### WSM (Samsung white-box crypto) is mandatory
 

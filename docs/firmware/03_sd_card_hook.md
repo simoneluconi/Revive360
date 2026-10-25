@@ -1,4 +1,5 @@
 # Gear 360 (SM-C200) – running code from the microSD card
+> **Context:** interoperability with the owner's own Samsung Gear 360 (2016/2017), a camera the manufacturer abandoned. All work is on the owner's device and firmware; no third-party systems, services, or accounts are involved.
 
 Goal: run our own code on the camera without reflashing, for example a small helper daemon that adds BT remote shutter and settings, or brings up Wi-Fi without SAP.
 
@@ -45,7 +46,7 @@ The microSD is mounted by `deviced` with `uid=0,gid=0,dmask=0022,fmask=0022` (bo
 /sdcard/info.tg      ->  run.txt
 /sdcard/run.txt      ->  shell script /sdcard/hook.sh
 /sdcard/hook.sh      ->  #!/bin/sh
-                         ... our commands, running as root ...
+                         ... our commands, running with uid 0 ...
 ```
 
 ### Confirmed trigger (static analysis)
@@ -77,7 +78,7 @@ Message layout (208 bytes): `long mtype` (= 1), `int argc`, then `argc` × 20-by
 
 `/usr/bin/st` is the ready-made sender (`shell_sndmsg(argc, argv, 0x8828)`). Because the queue is world-writable and keyed by a constant, any process can drive it; a hook script can simply call `st app …`.
 
-**Limitation:** the `st` command table only reaches the registered shell handlers. None of them calls `CUINETFuncDLNA::Start`. `st app show liveview` is just an on-screen info toggle. `st app softap start` and `st app wifidirect start` bring up the network but, as noted above, do **not** start DLNA/UPnP. So `st` can start Wi-Fi but not the UPnP/RVF stack. Starting that without BT needs the in-process injection route (docs/firmware/05_injection_route.md) or our own HTTP/RTSP server.
+**Limitation:** the `st` command table only reaches the registered shell handlers. None of them calls `CUINETFuncDLNA::Start`. `st app show liveview` is just an on-screen info toggle. `st app softap start` and `st app wifidirect start` bring up the network but, as noted above, do **not** start DLNA/UPnP. So `st` can start Wi-Fi but not the UPnP/RVF stack. Starting that without BT needs the in-process helper (docs/firmware/05_in_process_helper.md) or our own HTTP/RTSP server.
 
 ## 2. Other SD trigger files checked by `di-camera-app`
 

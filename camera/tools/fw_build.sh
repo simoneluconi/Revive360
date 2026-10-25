@@ -91,7 +91,9 @@ echo "== check the filesystem"
 e2fsck -fn "$WORK/rootfs.img"
 
 echo "== recompress and rebuild the SLP image"
-lzop -9 -c "$WORK/rootfs.img" > "$WORK/rootfs.new.lzo"
+# Same format as the stock blob (method 2 / level 1, from stdin): the camera's
+# lzop 1.03 must decompress it during the flash
+lzop -1 -c < "$WORK/rootfs.img" > "$WORK/rootfs.new.lzo"
 python3 "$TOOLS/slp_pack.py" replace "$STOCK" "$PART=$WORK/rootfs.new.lzo" "$OUT"
 echo "== verify: part $PART of the new image decompresses to the modified rootfs"
 python3 "$TOOLS/slp_pack.py" extract "$OUT" "$PART" "$WORK/check.lzo" >/dev/null

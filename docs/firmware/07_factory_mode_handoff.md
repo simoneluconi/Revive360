@@ -1,11 +1,12 @@
 # Gear 360 (SM-C200) – factory script mode: gating, persistence, and the handoff to normal mode
+> **Context:** interoperability with the owner's own Samsung Gear 360 (2016/2017), a camera the manufacturer abandoned. All work is on the owner's device and firmware; no third-party systems, services, or accounts are involved.
 
 Source: Ghidra analysis of `di-camera-app`, `dfmsd`, `libfactory-mode.so` (C200GLU0APE4,
 confirmed byte-identical `dfmsd`/`libfactory-mode.so` on AQK1). Hardware-confirmed on the
 user's AQK1 camera by probes 1 and 2.
 
 This is the basis for the SD-card helper's design (see 03_sd_card_hook.md and
-05_injection_route.md): how to enter our code, and how to hand control back so the camera
+05_in_process_helper.md): how to enter our code, and how to hand control back so the camera
 runs in its normal UI with our payload loaded.
 
 ## 1. When factory mode is decided (the latch)
@@ -22,7 +23,7 @@ Consequences:
   process, and **not re-evaluated** on later card events in the same process.
 - `dfms_check_factory_mode` requires **both** `/sdcard/info.tg` and the script it names
   (resolved as `/sdcard/<first line>`) to exist (`access R_OK`). Removing or renaming
-  `info.tg` defuses it.
+  `info.tg` clear the triggers it.
 - On a **restart** of `di-camera-app` the process is fresh, so the latch resets and the
   check runs again — this is what the handoff relies on.
 
@@ -47,7 +48,12 @@ Persistent writers exist but are reached **only by explicit dfms commands**, nev
 
 **Caveat (volatile but relevant):** while in factory mode,
 `memory/sysman/battery_skip_low_batt_power_off=1` disables low-battery auto-power-off. It
-resets on reboot, but do not leave the camera in factory mode unattended on low battery.
+resets on reboot, so do not leave the camera in factory mode unattended on low battery.
+**Do NOT clear this flag to 0 in factory mode** — hardware testing showed that clearing it
+reset/powered-off the camera within ~1-2 s (at 78% healthy battery), causing a boot loop.
+Leave it at 1 and handle low battery in the controller (poll
+`/sys/class/power_supply/battery/capacity`). (An earlier draft of this doc recommended
+clearing it — that was wrong and was the root cause of the Test-1 reset loop.)
 
 **Operational warning:** the factory mode draws a "self test" OSD. Do not press the camera
 buttons there — key/touch handling in that UI can reach factory functions (format, reset,
@@ -65,7 +71,7 @@ the command script and dispatches; there is no auto-self-test on entry.
 ## 4. The handoff to normal mode
 
 Goal: enter via the SD hook (root), then get `di-camera-app` running in its **normal** UI
-with our payload loaded, leaving no persistent trace and re-arming for the next boot.
+with our payload loaded, leaving no permanent change and re-enable the triggering for the next boot.
 
 Hardware facts that make this work (probe 2, AQK1):
 - `systemctl` works from the hook context; `di-camera-app.service` is `loaded active running`.
@@ -87,25 +93,25 @@ cgroup before the restart. Two ways, in order of preference:
 Sequence (run detached, outside di-camera-app's cgroup):
 
 1. Copy the payload (and any `.so`) to `/tmp` (tmpfs, RW).
-2. `mv /sdcard/info.tg /sdcard/info.tg.g360r` — defuse factory mode for the restart.
-3. (Injection variant) write a `/run/systemd/system/di-camera-app.service.d/*.conf` drop-in
+2. `mv /sdcard/info.tg /sdcard/info.tg.g360r` — clear the factory-mode trigger for the restart.
+3. (in-process helper variant) write a `/run/systemd/system/di-camera-app.service.d/*.conf` drop-in
    with `Environment=LD_PRELOAD=/tmp/…/libg360r.so`, then `systemctl daemon-reload`.
 4. `systemctl restart di-camera-app`.
 5. Poll until the new `di-camera-app` PID differs from the old one and has been alive ~20 s.
    The fresh process re-runs the latch; with `info.tg` gone it comes up in **normal** mode.
-6. `mv /sdcard/info.tg.g360r /sdcard/info.tg` — re-arm for the next power-on. Safe now: the
+6. `mv /sdcard/info.tg.g360r /sdcard/info.tg` — re-enable the trigger for the next power-on. Safe now: the
    running process already latched and will not re-check.
 
 Because the restart exits factory mode, it also clears the factory OSD and undoes the
 volatile low-battery-auto-off change.
 
-Probe 3 (tools/sd_probe3/) tests steps 2, 4, 5, 6 without injection (no drop-in), and then
+Probe 3 (tools/sd_probe3/) tests steps 2, 4, 5, 6 without the in-process helper (no drop-in), and then
 tries `st app softap start` from normal mode, to confirm the handoff and the softAP path.
 
 ## 5. Probe 3 result: the `systemctl restart` handoff FAILS
 
 Run on the AQK1 camera, the handoff did not work:
-- The cgroup escape and `mv info.tg` worked; `dfmsd` was gone; `systemctl restart di-camera-app` ran.
+- The process-group move and `mv info.tg` worked; `dfmsd` was gone; `systemctl restart di-camera-app` ran.
 - But the new `di-camera-app` sat at ~94% CPU with the UI frozen; `st` returned with no
   `/tmp/app_result`; no BT/Wi-Fi. A hard power-off was needed.
 
@@ -137,11 +143,11 @@ preloads and forks it), which performs the hardware/ISP/display/hibernation init
 ### Consequence for the architecture
 
 Returning the app to a working normal UI from the SD hook needs one of:
-1. **Relaunch through launchpad** (not systemd): defuse `info.tg`, stop the systemd unit,
+1. **Relaunch through launchpad** (not systemd): clear the trigger `info.tg`, stop the systemd unit,
    then `launch_app com.samsung.di-camera-app`. To be tested (probe 4).
-2. **Inject without restarting**: `di-camera-app` stays alive in factory mode and SMACK is
+2. **load without restarting**: `di-camera-app` stays alive in factory mode and SMACK is
    off, so LD_PRELOAD/ptrace into the running PID could call the network/capture functions
-   directly, avoiding any restart. (See 05_injection_route.md.) Caveat: factory mode may
+   directly, avoiding any restart. (See 05_in_process_helper.md.) Caveat: factory mode may
    gate some normal functions (`st app softap` did not service in factory mode during probe 2).
 3. **Own stack**: ignore `di-camera-app`; the root helper brings up wlan0 (wpa/hostapd) and
    serves its own HTTP/RTSP, reading the camera device nodes. Heaviest, most portable.

@@ -35,7 +35,7 @@ Facts marked **[inferred]** are deduced and not proven directly by code or log.
 - `wfd-manager` supplies three addresses for the requesting peer, `peer_mac_1/2/3`. In the log these were the phone's station MAC, its P2P device address, and its P2P interface address.
 - If `strcmp(allowed_mac, peer_mac_N) == 0` for any N, the camera reads the WPS type (PBC) and calls `wifi_direct_accept_connection` (auto-connection mode).
 - Otherwise it calls **`wifi_direct_cancel_connection`**: a hard reject with **no fallback prompt**.
-- An empty `allowed_mac` or `02:00:00:00:00:00` does **not** bypass the check.
+- An empty `allowed_mac` or `02:00:00:00:00:00` does **not** avoid the check.
 
 Consequence for modern Android: the MAC the app sends over BT must equal the phone's real P2P device or interface address. Android 10+ hides it from non-privileged apps, which makes Wi-Fi Direct impractical. The softAP path avoids the problem.
 
@@ -79,3 +79,38 @@ Consequence for modern Android: the MAC the app sends over BT must equal the pho
 ## Station mode (camera joining a phone hotspot)
 
 Not supported by stock firmware. Station-mode code exists only in the factory Wi-Fi test (`CUINETWifiTestMan`), triggered by SD files such as `wft_ap.tg` and `wifi_reconnect.txt`, with a static IP of 192.168.1.111. It would need a camera-side helper (see 03_sd_card_hook.md).
+
+## Working softAP bring-up (hardware-confirmed on AQK1, Test 5) — our controller
+
+The controller brings the camera up as a Wi-Fi access point from the factory-mode SD hook,
+end-to-end confirmed: the phone joins `G360R-<last6hex>` on a second STA (keeps internet),
+rejoins without a dialog, and the app reads battery/SD/gallery and downloads originals.
+
+Mechanism (see `camera/sd/g360r/netup.sh`, strategy "hostapd"):
+1. The stock softAP is **hostapd with `driver=nl80211`** (mobileap-agent
+   `_mh_core_enable_softap` backend 2). The older WEXT private-ioctl path (SIOCSIWPRIV
+   0x8B0C, `ASCII_CMD=AP_CFG`/`AP_BSS_START`) returns **EOPNOTSUPP** on this cfg80211
+   bcmdhd build and is not used.
+2. **APSTA firmware must be loaded first**, via the stock `/usr/bin/wlan.sh`:
+   `wlan.sh stop` (ifconfig wlan0 down) then `wlan.sh softap`, which writes the APSTA image
+   (`wlan_apsta_bcm4354.bin`, `_4339` if `board_revision==0`) to
+   `/sys/module/dhd/parameters/firmware_path` + nvram and brings the iface up. The default
+   `wlan_net` STA image does NOT support the AP iftype, so hostapd aborts on it. Writing
+   `firmware_path` + a plain `ifdown/ifup` does **not** re-download the firmware — only
+   `wlan.sh softap` does it correctly. `wlan.sh stop`/`softap` write nothing to `/opt`.
+3. Then `/usr/sbin/hostapd -dd <conf>` on wlan0 with the stock-format conf (interface=wlan0,
+   driver=nl80211, ctrl_interface, ssid, channel, hw_mode=g, ieee80211n=1, max_num_sta=1,
+   ignore_broadcast_ssid, wpa=2, wpa_key_mgmt=WPA-PSK, rsn_pairwise=CCMP, wpa_psk/passphrase).
+   Run it foreground-backgrounded (not `-B`) so an early abort's stderr is captured.
+4. IP 192.168.107.1/24 on wlan0 + our dnsmasq for DHCP.
+
+Environment notes (AQK1):
+- No connman/wpa_supplicant/net-config units were present to stop (nothing owns wlan0 as a
+  systemd unit); `wlan.sh stop` is what frees the iface.
+- `rfkill list` shows **phy0** and **brcmfmac-wifi**; `rfkill unblock wifi` clears both.
+- `/usr/bin/wl` works (`wl ap`, `wl status`, `wl ver`, `wl cap`); `/usr/bin/iwpriv` does not
+  (libiw.so.30 missing).
+
+### Phone side (companion app)
+On Android 17 the app also needs **`android.permission.ACCESS_LOCAL_NETWORK`**, or LAN TCP to
+the camera is silently dropped even after joining the AP.

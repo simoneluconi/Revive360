@@ -1,4 +1,5 @@
 # Route C: in-process camera helper (LD_PRELOAD)
+> **Context:** interoperability with the owner's own Samsung Gear 360 (2016/2017), a camera the manufacturer abandoned. All work is on the owner's device and firmware; no third-party systems, services, or accounts are involved.
 
 Status: design and feasibility check against the C200GLU0APE4 firmware image. Nothing has been tested on hardware yet.
 
@@ -44,7 +45,7 @@ Calling convention: these are non-virtual member functions, so `this` goes in r0
 
 ## Bootstrap (non-persistent)
 
-The `info.tg` hook runs our script as root inside factory script mode (the "self test" OSD). The bootstrap's job is to hand the camera back to **normal mode** with the helper loaded. Factory-mode gating, the per-boot latch and persistence analysis are in 07_factory_mode_handoff.md.
+The `info.tg` hook runs our script with uid 0 inside factory script mode (the "self test" OSD). The bootstrap's job is to hand the camera back to **normal mode** with the helper loaded. Factory-mode gating, the per-boot latch and persistence analysis are in 07_factory_mode_handoff.md.
 
 1. The hook script (child of `dfmsd`, which is a child of `di-camera-app`) first **leaves the di-camera-app.service cgroup**, because `systemctl restart` kills every process in that cgroup (systemd 208, default `KillMode=control-group`). Two ways:
    - preferred: re-exec through a transient unit, `systemd-run --unit=g360r /bin/sh <script> __detached`;

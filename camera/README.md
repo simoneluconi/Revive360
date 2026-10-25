@@ -199,7 +199,17 @@ and the `g360r/log/` folder.
 | fast blink 100 ms | capture in progress |
 | 250 ms blink on the error LED(s) | error (e.g. Wi-Fi bring-up failed) |
 
-Until the mapping is known, every LED shows the feedback (`led_feedback=all`).
+Until the mapping is known, no LED shows the feedback (`led_feedback=none`, the default),
+so the table above does not apply yet. Instead the launcher drives the logical status LED
+through the firmware (`st app 360 led status <r|g|b> <on|off>`, which maps to the right GPIO
+itself): **blue** = starting, **green** = Wi-Fi up and server ready, **red** = error.
+`led_feedback=all` only covers LEDs with a known role in `led_roles=`: an unidentified `led.N`
+is never driven automatically, because one of them may be a GPIO that is not an LED.
+
+The Test 1 reset loop (reset ~27.5 s after boot) was the hardware watchdog, not the LEDs:
+the stock app pets it, factory mode does not. `start.sh` and `launcher.sh` now write
+`0 > /sys/devices/platform/jack/set_watchdog` first thing, and the supervisor re-writes it
+every 5 s. `start.log` and `g360r.log` record the `watchdog:` line.
 
 ## Command reference
 

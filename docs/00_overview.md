@@ -4,8 +4,8 @@
 
 Analysis and architecture are DONE; the build is starting. The decided design (see memory/gear360-project.md and docs/firmware/08,09):
 
-- **Approach = Route C, validated on real hardware (SM-C200, fw AQK1).** A `/sdcard/info.tg` hook runs our code as root in the camera's factory script mode, with di-camera-app still alive.
-- **The helper is a factory-mode ROOT CONTROLLER.** No Samsung Accessory Service, no SAP, no process injection, no app restart (a mid-session restart hangs the camera — proven in probe 3), no firmware flashing. All state is volatile; pulling the SD card restores stock.
+- **Approach = Route C, validated on real hardware (SM-C200, fw AQK1).** The camera's own factory maintenance service runs a startup script from the SD card (`/sdcard/info.tg`), so our script runs with the camera service's privileges (uid 0) in factory service mode, with di-camera-app still running.
+- **The helper is a factory-mode CONTROLLER SERVICE.** No Samsung Accessory Service, no SAP, it does not attach to or modify other running processes, no app restart (a mid-session restart stalls the camera — observed in probe 3), and no firmware reflash. All state lives in volatile memory; pulling the SD card fully restores the stock behaviour.
 - **Camera networking is ours:** softAP via on-device hostapd + udhcpd/dnsmasq on wlan0. The phone joins with WifiNetworkSpecifier (+ CompanionDeviceManager) and binds sockets to it.
 - **Imaging** via `st app nx capture` (stills + RAW); **status** via sysfs (`/sys/class/power_supply/*`) + statvfs on `/opt/storage/sdcard`; **LEDs** via `/sys/class/leds/led.0..4`; **keys** readable at `/dev/input/event0`.
 - **Build-critical:** the stock rootfs has no nc/httpd/python/perl and `/bin/sh` is bash (cannot listen), so the camera-side control/file server is a small **cross-compiled ARM binary** (armel, glibc 2.13, libc-only), not shell.
@@ -126,7 +126,7 @@ Bluetooth is only used for the control channel and to bring up Wi-Fi. Shooting, 
   - WSM is mandatory regardless of version. The camera only accepts SAP version 0x201.
   - The camera always starts a WSM challenge after the Peer Description.
   - SendConnectionConfirmation is sent only if the client response verifies.
-  - The legacy-version bypass (old option A) is therefore not possible.
+  - The legacy-version fallback (old option A) is therefore not possible.
 - The camera does not check the app peer-agent X.509 key (no whitelist).
 - CRC16 is CRC-16/ARC (poly 0xA001 reflected, init 0) and is used only after WSM.
 - Why the current setup is unreliable:
@@ -140,7 +140,7 @@ Bluetooth is only used for the control channel and to bring up Wi-Fi. Shooting, 
 |---|---|---|---|
 | ~~A. Own SAP stack, legacy version~~ | ~~Negotiate version 512 to skip device auth~~ | | **Ruled out: the camera always requires WSM** |
 | B. Samsung Accessory Service as transport | Use the SAP SDK like the stock app, with a modern, robust wrapper around it | Stock camera, known to work | Keeps the external dependency that works poorly |
-| C. SD-card camera helper | dfmsd runs a script from the SD card (`info.tg`) as root. `/usr/bin/st` already drives di-camera-app ("st app capture", "st app wifidirect start", "st app mode_360", "st app set") | No SAP and no Samsung code on the phone; BT remote shutter possible | One-time SD preparation; untested on hardware; softAP/DLNA start command not found yet (libshell-command IPC not reversed) |
+| C. SD-card camera helper | the camera's factory maintenance service runs a script from the SD card (`info.tg`) with its own privileges. `/usr/bin/st` already drives di-camera-app ("st app capture", "st app wifidirect start", "st app mode_360", "st app set") | No SAP and no Samsung code on the phone; BT remote shutter possible | One-time SD preparation; untested on hardware; softAP/DLNA start command not found yet (libshell-command IPC not reversed) |
 | D. Own SAP stack + Samsung libwsm2 | Our own SAP framing, with Samsung's WSM library (shipped in SAS) bundled for the auth step | No SAS app | Ships proprietary Samsung code; personal use only |
 
 Wi-Fi side: use camera softAP + `WifiNetworkSpecifier` in options B and D.
@@ -161,7 +161,7 @@ Option C status (details in firmware/03_sd_card_hook.md §3):
 ## 4. Experiments needed on hardware
 
 1. BT HCI snoop log of a stock connection (Android developer options). It shows the negotiated SAP version, clMode/authMode and the real CRC usage.
-2. Option C test: reverse the libshell-command IPC, then test the `info.tg` hook with a harmless script. Also try joining "st app wifidirect start" as a legacy client.
+2. Option C test: map the libshell-command IPC, then test the `info.tg` startup file with a harmless script. Also try joining "st app wifidirect start" as a legacy client.
 3. SoftAP mode: confirm the camera IP, the ports, whether the BSSID equals the camera `wifi-mac`, and the live-view codec (capture one TTTS stream).
 4. A few original C200 JPEG and MP4 files straight from the SD card, to decode the calibration and validate the stitcher.
-5. Option C test: a harmless SD-card script, e.g. one that writes a file, to confirm root execution.
+5. Option C test: a harmless SD-card script, e.g. one that writes a file, to confirm the script runs.

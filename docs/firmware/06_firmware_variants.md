@@ -40,6 +40,14 @@ Call `Start(inst, func, useWifiDirect=0)` with func 1 = RVF (live view), 2 = mob
 
 ## R210: rewritten network layer (`AppNet::` namespace)
 
+**Confirmed by extraction (part06):** R210 `/etc/info.ini` = `Model=SMR210; Build=R210GLU0ARB2;
+Date=2018.02.01; Time=17:41:25`. `/bin/sh` = bash. Toolset parity with C200 for route C:
+`st`, `dfmsd`, `mobileap-agent`, `hostapd`, `udhcpd`, `dnsmasq`, `aplay`, `wpa_supplicant`,
+`toybox` all present; **no** `nc`/`busybox`/`python`. So the SD→dfmsd hook, `st` capture, the
+dhd-private-command softAP, and the no-shell-server constraint all port to R210; only the
+deferred live-view (BT/DLNA `AppNet::` internals) differs.
+
+
 The C200 names are absent. Equivalent exported entry points:
 
 | Purpose | Symbol (demangled) | vaddr |
