@@ -7,6 +7,7 @@ import android.net.MacAddress
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.os.PatternMatcher
@@ -33,6 +34,8 @@ class CameraNetwork(context: Context) {
         fun onLost()
         /** The system found no matching network, or the user declined its dialog. */
         fun onUnavailable()
+        /** The link to the camera's Wi-Fi: its frequency and the current link speed (for display). */
+        fun onLink(frequencyMhz: Int, linkMbps: Int) {}
     }
 
     fun request(camera: PairedCamera, listener: Listener) {
@@ -62,6 +65,11 @@ class CameraNetwork(context: Context) {
                 val host = cameraHost(properties)
                 EventLog.log("Wi-Fi: camera network up (${properties.interfaceName}), camera at $host")
                 listener.onAvailable(network, host)
+            }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                val wifi = capabilities.transportInfo as? WifiInfo ?: return
+                listener.onLink(wifi.frequency, wifi.linkSpeed)
             }
 
             override fun onLost(network: Network) {

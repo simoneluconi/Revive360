@@ -54,6 +54,9 @@ fun SettingsScreen() {
     val state by app.controller.state.collectAsStateWithLifecycle()
     val info = (state as? LinkState.Connected)?.info
     var confirmForget by remember { mutableStateOf(false) }
+    var confirmPower by remember { mutableStateOf<Boolean?>(null) }   // true = off, false = reboot
+    val scope = rememberCoroutineScope()
+    val resources = LocalResources.current
 
     ScreenScaffold(title = stringResource(R.string.settings_title)) {
         SectionTitle(stringResource(R.string.settings_camera))
@@ -94,6 +97,14 @@ fun SettingsScreen() {
                     InfoRow(stringResource(R.string.info_server), "${info.serverName} ${info.serverVersion} · v${info.protocol}", mono = true)
                 }
                 Spacer(Modifier.height(12.dp))
+                if (info?.capabilities?.power == true) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton(stringResource(R.string.power_reboot), icon = AppIcons.Refresh) { confirmPower = false }
+                        PillButton(stringResource(R.string.power_off), icon = AppIcons.Close) { confirmPower = true }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PillButton(stringResource(R.string.settings_repair), icon = AppIcons.Key) { nav.navigate(Screen.Pair(camera!!.id)) }
                     PillButton(stringResource(R.string.settings_forget), icon = AppIcons.Trash, style = ButtonStyle.DANGER) {
@@ -160,6 +171,26 @@ fun SettingsScreen() {
         if (BuildConfig.DEBUG) DeveloperCard()
 
         Label(stringResource(R.string.settings_version, BuildConfig.VERSION_NAME), Modifier.padding(start = 6.dp, top = 8.dp), size = 13.sp, color = colors.text2)
+    }
+
+    confirmPower?.let { off ->
+        ConfirmDialog(
+            title = stringResource(if (off) R.string.power_off_title else R.string.power_reboot_title),
+            message = stringResource(if (off) R.string.power_off_message else R.string.power_reboot_message),
+            confirm = stringResource(if (off) R.string.power_off else R.string.power_reboot),
+            cancel = stringResource(R.string.action_cancel),
+            danger = off,
+            onDismiss = { confirmPower = null },
+        ) {
+            scope.launch {
+                try {
+                    app.controller.power(off)
+                    nav.message(resources.getString(if (off) R.string.power_off_done else R.string.power_reboot_done), MessageKind.GOOD)
+                } catch (e: Exception) {
+                    nav.message(Format.error(resources, e), MessageKind.BAD)
+                }
+            }
+        }
     }
 
     if (confirmForget) {

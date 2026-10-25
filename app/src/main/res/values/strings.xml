@@ -68,6 +68,15 @@
     <string name="value_seconds">%1$s s</string>
     <string name="value_minutes">%1$s min</string>
     <string name="value_max">Max</string>
+    <string name="power_reboot">Restart camera</string>
+    <string name="power_off">Switch off camera</string>
+    <string name="power_reboot_title">Restart the camera?</string>
+    <string name="power_reboot_message">The camera restarts and its Wi-Fi comes back in about half a minute; the app reconnects by itself.</string>
+    <string name="power_off_title">Switch off the camera?</string>
+    <string name="power_off_message">To use it again, switch it on with its button.</string>
+    <string name="power_reboot_done">The camera is restarting</string>
+    <string name="power_off_done">The camera is switching off</string>
+    <string name="connection_wifi">Wi-Fi %1$s GHz · channel %2$d · %3$d Mbit/s</string>
     <string name="liveview_title">Live view</string>
     <string name="liveview_connecting">Starting the camera\'s stream…</string>
     <string name="liveview_failed">The live view stopped: %1$s</string>

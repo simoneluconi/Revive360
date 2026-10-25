@@ -66,6 +66,15 @@
     <string name="value_seconds">%1$s s</string>
     <string name="value_minutes">%1$s min</string>
     <string name="value_max">Max</string>
+    <string name="power_reboot">Riavvia la fotocamera</string>
+    <string name="power_off">Spegni la fotocamera</string>
+    <string name="power_reboot_title">Riavviare la fotocamera?</string>
+    <string name="power_reboot_message">La fotocamera si riavvia e il suo Wi-Fi torna in circa mezzo minuto; l\'app si ricollega da sola.</string>
+    <string name="power_off_title">Spegnere la fotocamera?</string>
+    <string name="power_off_message">Per usarla di nuovo, accendila con il suo tasto.</string>
+    <string name="power_reboot_done">La fotocamera si sta riavviando</string>
+    <string name="power_off_done">La fotocamera si sta spegnendo</string>
+    <string name="connection_wifi">Wi-Fi %1$s GHz · canale %2$d · %3$d Mbit/s</string>
     <string name="liveview_title">Anteprima dal vivo</string>
     <string name="liveview_connecting">Avvio del flusso della fotocamera…</string>
     <string name="liveview_failed">L\'anteprima si è interrotta: %1$s</string>

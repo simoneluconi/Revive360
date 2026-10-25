@@ -194,6 +194,12 @@ private fun ConnectionCard(state: LinkState, savedName: String?) {
         if (info != null) {
             Spacer(Modifier.height(10.dp))
             Label("${info.model} · ${info.firmware}", size = 13.sp, color = colors.text2, mono = true, maxLines = 1)
+            val link by nav.app.controller.link.collectAsStateWithLifecycle()
+            link?.let { l ->
+                Spacer(Modifier.height(4.dp))
+                Label(stringResource(R.string.connection_wifi, l.band, l.channel, l.linkMbps), size = 13.sp,
+                    color = colors.text2, maxLines = 1)
+            }
         }
     }
 }

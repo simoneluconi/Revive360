@@ -64,6 +64,11 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
     fun setTime(utcMs: Long, tz: String?, tzOffsetMin: Int): TimeResult =
         ProtocolJson.time(text("POST", "/api/v1/time", ProtocolJson.timeRequest(utcMs, tz, tzOffsetMin)))
 
+    /** Reboots ("reboot") or switches off ("off") the camera (protocol §5.15); the link drops after. */
+    fun power(action: String) {
+        text("POST", "/api/v1/power", org.json.JSONObject().put("action", action).toString())
+    }
+
     fun log(lines: Int = 200): String = text("GET", "/api/v1/log?lines=$lines")
 
     /** The embedded JPEG thumbnail, or null when the file has none (`no_thumbnail`). */

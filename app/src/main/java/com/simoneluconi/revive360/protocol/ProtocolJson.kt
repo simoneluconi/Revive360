@@ -52,6 +52,7 @@ object ProtocolJson {
             leds = objects(json.optJSONArray("leds")).mapNotNull(::led),
             debugLog = json.optBoolean("debug_log"),
             time = json.optBoolean("time"),
+            power = json.optBoolean("power"),
             settings = objects(json.optJSONArray("settings")).mapNotNull(::settingDef),
         )
     }

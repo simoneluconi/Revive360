@@ -80,6 +80,8 @@ data class Capabilities(
     val debugLog: Boolean = false,
     /** The camera clock can be set from the phone (protocol §5.10). */
     val time: Boolean = false,
+    /** §5.15: the camera can be rebooted or switched off from the app */
+    val power: Boolean = false,
     /** Camera settings of protocol §5.12, in display order. */
     val settings: List<SettingDef> = emptyList(),
 ) {

@@ -44,6 +44,25 @@ import java.security.MessageDigest
 import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
+/** The phone's Wi-Fi link to the camera. */
+data class WifiLink(val frequencyMhz: Int, val linkMbps: Int) {
+    /** 2.4, 5 or 6 (GHz), from the frequency */
+    val band: String get() = when {
+        frequencyMhz < 3000 -> "2.4"
+        frequencyMhz < 5925 -> "5"
+        else -> "6"
+    }
+
+    /** The channel number of the frequency, 0 when unknown */
+    val channel: Int get() = when {
+        frequencyMhz == 2484 -> 14
+        frequencyMhz in 2412..2472 -> (frequencyMhz - 2407) / 5
+        frequencyMhz in 5000..5895 -> (frequencyMhz - 5000) / 5
+        frequencyMhz >= 5955 -> (frequencyMhz - 5950) / 5
+        else -> 0
+    }
+}
+
 /** Where the link to the camera stands. */
 sealed interface LinkState {
     data object NotPaired : LinkState
@@ -110,6 +129,10 @@ class CameraController(
     private var settingsWrites = 0
     private var settingsWriting = false
 
+    private val _link = MutableStateFlow<WifiLink?>(null)
+    /** The phone's link to the camera's Wi-Fi, for display; null when not on it. */
+    val link: StateFlow<WifiLink?> = _link.asStateFlow()
+
     private val _recordBusy = MutableStateFlow(false)
     /** A record start or stop is running (stopping waits for the finished video). */
     val recordBusy: StateFlow<Boolean> = _recordBusy.asStateFlow()
@@ -175,6 +198,10 @@ class CameraController(
             return
         }
         network.request(camera!!, object : CameraNetwork.Listener {
+            override fun onLink(frequencyMhz: Int, linkMbps: Int) {
+                _link.value = WifiLink(frequencyMhz, linkMbps)
+            }
+
             override fun onAvailable(network: Network, host: String) {
                 scope.launch {
                     rejoinAttempts = 0
@@ -219,6 +246,7 @@ class CameraController(
 
     private fun disconnect(next: LinkState) {
         rejoinJob?.cancel()
+        _link.value = null
         network.release()
         stopSession()
         _state.value = if (store.camera.value == null && settings.devHost.value == null) LinkState.NotPaired else next
@@ -399,6 +427,13 @@ class CameraController(
             EventLog.log("Settings: read failed (${e.message})")
             throw e
         }
+    }
+
+    /** Reboots or switches off the camera (protocol §5.15). A reboot comes back by itself: the app rejoins. */
+    suspend fun power(off: Boolean) {
+        val client = requireClient()
+        EventLog.log("Camera: ${if (off) "switching off" else "rebooting"}")
+        withContext(Dispatchers.IO) { client.power(if (off) "off" else "reboot") }
     }
 
     /** Opens the live view (protocol §5.14); the caller closes it. Blocking: call off the main thread. */
