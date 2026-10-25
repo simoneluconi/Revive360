@@ -50,8 +50,9 @@ app shows `C200GLU0AQK1`).
 Samsung's software, so this project **cannot distribute it, nor any firmware built from it**: you
 need your own copy, and you build the modified image yourself (step 3). Put it in
 `firmware/stock/` in your clone of this repository (git ignores it); the expected file names and
-checksums are in [firmware/README.md](../firmware/README.md). Where to obtain the stock file:
-**TODO: verify**.
+checksums are in [firmware/README.md](../firmware/README.md). The stock images are shared by the
+community on XDA, in the [Gear 360 Manager port thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93) (this project does not host them);
+`make_firmware.sh` checks the file's SHA-256 before using it.
 
 **On the camera side:**
 
