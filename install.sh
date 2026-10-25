@@ -183,7 +183,8 @@ cmd_activate() {
     sync
     step "activation script and its trigger files written"
     say "On the camera (about a minute):"
-    step "1. Card in, power on normally. Do not press any other button."
+    step "1. Card in, power on normally. A factory screen with codes and the battery level"
+    step "   appears (e.g. QK1 38%): that is expected. Do NOT press any button while it is shown."
     step "2. 1 beep = started, 2 beeps = done. 3 beeps = error: power off and run ./install.sh status"
     step "3. After the 2 beeps: power off, then on again. This first start takes about 30 s with"
     step "   nothing on the screen: wait. From now on every start takes that long."

@@ -66,7 +66,9 @@ Camera off, card back in the computer:
 ./install.sh activate
 ```
 
-Then put the card in the camera and switch it on normally: **1 beep** (started), then **2 beeps**
+Then put the card in the camera and switch it on normally. The screen shows a **factory screen**
+with a few codes and the battery level (for example `QK1  38%`): that is expected for this step.
+**Do not press any button while it is shown.** Wait for **1 beep** (started), then **2 beeps**
 (done). Switch it off and on again, and wait the 30 seconds.
 
 ## 4. Get it ready for everyday use
@@ -106,8 +108,9 @@ It says what the card is set up for and shows the camera's latest log lines.
 - **No "FW update" screen:** the USB cable is plugged in, or the battery is not charged enough.
 - **Nothing happens after switching on:** wait a full minute (the 30 seconds start). Still
   nothing: hold power, take the card out, switch on without it; the camera starts as Samsung's.
-- **A "self test" screen:** do not press any button on it. Switch off, take the card out, and ask
-  in the project's issues.
+- **A factory screen with codes and the battery level:** expected during step 3 only, while the
+  activation runs; never press buttons on it. If it shows up at any other time, switch off, take
+  the card out and run `./install.sh status`: the card still has the activation files on it.
 
 The details behind every step (what the scripts do, the firmware build, the camera's start-up)
 are in the [developer notes](DEVELOPMENT.md) and [camera/fw/README.md](../camera/fw/README.md).
