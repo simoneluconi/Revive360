@@ -279,8 +279,11 @@ class CameraController(
             )
             store.update { it.copy(mac = info.mac, name = info.name, model = info.model, firmware = info.firmware) }
             _state.value = LinkState.Connected(info)
-            if (info.capabilities.time) launch { syncTime(client) }
-            if (info.capabilities.listFiles) launch { refreshFiles() }
+            launch {
+                // The clock first: file times are only right once the camera knows the phone's zone
+                if (info.capabilities.time) syncTime(client)
+                if (info.capabilities.listFiles) refreshFiles()
+            }
             if (info.capabilities.settings.isNotEmpty()) launch { runCatching { refreshSettings() } }
             poll(client)
         }
@@ -323,7 +326,15 @@ class CameraController(
         while (coroutineContext.isActive) {
             try {
                 val status = withContext(Dispatchers.IO) { client.status() }
-                if (lastUptime >= 0 && status.uptimeS < lastUptime) EventLog.log("The camera's controller restarted")
+                if (lastUptime >= 0 && status.uptimeS < lastUptime) {
+                    EventLog.log("The camera's controller restarted")
+                    // A new controller knows nothing of the phone's zone: file times need it again
+                    val info = (_state.value as? LinkState.Connected)?.info
+                    if (info?.capabilities?.time == true) {
+                        syncTime(client)
+                        if (info.capabilities.listFiles) runCatching { refreshFiles() }
+                    }
+                }
                 lastUptime = status.uptimeS
                 _status.value = status
                 failures = 0

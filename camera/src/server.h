@@ -29,9 +29,15 @@ typedef struct {
     int64_t rec_started_ms;         /* now_ms_mono() at its start */
     volatile int64_t last_request_ms;
     volatile int net_error;         /* launcher reported a network failure */
+    /* clock_local: how far the system clock runs from UTC (seconds) since the
+     * phone last set it; 0 until then */
+    volatile int64_t clock_shift_s;
 } server_t;
 
 extern server_t g_srv;
+
+/* A file time from the system clock, as UTC (what the protocol reports) */
+static inline int64_t clock_to_utc(int64_t t) { return t - g_srv.clock_shift_s; }
 
 /* ------------------------------------------------------------ http.c */
 

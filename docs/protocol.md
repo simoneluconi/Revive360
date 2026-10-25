@@ -388,10 +388,13 @@ Response `200`:
 battery-backed `rtc`, `timezone`). Missing entries are not errors: the camera did what it can.
 `400 bad_request` for a missing or implausible time (before 2020) or offset.
 
-Cameras without a time zone database (the C200: its OSD and EXIF show the RTC plus an offset of its
-own, left at 0) keep the **local wall-clock time** in the system clock and RTC: the server sets them
-to `utc_ms + tz_offset_min` and reports `timezone` in `applied`. EXIF dates are then local, as on
-any camera. The app re-sends the time on every connection, so a DST change or a trip is picked up.
+Cameras without a settable time zone (the C200: its OSD and EXIF show the system clock through a
+fixed zone of its own, +9 h on AQK1) get a system clock and RTC shifted so that they show the
+phone's **local wall-clock time**: the server sets them to `utc_ms + tz_offset_min - <camera zone>`
+and reports `timezone` in `applied`. EXIF dates are then local, as on any camera. File times stay
+UTC in every answer (§5.4, §5.6): the server takes the shift back out, so the app sends the time
+before it lists the files. The app re-sends the time on every connection, so a DST change or a trip
+is picked up (files shot before it are reported with the new offset).
 
 ### 5.11 Debug endpoints (development only)
 

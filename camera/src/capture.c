@@ -234,7 +234,7 @@ static void files_json(sbuf_t *b, track_t *t)
         fentry_t e;
         e.path = t->f[i].rel;
         e.size = t->f[i].size;
-        e.mtime = t->f[i].mtime;
+        e.mtime = clock_to_utc(t->f[i].mtime);
         if (i)
             sbuf_puts(b, ",");
         fentry_json(b, &e);

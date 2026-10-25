@@ -118,7 +118,7 @@ static void flist_add(flist_t *fl, const char *path, const struct stat *st)
     if (!fl->v[fl->n].path)
         return;
     fl->v[fl->n].size = (int64_t)st->st_size;
-    fl->v[fl->n].mtime = (int64_t)st->st_mtime;
+    fl->v[fl->n].mtime = clock_to_utc((int64_t)st->st_mtime);
     fl->n++;
 }
 
@@ -290,7 +290,7 @@ void api_files_get(req_t *r, const char *rel, int head_only)
         return;
     }
 
-    http_format_date((int64_t)st.st_mtime, date, sizeof date);
+    http_format_date(clock_to_utc((int64_t)st.st_mtime), date, sizeof date);
     rr = parse_range(r->range, (int64_t)st.st_size, &a, &b);
     if (rr < 0) {
         snprintf(extra, sizeof extra, "Content-Range: bytes */%lld\r\n", (long long)st.st_size);

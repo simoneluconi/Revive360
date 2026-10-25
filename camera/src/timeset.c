@@ -7,8 +7,10 @@
  * adapter with clock_local the camera shows local time through its own fixed
  * zone (C200 AQK1: +9 h, seen in EXIF and in libc localtime), so the clock is
  * set to utc + tz_offset_min - <camera zone offset>: the camera then shows the
- * phone's local time. The IANA id is only logged. The sim adapter never
- * touches the host clock.
+ * phone's local time. Files get their times from that clock too, so the
+ * shift is kept (g_srv.clock_shift_s) and taken back out of every file time
+ * reported. The IANA id is only logged. The sim adapter never touches the
+ * host clock.
  */
 #include "server.h"
 
@@ -108,6 +110,8 @@ void api_time(req_t *r)
             applied[n++] = "rtc";
         if (shift_ms && n)
             applied[n++] = "timezone";
+        /* File times come from this clock: listings take the shift back out */
+        g_srv.clock_shift_s = n ? shift_ms / 1000 : g_srv.clock_shift_s;
     }
 
     gettimeofday(&tv, NULL);
