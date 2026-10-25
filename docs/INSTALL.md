@@ -17,7 +17,7 @@ you exactly what to do on the camera.
 - a **Windows or Linux computer** with [Docker Desktop](https://www.docker.com/products/docker-desktop/)
   running and [Git](https://git-scm.com/downloads) installed (on Windows, the commands below go
   in **Git Bash**);
-- an **Android phone** (Android 10 or later);
+- an **Android phone** with Android 10 or later, of any brand (it does not have to be a Samsung);
 - **Samsung's original firmware file** `C200GLU0AQK1_171121_1257_REV00_user.bin`: download it from
   the [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93)
   and put it in the `firmware/stock` folder of this project. We cannot share it ourselves: it is

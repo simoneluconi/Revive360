@@ -1,7 +1,7 @@
 # Revive360
 
-**Use your Samsung Gear 360 again**, with any recent Android phone, now that Samsung's apps no
-longer work.
+**Use your Samsung Gear 360 again**, with any Android phone (Android 10 or later, any brand, not
+only Samsung), now that Samsung's apps no longer work.
 
 Revive360 is a free app for your phone plus a small add-on for the camera. The phone talks
 straight to the camera over the camera's own Wi-Fi: no Samsung app, no account, no internet.
