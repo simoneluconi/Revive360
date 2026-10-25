@@ -8,7 +8,8 @@ camera-neutral; each camera model gets its own adapter in the controller.
 
 > **Status: experimental.** It works end-to-end on one camera model (see
 > [Supported cameras](#supported-cameras)). Installing it means flashing a modified firmware.
-> Read the [safety notes](#safety-read-first) before you start.
+> Read the [safety notes](#safety-read-first) and the [install guide](docs/INSTALL.md) before you
+> start.
 
 ## Features
 
@@ -94,10 +95,13 @@ See [docs/screenshots/README.md](docs/screenshots/README.md) for the list of scr
 
 ## Install
 
+> **Step-by-step guide: [docs/INSTALL.md](docs/INSTALL.md).** Follow it to install; this section
+> is only a summary.
+
 Installing has three parts: build and flash the modified firmware (once per camera), prepare the
-SD card, and install the app. The full, authoritative procedure is in
+SD card, and install the app. The developer reference for each step is
 [camera/fw/README.md](camera/fw/README.md) (firmware) and [camera/README.md](camera/README.md)
-(controller and SD card); this section is a summary. Read those before flashing.
+(controller and SD card).
 
 ### Safety, read first
 
@@ -139,7 +143,9 @@ sh camera/build.sh shim      # out/libg360r_shim.so   (goes into the firmware)
 sh camera/build.sh plugin    # out/libg360r_plugin.so (loaded from the SD card)
 ```
 
-Outputs go to `camera/out/`. Details: [camera/README.md](camera/README.md#build).
+Outputs go to `camera/out/`. The shim and the plugin link against the camera's own glibc, taken
+from your stock firmware into `camera/.toolchain/aqk1/sysroot` (see `camera/Makefile`). Details:
+[camera/README.md](camera/README.md#build), [docs/INSTALL.md](docs/INSTALL.md#2-build-the-controller-the-shim-and-the-plugin).
 
 ### 3. Build the modified firmware
 
@@ -172,11 +178,13 @@ boot with our files. Exact steps: [camera/fw/README.md, section 3](camera/fw/REA
 powershell -ExecutionPolicy Bypass -File camera\tools\prepare_sd.ps1 -Drive E: -Normal
 ```
 
-(`sh camera/tools/prepare_sd.sh <card mount dir>` from a shell.) It copies the controller to
-`<card>/g360r/` and creates `g360r/g360r.conf` with a random Wi-Fi passphrase, which it prints:
-note it for the app. The controller runs only when this file is on the card; to switch it off
-remove the file or create `g360r.off` at the card root. A card for normal use must **not** contain
-`info.tg`. A newer `g360rd`, `launcher.sh` or `netup.sh` on the card wins over the copy in the
+It copies the controller to `<card>/g360r/` and creates `g360r/g360r.conf` with a random Wi-Fi
+passphrase, which it prints: note it for the app. Copy `camera/out/libg360r_plugin.so` to
+`<card>/g360r/` as well. The controller runs only when this file is on
+the card; to switch it off remove the file or create `g360r.off` at the card root. A card for
+normal use must **not** contain `info.tg` (`-Normal` takes care of it; the shell version
+`camera/tools/prepare_sd.sh` has no such option yet, so delete `info.tg` and `cmd.tg` from the card
+root after running it). A newer `g360rd`, `launcher.sh` or `netup.sh` on the card wins over the copy in the
 firmware, so controller updates need no reflash; [camera/tools/wifi_update.sh](camera/tools/wifi_update.sh)
 even updates `g360rd` over Wi-Fi. See [camera/fw/README.md, section 4](camera/fw/README.md#4-run-the-controller).
 
@@ -226,6 +234,7 @@ camera/
   tools/            SD preparation, firmware build, Wi-Fi update, smoke tests
   docker/           build toolchain images
 docs/
+  INSTALL.md        step-by-step install guide (firmware, SD card, app)
   protocol.md       phone <-> camera protocol (v1)
   00_overview.md    analysis overview and design decisions
   firmware/         camera-side reverse-engineering notes
