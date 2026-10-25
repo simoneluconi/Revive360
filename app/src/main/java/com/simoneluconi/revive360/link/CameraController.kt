@@ -291,7 +291,9 @@ class CameraController(
                     stopSession()
                     if (_state.value is LinkState.Idle) return@launch
                     _state.value = LinkState.Joining
-                    rejoin(camera)
+                    // In the background nothing rejoins: idle, so coming back starts over
+                    // (Bluetooth included) instead of waiting on a search that never runs
+                    if (!rejoin(camera)) disconnect(LinkState.Idle)
                 }
             }
 
