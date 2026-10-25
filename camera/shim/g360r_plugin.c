@@ -246,6 +246,21 @@ static int mpeg_stop(char *resp, size_t len)
     return 0;
 }
 
+/* The live stream's flags in CUINETFuncDLNA, read only (dlna_mpeg_stop tests
+ * them: +0x5f8 skips the stop, +0x9f8 is m_rvf_mpeg_started, +0x5f1 after) */
+static int dlna_flags(char *resp, size_t len)
+{
+    void *(*inst)(void) = (void *(*)(void))app_fn("_ZN14CUINETFuncDLNA4InstEv");
+    unsigned char *self;
+
+    if (!inst || !(self = inst())) {
+        snprintf(resp, len, "error no CUINETFuncDLNA");
+        return -1;
+    }
+    snprintf(resp, len, "ok dlnaflags 5f1=%d 5f8=%d 9f8=%d", self[0x5f1], self[0x5f8], self[0x9f8]);
+    return 0;
+}
+
 /* ------------------------------------------------ chained plugin */
 
 /* The shim (in the firmware) loads one plugin for good. This one can load
@@ -342,6 +357,8 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         return dlna(0, 1, resp, len);
     if (n >= 1 && strcmp(verb, "mpegstop") == 0)
         return mpeg_stop(resp, len);
+    if (n >= 1 && strcmp(verb, "dlnaflags") == 0)
+        return dlna_flags(resp, len);
     /* The auto power off timer, as the stock remote holds it while connected */
     if (n >= 1 && strcmp(verb, "powerstop") == 0)
         return call_static("_ZN10CUINETUtil14StopPowerTimerEv", "powerstop", resp, len);

@@ -247,7 +247,9 @@ static int read_request(req_t *r)
         if (r->content_length > BODY_MAX) {
             /* The debug upload reads its own body; it keeps what came along */
             if (strcmp(r->method, "PUT") == 0 && strcmp(r->path, UPLOAD_PATH) == 0 &&
-                r->content_length <= UPLOAD_MAX && have <= BODY_MAX) {
+                r->content_length <= UPLOAD_MAX) {   /* have <= HDR_MAX: it came with the headers */
+                if (have > (size_t)r->content_length)
+                    have = (size_t)r->content_length;
                 memcpy(r->body, buf + hdr_len, have);
                 r->body_len = have;
                 r->body_streamed = 1;

@@ -31,8 +31,10 @@ volatile int g_liveview;
 
 /* The camera starts its camcorder for the stream a few seconds after the
  * request, and longer while it lets an old session go */
-#define UPSTREAM_TIMEOUT_S 25
+#define UPSTREAM_TIMEOUT_S 30
 #define GRACE_MS           15000
+#define SETTLE_MS          3000   /* between the end of a session and the next */
+#define DRAIN_MS           4000   /* reading on after the stop: until the stream runs dry */
 #define HEADER_MAX         4096
 #define CHUNK_MAX          (8 * 1024 * 1024)
 
@@ -41,8 +43,9 @@ static pthread_cond_t g_cv = PTHREAD_COND_INITIALIZER;
 /* The relay: running, and the client it serves (-1 none, parked) */
 static int g_running;
 static int g_client = -1;
-static int g_client_done;   /* the relay let g_client go */
 static int g_stop;          /* end the session now (a capture wants the camera) */
+static char g_quality[16];  /* the session's stream quality */
+static int64_t g_last_stop_ms;
 
 /* Connects to host:port and sends the GET; the socket, or -1 + err */
 static int upstream_open(const char *host, int port, const char *path, char *err, size_t errlen)
@@ -167,7 +170,6 @@ static void relay(int up, const char *hdr, int hdr_len)
                 if (http_send_all(client, LIVE_HEADER, sizeof LIVE_HEADER - 1) < 0 ||
                     http_send_all(client, hdr, (size_t)hdr_len) < 0) {
                     g_client = client = -1;
-                    g_client_done = 1;
                     pthread_cond_broadcast(&g_cv);
                 } else {
                     LOGI("liveview: serving a client");
@@ -208,7 +210,6 @@ static void relay(int up, const char *hdr, int hdr_len)
             LOGI("liveview: the client left after %lld bytes; the stream stays %d s", sent, GRACE_MS / 1000);
             pthread_mutex_lock(&g_mu);
             g_client = client = -1;
-            g_client_done = 1;
             parked_at = now_ms_mono();
             pthread_cond_broadcast(&g_cv);
             pthread_mutex_unlock(&g_mu);
@@ -220,20 +221,67 @@ static void relay(int up, const char *hdr, int hdr_len)
     free(data);
     pthread_mutex_lock(&g_mu);
     g_running = 0;
-    if (g_client >= 0) {
-        g_client = -1;
-        g_client_done = 1;
-        pthread_cond_broadcast(&g_cv);
-    }
+    g_client = -1;
+    pthread_cond_broadcast(&g_cv);
     pthread_mutex_unlock(&g_mu);
+}
+
+/* Ending a session: the camera's camcorder stops (on di-camera-app's main
+ * loop) while its stream is still read. The other way round its stream writer
+ * blocks on the gone reader, and the stop with it, the main loop included,
+ * until the writer's own timeout (about 30 s): the camera app froze. So the
+ * stop runs on its own thread, this one reads on and drops the data, and the
+ * connection closes once the stop is done and the stream ran dry. */
+static volatile int g_stop_done;
+
+static void *stop_thread(void *arg)
+{
+    adapter_t *a = arg;
+    a->liveview_close(a);
+    g_stop_done = 1;
+    return NULL;
+}
+
+static void stop_draining(adapter_t *a, int up)
+{
+    struct timeval tv = { 0, 500000 };
+    char buf[16384];
+    pthread_t th;
+    int64_t done_at = 0, start = now_ms_mono();
+
+    g_stop_done = 0;
+    setsockopt(up, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    if (pthread_create(&th, NULL, stop_thread, a) != 0) {
+        a->liveview_close(a);
+        close(up);
+        return;
+    }
+    for (;;) {
+        ssize_t n = recv(up, buf, sizeof buf, 0);
+        if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR))
+            break;   /* the camera closed its end */
+        if (g_stop_done && !done_at)
+            done_at = now_ms_mono();
+        if (done_at && (n < 0 || now_ms_mono() - done_at > DRAIN_MS))
+            break;   /* stopped, and nothing more comes */
+        if (now_ms_mono() - start > 60000)
+            break;   /* never wait for ever */
+    }
+    pthread_join(th, NULL);
+    close(up);
+    LOGI("liveview: stopped in %lld ms", (long long)(now_ms_mono() - start));
 }
 
 void api_liveview(req_t *r)
 {
     adapter_t *a = &g_srv.ad;
-    char host[64], path[128], err[200];
+    char host[64], path[128], err[200], quality[16] = "high";
     char *hdr;
-    int port = 0, up = -1, hdr_len;
+    int port = 0, up = -1, hdr_len, stopped = 0;
+    const char *q = strstr(r->query, "quality=");
+
+    if (q)
+        snprintf(quality, sizeof quality, "%.*s", (int)strcspn(q + 8, "&"), q + 8);
 
     if (!a->liveview_open) {
         http_send_error(r, 501, "unsupported", "this camera has no live view");
@@ -243,17 +291,27 @@ void api_liveview(req_t *r)
         http_send_error(r, 409, "busy", "a capture or a recording is in progress");
         return;
     }
+    if (strcmp(quality, "high") != 0 && strcmp(quality, "middle") != 0 && strcmp(quality, "low") != 0) {
+        http_send_error(r, 400, "bad_request", "quality must be high, middle or low");
+        return;
+    }
     pthread_mutex_lock(&g_mu);
+    /* A session kept for another quality makes room for this one */
+    if (g_running && g_client < 0 && strcmp(g_quality, quality) != 0) {
+        pthread_mutex_unlock(&g_mu);
+        liveview_release();
+        pthread_mutex_lock(&g_mu);
+    }
     if (g_running) {
-        /* A session is up: take it over if it has no client, then wait for it to let go */
-        if (g_client >= 0) {
-            pthread_mutex_unlock(&g_mu);
-            http_send_error(r, 409, "busy", "a live view is already being served");
-            return;
-        }
+        /* The newest client wins: it takes the session over from one that left,
+         * one still waiting for the stream to start, or one watching (the app
+         * asks again after a rotation or a retry); the one replaced stops
+         * waiting. This thread then waits until the relay lets it go. */
+        if (g_client >= 0)
+            LOGI("liveview: a new client takes the stream over");
         g_client = r->fd;
-        g_client_done = 0;
-        while (!g_client_done)
+        pthread_cond_broadcast(&g_cv);
+        while (g_client == r->fd && g_running)
             pthread_cond_wait(&g_cv, &g_mu);
         pthread_mutex_unlock(&g_mu);
         return;
@@ -261,19 +319,23 @@ void api_liveview(req_t *r)
     g_running = 1;
     g_liveview = 1;
     g_stop = 0;
+    snprintf(g_quality, sizeof g_quality, "%s", quality);
     g_client = r->fd;
-    g_client_done = 0;
     pthread_mutex_unlock(&g_mu);
+    /* The camera's stream server is still letting the last session go for a while */
+    while (now_ms_mono() - g_last_stop_ms < SETTLE_MS)
+        sleep_ms(100);
 
     err[0] = 0;
     hdr = malloc(HEADER_MAX);
-    if (!hdr || a->liveview_open(a, host, sizeof host, &port, path, sizeof path, err, sizeof err) < 0) {
+    if (!hdr || a->liveview_open(a, quality, host, sizeof host, &port, path, sizeof path, err, sizeof err) < 0) {
         http_send_error(r, 500, "internal", "live view: %s", hdr ? err : "out of memory");
         free(hdr);
         pthread_mutex_lock(&g_mu);
         g_running = 0;
         g_liveview = 0;
         g_client = -1;
+        pthread_cond_broadcast(&g_cv);
         pthread_mutex_unlock(&g_mu);
         return;
     }
@@ -284,16 +346,22 @@ void api_liveview(req_t *r)
         pthread_mutex_lock(&g_mu);
         g_running = 0;
         g_client = -1;
+        pthread_cond_broadcast(&g_cv);
         pthread_mutex_unlock(&g_mu);
     } else {
         LOGI("liveview: %s:%d%s to %s", host, port, path, r->peer);
         relay(up, hdr, hdr_len);
+        stop_draining(a, up);
+        up = -1;
+        stopped = 1;
         LOGI("liveview: stream closed");
     }
     if (up >= 0)
         close(up);
     free(hdr);
-    a->liveview_close(a);
+    if (!stopped)
+        a->liveview_close(a);
+    g_last_stop_ms = now_ms_mono();
     g_liveview = 0;
 }
 

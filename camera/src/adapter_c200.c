@@ -423,10 +423,9 @@ static int c200_record(adapter_t *a, int start, char *err, size_t errlen)
  * the live picture on port 7679. A session left running would feed the next
  * client from mid-stream, so it is stopped before and after each one. */
 #define LIVEVIEW_PORT 7679
-#define LIVEVIEW_PATH "/livestream_high.avi"
 
-static int c200_liveview_open(adapter_t *a, char *host, size_t hostlen, int *port, char *path, size_t pathlen,
-                              char *err, size_t errlen)
+static int c200_liveview_open(adapter_t *a, const char *quality, char *host, size_t hostlen, int *port,
+                              char *path, size_t pathlen, char *err, size_t errlen)
 {
     char reply[256];
     const char *u;
@@ -441,7 +440,8 @@ static int c200_liveview_open(adapter_t *a, char *host, size_t hostlen, int *por
     snprintf(host, hostlen, "%.*s", (int)strcspn(u, ":/"), u);
     shim_plugin("mpegstop", reply, sizeof reply);
     *port = LIVEVIEW_PORT;
-    snprintf(path, pathlen, "%s", LIVEVIEW_PATH);
+    /* The stock app's streams: /livestream_high.avi, _middle, _low */
+    snprintf(path, pathlen, "/livestream_%s.avi", quality);
     return 0;
 }
 

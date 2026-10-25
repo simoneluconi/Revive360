@@ -45,7 +45,7 @@ typedef struct {
     long   content_length; /* -1 = absent */
     char   range[128];     /* Range header value or "" */
     char   allow[64];      /* set before a 405: value of the Allow header */
-    char   body[BODY_MAX + 1];
+    char   body[HDR_MAX + 1];  /* JSON bodies up to BODY_MAX; an upload's first bytes up to HDR_MAX */
     size_t body_len;
     int    body_streamed;  /* an upload: body[] holds what came with the headers, the rest is on fd */
 } req_t;

@@ -202,7 +202,7 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
     private companion object {
         const val CONNECT_TIMEOUT_MS = 5_000
         const val READ_TIMEOUT_MS = 10_000
-        const val LIVE_READ_TIMEOUT_MS = 15_000
+        const val LIVE_READ_TIMEOUT_MS = 40_000
         /** The camera's capture timeout is 30 s (protocol §5.3). */
         const val CAPTURE_READ_TIMEOUT_MS = 45_000
         const val DOWNLOAD_READ_TIMEOUT_MS = 20_000

@@ -87,10 +87,11 @@ struct adapter {
      * request was made; the files are found by the caller polling DCIM. */
     int (*record)(adapter_t *a, int start, char *err, size_t errlen);
 
-    /* Live view (§5.14), NULL = none: starts the camera's own stream and says
-     * where to read it (an HTTP GET of path on host:port); close ends it. */
-    int (*liveview_open)(adapter_t *a, char *host, size_t hostlen, int *port, char *path, size_t pathlen,
-                         char *err, size_t errlen);
+    /* Live view (§5.14), NULL = none: starts the camera's own stream at quality
+     * ("high", "middle", "low") and says where to read it (an HTTP GET of path
+     * on host:port); close ends it. */
+    int (*liveview_open)(adapter_t *a, const char *quality, char *host, size_t hostlen, int *port,
+                         char *path, size_t pathlen, char *err, size_t errlen);
     void (*liveview_close)(adapter_t *a);
 
     void *priv;                 /* adapter-private state (sim dir ...) */
