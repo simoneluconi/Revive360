@@ -87,12 +87,9 @@ camera_of() {
     local jpg head
     jpg=$(ls -t "$1"/DCIM/*/*.JPG "$1"/DCIM/*/*.jpg 2>/dev/null | head -n 1 || true)
     [ -n "$jpg" ] || return 0
-    head=$(head -c 4096 "$jpg" | tr -c '[:print:]' '
-')
-    printf '%s %s
-' "$(printf '%s
-' "$head" | grep -E -x 'SM-[CR][0-9]+' | head -n 1)"         "$(printf '%s
-' "$head" | grep -E -x '[0-9]\.[0-9]{2}' | head -n 1)"
+    head=$(head -c 4096 "$jpg" | tr -c '[:print:]' '\n')
+    printf '%s %s\n' "$(printf '%s\n' "$head" | grep -E -x 'SM-[CR][0-9]+' | head -n 1)" \
+        "$(printf '%s\n' "$head" | grep -E -x '[0-9]\.[0-9]{2}' | head -n 1)"
 }
 
 # Stops for another camera model, warns for another firmware version or no photo to tell.
