@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
         else -> listOf(Manifest.permission.ACCESS_FINE_LOCATION)
     } + bluetoothPermissions()
 
-    /** Android 12+: finding the camera and asking it for its Wi-Fi over Bluetooth (protocol §6) */
+    /** Android 12+: finding the camera and asking it for its Wi-Fi over Bluetooth (protocol §9) */
     private fun bluetoothPermissions(): List<String> =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)

@@ -1,6 +1,6 @@
 /*
  * g360r-ble: the camera's Bluetooth LE side, which only negotiates the Wi-Fi
- * (docs/protocol.md §6). Everything else goes over the Wi-Fi it switches on.
+ * (docs/protocol.md §9). Everything else goes over the Wi-Fi it switches on.
  *
  * It advertises the G360R service and serves three characteristics through the
  * camera's own BlueZ (Tizen 5.30: GattManager1.RegisterService, the object model

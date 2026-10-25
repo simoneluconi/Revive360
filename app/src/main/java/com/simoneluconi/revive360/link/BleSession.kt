@@ -20,7 +20,7 @@ import java.io.IOException
 import java.util.UUID
 
 /**
- * A Bluetooth LE connection to a camera's G360R service (protocol §6): it only negotiates the
+ * A Bluetooth LE connection to a camera's G360R service (protocol §9): it only negotiates the
  * Wi-Fi. [info] tells the camera's name, its Wi-Fi state and whether pairing is open; [wifi] gives
  * the network's name and passphrase while pairing is open; [setWifi] switches the Wi-Fi on or off.
  * One operation at a time, each with a timeout.

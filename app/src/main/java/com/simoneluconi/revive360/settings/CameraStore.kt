@@ -26,7 +26,7 @@ data class PairedCamera(
     val name: String? = null,
     val model: String? = null,
     val firmware: String? = null,
-    /** The camera's Bluetooth address: the app asks there for its Wi-Fi (protocol §6). */
+    /** The camera's Bluetooth address: the app asks there for its Wi-Fi (protocol §9). */
     val bluetooth: String? = null,
 ) {
     /** What the user sees in lists: the camera's own name, else its network. */

@@ -489,3 +489,32 @@ Not part of the wire contract, documented so both sides agree on what the user s
 ## 8. Reserved for later versions
 
 Not implemented in v1; names reserved so v1 code does not collide: `GET /api/v1/events`.
+
+## 9. Bluetooth LE: finding the camera and switching its Wi-Fi on
+
+The HTTP API above runs over the camera's Wi-Fi, which a camera may keep off to save power
+(`wifi=ble` in `g360r.conf`, the default). Bluetooth LE only negotiates that Wi-Fi: it carries no
+camera control.
+
+The camera advertises, connectable, the service `d9c70001-5a3b-4e21-9f6d-7c8e0a1b2c3d` (its UUID
+in the advertising data, the name `G360R-<last 6 hex digits of the Bluetooth address>` in the
+scan response). Its characteristics:
+
+| UUID | Access | Value |
+|---|---|---|
+| `d9c70004-5a3b-4e21-9f6d-7c8e0a1b2c3d` INFO | read | JSON: `{"v":1,"name":"G360R-1A2B3C","ssid":"G360R-4D5E6F","wifi":"off","pair":false}`. `wifi` is `off`, `starting`, `on` or `failed`; `pair` tells whether pairing is open. |
+| `d9c70005-5a3b-4e21-9f6d-7c8e0a1b2c3d` WIFI | read | While pairing is open: `{"pair":true,"ssid":"...","psk":"..."}`, the Wi-Fi's name and passphrase. Otherwise `{"pair":false}`. |
+| `d9c70002-5a3b-4e21-9f6d-7c8e0a1b2c3d` CMD | write | One byte: `1` switches the Wi-Fi on, `0` off. |
+
+Reads longer than one ATT packet use long reads (the value is served from the requested offset).
+
+- **Pairing** is open for the first 3 minutes after the camera was switched on: someone holding
+  the camera. That is when a phone reads WIFI and keeps the passphrase (with the Bluetooth
+  address, to find the camera again). The camera makes its own passphrase at its first start.
+- **Switching the Wi-Fi on** needs no pairing: joining it needs the passphrase anyway. After CMD
+  `1` the phone reads INFO until `wifi` is `on` (a few seconds) and joins the network (§1).
+- The camera switches the Wi-Fi **off** again after `wifi_idle` seconds (600 by default) with no
+  HTTP request over it; an app in use polls `/api/v1/status` and so keeps it on.
+- A phone paired over the Wi-Fi alone finds its camera among those advertising by INFO's `ssid`.
+- If the camera's Bluetooth side does not start, the Wi-Fi comes on anyway: a camera is never
+  out of reach.

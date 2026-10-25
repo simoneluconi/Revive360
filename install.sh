@@ -6,7 +6,7 @@
 #   ./install.sh build              build everything (once, and after an update)
 #   ./install.sh flash    [card]    card for the firmware update
 #   ./install.sh activate [card]    card for the one-time activation after the update
-#   ./install.sh sd       [card]    card for everyday use (prints the Wi-Fi passphrase)
+#   ./install.sh sd       [card]    card for everyday use
 #   ./install.sh stock    [card]    card to go back to Samsung's firmware
 #   ./install.sh status   [card]    what is on the card now
 #
@@ -21,6 +21,7 @@ IMAGE=firmware/out/smc200.bin
 SYSROOT=camera/.toolchain/aqk1/sysroot
 SD_SRC=camera/out/sd
 PLUGIN=camera/out/libg360r_plugin.so
+BLE=camera/out/g360r-ble
 export MSYS_NO_PATHCONV=1
 
 say() { printf '\n%s\n' "$*"; }
@@ -138,8 +139,9 @@ cmd_build() {
     fi
     say "== camera controller, with its tests"
     sh camera/build.sh smoke
-    say "== plugin"
+    say "== plugin and Bluetooth side"
     sh camera/build.sh plugin
+    sh camera/build.sh ble
     say "== firmware"
     sh camera/tools/make_firmware.sh "$STOCK"
     say "Built. Next: put the SD card in the PC and run ./install.sh flash"
@@ -196,6 +198,7 @@ cmd_sd() {
     card=$(card_dir "${1:-}")
     [ -f "$SD_SRC/g360r/bin/g360rd" ] || die "no $SD_SRC yet: run ./install.sh build first"
     [ -f "$PLUGIN" ] || die "no $PLUGIN yet: run ./install.sh build first"
+    [ -f "$BLE" ] || die "no $BLE yet: run ./install.sh build first"
     say "Preparing $card for everyday use"
     disarm "$card"
     mkdir -p "$card/g360r/bin" "$card/g360r/log"
@@ -203,27 +206,27 @@ cmd_sd() {
     for f in "$SD_SRC"/g360r/*; do [ -f "$f" ] && cp "$f" "$card/g360r/"; done
     cp "$SD_SRC/g360r/bin/g360rd" "$card/g360r/bin/g360rd"
     cp "$PLUGIN" "$card/g360r/libg360r_plugin.so"
-    step "controller and plugin copied to card/g360r/"
-    local conf="$card/g360r/g360r.conf" psk=""
+    cp "$BLE" "$card/g360r/bin/g360r-ble"
+    step "controller, plugin and Bluetooth side copied to card/g360r/"
+    # The settings: kept when there are some; a new card gets the defaults, and the camera
+    # makes its own Wi-Fi passphrase at its first start
+    local conf="$card/g360r/g360r.conf"
     if [ -f "$conf" ]; then
-        psk=$(sed -n 's/^[[:space:]]*psk[[:space:]]*=[[:space:]]*//p' "$conf" | tail -n 1 | tr -d '\r"')
-        [ "$psk" = "CHANGE_ME" ] && psk=""
-    fi
-    if [ ${#psk} -lt 8 ]; then
-        psk=$(od -An -N64 -tu1 /dev/urandom | tr -s ' ' '\n' | awk '$1 != "" && $1 < 250 { printf "%d", $1 % 10 }' | cut -c1-8)
-        sed "s/^psk=.*/psk=$psk/" "$SD_SRC/g360r/g360r.conf.example" > "$conf"
-        step "new Wi-Fi passphrase created"
+        step "settings kept"
     else
-        step "Wi-Fi passphrase kept"
+        cp "$SD_SRC/g360r/g360r.conf.example" "$conf"
+        step "default settings written"
     fi
     for f in "$conf" "$card"/g360r/*.sh; do lf "$f"; done
     sync
-    say "Done. Wi-Fi passphrase: $psk   (the app asks for it once)"
-    say "On the camera:"
-    step "1. Card in, power on. About 30 s of nothing, then the camera starts."
-    step "2. The LEDs go around the camera, then 1 beep: its Wi-Fi is on (3 beeps = error:"
-    step "   power off and run ./install.sh status)."
-    step "3. Open the app on the phone and connect: the camera's network is called G360R-..."
+    say "Done."
+    say "On the camera and the phone:"
+    step "1. Card in, power on. About 30 s of nothing, then the camera starts; the LEDs go"
+    step "   around it and 1 beep says it is ready (3 beeps = error: power off and run"
+    step "   ./install.sh status)."
+    step "2. Within 3 minutes of switching it on, open the app and tap Find the camera: it"
+    step "   finds it over Bluetooth and gets its Wi-Fi by itself. Nothing to type."
+    step "3. Later the app switches the camera's Wi-Fi on over Bluetooth whenever it needs it."
 }
 
 cmd_stock() {
@@ -259,7 +262,7 @@ cmd_status() {
         elif [ -f "$STOCK" ] && [ "$(sha "$card/smc200.bin")" = "$(sha "$STOCK")" ]; then step "-> set up to go back to Samsung's firmware"
         else step "-> smc200.bin is neither our build nor the stock image"; fi
     elif [ -f "$card/g360r/g360r.conf" ]; then
-        step "-> set up for everyday use (passphrase: $(sed -n 's/^psk=//p' "$card/g360r/g360r.conf" | tr -d '\r'))"
+        step "-> set up for everyday use"
     else
         step "-> nothing of ours on it"
     fi

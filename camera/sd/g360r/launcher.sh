@@ -359,7 +359,7 @@ command -v dhcp_check >/dev/null 2>&1 || dhcp_check() { :; }
 
 # ------------------------------------------------------------ Bluetooth
 
-# g360r-ble: advertises the camera and negotiates the Wi-Fi (protocol section 6).
+# g360r-ble: advertises the camera and negotiates the Wi-Fi (protocol section 9).
 # From the card, else the firmware's copy; restarted if it dies.
 BLE_BIN="$RUN/g360r-ble"
 for b in "$SD_DIR/bin/g360r-ble" "$SD_DIR/g360r-ble" /usr/share/g360r/g360r-ble; do

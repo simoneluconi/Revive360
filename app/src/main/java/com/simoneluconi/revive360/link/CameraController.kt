@@ -71,7 +71,7 @@ sealed interface LinkState {
     data object NotPaired : LinkState
     /** Paired, not connected: the app is in the background, or the user hasn't connected yet. */
     data object Idle : LinkState
-    /** Asking the camera over Bluetooth to switch its Wi-Fi on (protocol §6). */
+    /** Asking the camera over Bluetooth to switch its Wi-Fi on (protocol §9). */
     data object Waking : LinkState
     /** Waiting for the camera's Wi-Fi (the system is searching, or showing its dialog). */
     data object Joining : LinkState

@@ -79,12 +79,17 @@ Camera off, card back in the computer:
 ./install.sh sd
 ```
 
-It prints the camera's **Wi-Fi password**: write it down, the app asks for it once. Put the card
-in the camera and switch it on: after the 30 seconds the LEDs go around the camera and **1 beep**
-says its Wi-Fi is on. Open the app on the phone and connect (the camera's network is called
-`G360R-...`).
+Put the card in the camera and switch it on: after the 30 seconds the LEDs go around the camera
+and **1 beep** says it is ready.
 
-That's it. To update our software later, run `./install.sh build` and `./install.sh sd` again.
+Then, **within 3 minutes of switching the camera on**, open the app on the phone and tap
+**Find the camera**: the app finds it over Bluetooth, gets its Wi-Fi by itself (nothing to type)
+and Android asks once to confirm the camera's network (`G360R-...`). The camera only lets a new
+phone pair in those first minutes: if they are over, switch it off and on again.
+
+That's it. From then on the camera's Wi-Fi stays off until the app needs it: the app switches
+it on over Bluetooth by itself, and it goes off again after 10 minutes without use. To update
+our software later, run `./install.sh build` and `./install.sh sd` again.
 
 ## 5. Going back to Samsung's firmware
 

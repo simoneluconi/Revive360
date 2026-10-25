@@ -45,7 +45,7 @@ into the `firmware/stock` folder, then:
 ./install.sh build      # once
 ./install.sh flash      # then on the camera: hold Shutter, press power, confirm the update
 ./install.sh activate   # then switch the camera on: 1 beep, 2 beeps
-./install.sh sd         # prints the Wi-Fi password; then connect with the app
+./install.sh sd         # then switch the camera on and pair it in the app within 3 minutes
 ```
 
 Each step tells you exactly what to do on the camera. The full guide:
@@ -56,8 +56,8 @@ Each step tells you exactly what to do on the camera. The full guide:
 
 ## Status
 
-Early days: it works every day on one camera. Coming before version 1: connecting through
-Bluetooth, so that the camera's Wi-Fi only turns on when the phone asks for it.
+Early days: it works every day on one camera. The phone finds the camera over Bluetooth, and
+the camera's Wi-Fi only comes on when the app needs it.
 
 ## License
 

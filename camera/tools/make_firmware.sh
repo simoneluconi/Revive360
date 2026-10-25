@@ -39,6 +39,7 @@ echo "== stock firmware: $VERSION"
 echo "== controller and shim"
 sh camera/build.sh
 sh camera/build.sh shim
+sh camera/build.sh ble
 
 echo "== overlay"
 sh camera/tools/fw_stage_controller.sh "$STAGE"

@@ -1,11 +1,18 @@
 # Revive360 - controller configuration (on the SD card: /g360r/g360r.conf)
 #
 # Format: KEY=VALUE, one per line, no inline comments. Lines starting with '#'
-# are ignored. The SD preparation script (camera/tools/prepare_sd.ps1 or
-# prepare_sd.sh) creates g360r.conf from this file with a random passphrase.
+# are ignored. ./install.sh sd creates g360r.conf from this file.
 
 # softAP passphrase (WPA2-PSK): 8-63 printable ASCII characters, no commas.
+# CHANGE_ME = the camera makes a random one at its first start; the phone gets it
+# over Bluetooth while pairing (the first 3 minutes after the camera is switched on).
 psk=CHANGE_ME
+
+# ble = the Wi-Fi stays off until a phone asks over Bluetooth, and goes off again
+# after wifi_idle seconds without a request over it; on = always on (as before).
+# With ble the Wi-Fi comes on anyway when the Bluetooth side does not start.
+wifi=ble
+wifi_idle=600
 
 # SSID override. Empty = G360R-<last 3 bytes of the wlan0 MAC> (protocol.md §1).
 ssid=
