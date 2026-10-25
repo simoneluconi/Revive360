@@ -238,7 +238,7 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
     if (strcmp(id, "mode") == 0)
         shim_ui_get(KEY_MODE, &prev_mode);
     if (strcmp(id, "lens") == 0)
-        snprintf(req, sizeof req, "lens %d", v);     /* the app's wrapper re-sizes the pipeline */
+        snprintf(req, sizeof req, "lensswitch %d", v);   /* the settings menu's own lens switch */
     else
         snprintf(req, sizeof req, "menu 0x%x %d", s->key, v);
     if (shim_plugin(req, reply, sizeof reply) < 0) {
@@ -258,6 +258,16 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
                                  : prev_mode != MODE_VALUE_PHOTO ? "recstop" : "photomode";
         if (shim_plugin("allsend", reply, sizeof reply) < 0 ||
             shim_plugin(transition, reply, sizeof reply) < 0) {
+            snprintf(err, errlen, "%s", reply);
+            return -1;
+        }
+    }
+    /* A lens change in a video mode changes the movie size: the recorder takes
+     * it on its next standby */
+    if (strcmp(id, "lens") == 0) {
+        int mode = -1;
+        if (shim_ui_get(KEY_MODE, &mode) == 0 && mode != MODE_VALUE_PHOTO &&
+            shim_plugin("moviestandby", reply, sizeof reply) < 0) {
             snprintf(err, errlen, "%s", reply);
             return -1;
         }

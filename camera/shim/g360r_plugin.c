@@ -14,6 +14,8 @@
  *                       menus do (set, exceptional handling, push, remaining count)
  *   allsend             UI_Send_Message_Changed_All_Attributes(): after a mode change
  *   lens VAL            ui_set_360_lens_mode(val): 0 dual, 1 rear, 2 front
+ *                       (photo live view only, see release_lv_disp_change)
+ *   lensswitch VAL      the settings menu's lens switch, in every mode
  * Keys used by g360rd (AQK1): mode 0x21c, lens 0x21a, photo size 0xcf, movie
  * size 0x223, self-timer 0x225, time-lapse interval 0x224, loop time 0x21b,
  * movie state 0x2bc (2 = recording), elapsed seconds 0x2bd.
@@ -71,6 +73,55 @@ static int mode_change(int engine_mode, char *resp, size_t len)
     live();
     display(100, 1, 0, 0, 0);   /* standby screen redraw */
     snprintf(resp, len, "ok modechange %d -> engine %d, run state 0x%x", engine_mode, get(KEY_ENGINE_MODE), run(0));
+    return 0;
+}
+
+/* Live view display change (cap run state 0x33, LV_DISP_CHANGE_FLAG): set by
+ * ui_set_360_lens_mode and released only by the photo live view's display
+ * state callback, which never comes in a video mode. Held, it refuses every
+ * later lens change and blocks the movie transitions. */
+#define CAP_RUN_LV_DISP_CHANGE 0x33
+
+static int release_lv_disp_change(void)
+{
+    get_fn held = (get_fn)app_fn("_Z20UI_Get_Cap_Run_State17eUI_CAP_RUN_STATE");
+    int_fn release = (int_fn)app_fn("_Z24UI_Release_Cap_Run_State17eUI_CAP_RUN_STATE");
+
+    if (!held || !release || !held(CAP_RUN_LV_DISP_CHANGE))
+        return 0;
+    release(CAP_RUN_LV_DISP_CHANGE);
+    return 1;
+}
+
+/* The lens switch of the camera's own settings menu
+ * (CSLCDDrawModeMenuSetting::set_menu_value_switch_lens): around a live view
+ * stop/start, without the display change flag, so it works in every mode */
+#define KEY_LENS 0x21a
+
+static int lens_switch(int lens, char *resp, size_t len)
+{
+    void_fn lv_stop = (void_fn)app_fn("_Z26UI_Mm_Camera_Liveview_Stopv");
+    void_fn lv_start = (void_fn)app_fn("_Z27UI_Mm_Camera_Liveview_Startv");
+    set_fn set = (set_fn)app_fn("_Z12UI_Set_Value14eUI_VALUE_ITEMi");
+    int_fn exceptional = (int_fn)app_fn("_Z42User_Spec_Exceptional_Value_On_Item_Changei");
+    set_fn send = (set_fn)app_fn("_Z34UI_Send_Message_Changed_Attributes14eUI_VALUE_ITEMi");
+    set_fn remain = (set_fn)app_fn("_Z19UI_Calculate_Remain15eUI_REMAIN_TYPEb");
+    void_fn led = (void_fn)app_fn("_Z24UI_On_LED_Curr_Lens_Modev");
+    int released;
+
+    if (!lv_stop || !lv_start || !set || !exceptional || !send || !remain || !led) {
+        snprintf(resp, len, "error a lens switch function is missing");
+        return -1;
+    }
+    released = release_lv_disp_change();
+    lv_stop();
+    set(KEY_LENS, lens);
+    exceptional(KEY_LENS);
+    send(KEY_LENS, lens);
+    remain(0, 0);
+    led();
+    lv_start();
+    snprintf(resp, len, "ok lensswitch %d%s", lens, released ? " (released a held display change)" : "");
     return 0;
 }
 
@@ -166,10 +217,18 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
     }
     /* The state transitions the camera's own menu runs (a2, docs/firmware/12):
      * a menu value alone does not re-realize the capture/record engine */
+    if (n >= 2 && strcmp(verb, "lensswitch") == 0)
+        return lens_switch((int)item, resp, len);
     if (n >= 1 && strcmp(verb, "photomode") == 0)
         return call_void("_Z29UI_Liveview_State_Constructorv", "photomode", resp, len);
-    if (n >= 1 && strcmp(verb, "moviestandby") == 0)
-        return call_void("_Z23UI_Manage_Movie_Standbyv", "moviestandby", resp, len);
+    if (n >= 1 && strcmp(verb, "moviestandby") == 0) {
+        /* The standby realizes the recorder but leaves the status display on the
+         * photo icon: only the movie stop path redraws it, so redraw here */
+        release_lv_disp_change();
+        if (call_void("_Z23UI_Manage_Movie_Standbyv", "moviestandby", resp, len) < 0)
+            return -1;
+        return call_void("_Z31UI_Draw_Stby_Or_Card_Or_Factoryv", "moviestandby", resp, len);
+    }
     if (n >= 1 && strcmp(verb, "camrealize") == 0) {
         /* Recorder re-realize, for a movie size the standby did not pick up */
         int_fn rvf = (int_fn)app_fn("_Z31UI_Set_Attribute_For_RVF_Streamb");
@@ -198,6 +257,7 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
             snprintf(resp, len, "error no UI_Manage_Movie_Stop");
             return -1;
         }
+        release_lv_disp_change();
         stop(0);
         snprintf(resp, len, "ok recstop");
         return 0;
