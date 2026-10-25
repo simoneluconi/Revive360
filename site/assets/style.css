@@ -108,7 +108,8 @@ h1 .for { display: block; font-size: .46em; color: var(--text-2); font-weight: 7
 .facts { margin: 22px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--text-2); font-size: 15px; }
 .facts li::before { content: "✓ "; color: var(--accent); font-weight: 800; }
 
-.phones { position: relative; display: flex; justify-content: center; gap: 0; min-height: 420px; }
+/* align-items: flex-start, or the flex row stretches the first phone to the second one's offset height */
+.phones { position: relative; display: flex; justify-content: center; align-items: flex-start; gap: 0; min-height: 420px; }
 .phones img {
   width: 46%; border-radius: 26px; box-shadow: 0 20px 50px rgba(11, 99, 206, .22);
   border: 1px solid var(--border);
