@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://simoneluconi.github.io/Revive360/sitemap.xml

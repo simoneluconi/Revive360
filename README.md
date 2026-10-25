@@ -2,6 +2,8 @@
 
 **Your Samsung Gear 360 works again: with any Android phone, free, and with no Samsung account.**
 
+**Website:** [simoneluconi.github.io/Revive360](https://simoneluconi.github.io/Revive360/) · [Privacy policy](https://simoneluconi.github.io/Revive360/privacy/)
+
 Samsung has stopped supporting the Gear 360 camera, and its apps no longer work on today's
 phones, which leaves a good 360° camera unusable. Revive360 brings it back to life: a free
 phone app plus a small add-on for the camera, and the camera does everything it used to.

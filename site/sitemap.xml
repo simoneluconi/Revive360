@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://simoneluconi.github.io/Revive360/</loc>
+    <lastmod>2026-10-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://simoneluconi.github.io/Revive360/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://simoneluconi.github.io/Revive360/it/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://simoneluconi.github.io/Revive360/"/>
+    <image:image><image:loc>https://simoneluconi.github.io/Revive360/assets/screenshots/home.webp</image:loc></image:image>
+    <image:image><image:loc>https://simoneluconi.github.io/Revive360/assets/screenshots/viewer360.webp</image:loc></image:image>
+  </url>
+  <url>
+    <loc>https://simoneluconi.github.io/Revive360/it/</loc>
+    <lastmod>2026-10-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://simoneluconi.github.io/Revive360/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://simoneluconi.github.io/Revive360/it/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://simoneluconi.github.io/Revive360/"/>
+  </url>
+  <url>
+    <loc>https://simoneluconi.github.io/Revive360/privacy/</loc>
+    <lastmod>2026-10-25</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://simoneluconi.github.io/Revive360/privacy/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://simoneluconi.github.io/Revive360/it/privacy/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://simoneluconi.github.io/Revive360/privacy/"/>
+  </url>
+  <url>
+    <loc>https://simoneluconi.github.io/Revive360/it/privacy/</loc>
+    <lastmod>2026-10-25</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://simoneluconi.github.io/Revive360/privacy/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://simoneluconi.github.io/Revive360/it/privacy/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://simoneluconi.github.io/Revive360/privacy/"/>
+  </url>
+</urlset>
