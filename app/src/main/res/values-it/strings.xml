@@ -237,6 +237,11 @@
     <string name="pano_first_view">Vista iniziale</string>
     <string name="pano_first_view_done">La foto 360° si aprirà guardando qui</string>
     <string name="pano_reset">Annulla modifiche</string>
-    <string name="pano_frame">Salva inquadratura</string>
     <string name="pano_format">Formato</string>
+    <string name="pano_kind_360">Foto 360°</string>
+    <string name="pano_kind_flat">Foto normale</string>
+    <string name="pano_hint_flat">Trascina la foto o la cornice, pizzica l\'una o l\'altra per lo zoom.</string>
+    <string name="pano_rotate_value">Ruota %1$+.1f°</string>
+    <string name="pano_save_flat">Salva foto</string>
+    <string name="pano_saving_flat">Salvataggio…</string>
 </resources>

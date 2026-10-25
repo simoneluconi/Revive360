@@ -239,6 +239,11 @@
     <string name="pano_first_view">Set first view</string>
     <string name="pano_first_view_done">The 360 photo will open looking here</string>
     <string name="pano_reset">Undo edits</string>
-    <string name="pano_frame">Save framing</string>
     <string name="pano_format">Format</string>
+    <string name="pano_kind_360">360° photo</string>
+    <string name="pano_kind_flat">Normal photo</string>
+    <string name="pano_hint_flat">Drag the picture or the frame, pinch either to zoom.</string>
+    <string name="pano_rotate_value">Rotate %1$+.1f°</string>
+    <string name="pano_save_flat">Save photo</string>
+    <string name="pano_saving_flat">Saving…</string>
 </resources>

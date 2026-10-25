@@ -15,9 +15,9 @@ enum class Projection {
 }
 
 /**
- * Where a view looks: [yaw] and [pitch] (radians; positive pitch looks down), its vertical field of
- * view [fov] (degrees) and [projection]. [level] is the picture's own correction (column-major
- * world-to-picture rotation, see [PanoramaEdit]).
+ * Where a view looks: [yaw] and [pitch] (radians; positive pitch looks down), turned by [roll]
+ * about its own axis, its vertical field of view [fov] (degrees) and [projection]. [level] is the
+ * picture's own correction (column-major world-to-picture rotation, see [PanoramaEdit]).
  */
 data class ViewState(
     val yaw: Float = 0f,
@@ -25,9 +25,11 @@ data class ViewState(
     val fov: Float = 90f,
     val projection: Projection = Projection.RECTILINEAR,
     val level: FloatArray = Mat3.identity(),
+    val roll: Float = 0f,
 ) {
     /** View to world, column-major. */
-    fun viewMatrix(): FloatArray = Mat3.multiply(Mat3.rotation(yaw, 0f, 0f), Mat3.rotation(0f, pitch, 0f))
+    fun viewMatrix(): FloatArray =
+        Mat3.multiply(Mat3.multiply(Mat3.rotation(yaw, 0f, 0f), Mat3.rotation(0f, pitch, 0f)), Mat3.rotation(0f, 0f, roll))
 
     /** The shader's scale: half the view's height on the projection plane. */
     fun scale(): Float = when (projection) {
@@ -36,9 +38,10 @@ data class ViewState(
     }
 
     override fun equals(other: Any?): Boolean = other is ViewState && yaw == other.yaw && pitch == other.pitch &&
-        fov == other.fov && projection == other.projection && level.contentEquals(other.level)
+        fov == other.fov && projection == other.projection && level.contentEquals(other.level) && roll == other.roll
 
-    override fun hashCode(): Int = ((yaw.hashCode() * 31 + pitch.hashCode()) * 31 + fov.hashCode()) * 31 + projection.hashCode()
+    override fun hashCode(): Int =
+        (((yaw.hashCode() * 31 + pitch.hashCode()) * 31 + fov.hashCode()) * 31 + projection.hashCode()) * 31 + roll.hashCode()
 }
 
 /**
