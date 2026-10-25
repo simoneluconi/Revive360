@@ -42,7 +42,10 @@ g360r.conf
 /firmware/*
 !/firmware/README.md
 
-# Local tooling
+# Local tooling, and the AI assistant's session notes
 /.claude/
+CLAUDE.md
+CLAUDE.local.md
+/docs/BUILD_HANDOFF.md
 /history-purge-paths.txt
 /history-purge.md
