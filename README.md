@@ -36,17 +36,20 @@ Want to help with another camera? See the [developer notes](docs/DEVELOPMENT.md)
 
 ## How to install it
 
-You need the camera, a microSD card, an Android phone and a computer. It takes about half an
-hour. In short:
+You need the camera, a microSD card, an Android phone and a computer with Docker. Download
+Samsung's original firmware for the camera (shared on
+[XDA](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93))
+into the `firmware/stock` folder, then:
 
-1. **Download Samsung's original firmware** for your camera (shared on
-   [XDA](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93)) and put it in the `firmware/stock` folder.
-2. **Build our version** of it on your computer, with one command.
-3. **Copy it to the SD card and install it on the camera**: hold the shutter button and press the
-   power button.
-4. **Install the app** on your phone and connect to the camera.
+```sh
+./install.sh build      # once
+./install.sh flash      # then on the camera: hold Shutter, press power, confirm the update
+./install.sh activate   # then switch the camera on: 1 beep, 2 beeps
+./install.sh sd         # prints the Wi-Fi password; then connect with the app
+```
 
-Every step, with what the camera shows along the way: **[the install guide](docs/INSTALL.md)**.
+Each step tells you exactly what to do on the camera. The full guide:
+**[docs/INSTALL.md](docs/INSTALL.md)**.
 
 > Installing modified firmware is at your own risk. You can always go back to Samsung's original
 > firmware the same way: the guide explains how.
