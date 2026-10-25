@@ -19,7 +19,8 @@
 volatile int g_liveview;
 static pthread_mutex_t g_lv_mu = PTHREAD_MUTEX_INITIALIZER;
 
-#define UPSTREAM_TIMEOUT_S 5
+/* The camera starts its camcorder for the stream after its header: a few seconds */
+#define UPSTREAM_TIMEOUT_S 10
 
 /* Connects to host:port and sends the GET; the socket, or -1 + err */
 static int upstream_open(const char *host, int port, const char *path, char *err, size_t errlen)
@@ -62,6 +63,7 @@ static int upstream_header(int s, char *buf, size_t cap, size_t *got, char *ctyp
     int status = 0;
 
     *got = 0;
+    buf[0] = 0;
     while (*got < cap - 1 && !(end = strstr(buf, "\r\n\r\n"))) {
         ssize_t n = recv(s, buf + *got, cap - 1 - *got, 0);
         if (n < 0 && errno == EINTR)

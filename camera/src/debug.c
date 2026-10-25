@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define DFMSTOOL "/usr/bin/dfmstool"
@@ -164,6 +165,84 @@ void api_debug_vconf(req_t *r)
  * ("chain FILE"), no card swap. FILE is a plain name ([A-Za-z0-9._-], not
  * starting with a dot).
  */
+/* Copies from to to through to.part, mode 0755; 0 or -1 */
+static int copy_exec(const char *from, const char *to)
+{
+    char part[560], buf[16384];
+    FILE *in = fopen(from, "rb"), *out;
+    size_t n;
+    int rc = 0;
+
+    if (!in)
+        return -1;
+    snprintf(part, sizeof part, "%s.part", to);
+    if (!(out = fopen(part, "wb"))) {
+        fclose(in);
+        return -1;
+    }
+    while ((n = fread(buf, 1, sizeof buf, in)) > 0)
+        if (fwrite(buf, 1, n, out) != n)
+            rc = -1;
+    fclose(in);
+    if (fclose(out) != 0 || rc < 0 || chmod(part, 0755) != 0 || rename(part, to) != 0) {
+        unlink(part);
+        return -1;
+    }
+    return 0;
+}
+
+/*
+ * POST /api/v1/debug/restart?replace=FILE: puts the uploaded g360r/FILE in
+ * place of the running controller (the copy in the run directory, which the
+ * launcher restarts, and g360r/bin/g360rd on the card), then exits; the
+ * launcher starts the new one within a few seconds. FILE must be an ARM ELF.
+ * Without replace= it only restarts.
+ */
+void api_debug_restart(req_t *r)
+{
+    const char *name = strncmp(r->query, "replace=", 8) == 0 ? r->query + 8 : "";
+    char from[512], run_bin[320], sd_bin[320], head[20] = "";
+    FILE *f;
+
+    if (*name) {
+        for (const char *c = name; *c; c++)
+            if ((!isalnum((unsigned char)*c) && !strchr("._-", *c)) || (c == name && *c == '.')) {
+                http_send_error(r, 400, "bad_request", "replace= must be a file name in g360r/");
+                return;
+            }
+        snprintf(from, sizeof from, "%s/g360r/%s", g_srv.ad.storage_root, name);
+        if (!(f = fopen(from, "rb")) || fread(head, 1, sizeof head, f) != sizeof head) {
+            if (f)
+                fclose(f);
+            http_send_error(r, 404, "not_found", "no %s to put in place", from);
+            return;
+        }
+        fclose(f);
+        /* ELF, 32-bit, little-endian, e_machine 40 (ARM) */
+        if (memcmp(head, "\177ELF\001\001", 6) != 0 || head[18] != 40) {
+            http_send_error(r, 400, "bad_request", "%s is not an ARM executable", name);
+            return;
+        }
+        snprintf(run_bin, sizeof run_bin, "%s/g360rd", g_srv.ad.run_dir);
+        snprintf(sd_bin, sizeof sd_bin, "%s/g360r/bin/g360rd", g_srv.ad.storage_root);
+        if (copy_exec(from, run_bin) < 0 || copy_exec(from, sd_bin) < 0) {
+            http_send_error(r, 500, "internal", "cannot put %s in place: %s", name, strerror(errno));
+            return;
+        }
+        LOGI("debug: %s put in place of the controller", name);
+    }
+    {
+        sbuf_t b;
+        sbuf_init(&b);
+        sbuf_puts(&b, "{\"restarting\":true}");
+        http_send_json(r, 200, &b);
+        sbuf_free(&b);
+    }
+    LOGI("debug: restarting the controller");
+    /* The log is written line by line: nothing to flush */
+    _exit(0);
+}
+
 void api_debug_upload(req_t *r)
 {
     const char *name = strncmp(r->query, "name=", 5) == 0 ? r->query + 5 : "";
@@ -208,6 +287,7 @@ void api_debug_upload(req_t *r)
         return;
     }
     LOGI("debug: uploaded %s (%ld bytes)", path, r->content_length);
+    chmod(path, 0755);
     {
         sbuf_t b;
         sbuf_init(&b);

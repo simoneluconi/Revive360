@@ -213,6 +213,8 @@ void api_dispatch(req_t *r)
         if (allow(r, "POST")) api_debug_shim(r);
     } else if (strcmp(p, UPLOAD_PATH) == 0) {
         if (allow(r, "PUT")) api_debug_upload(r);
+    } else if (strcmp(p, "/api/v1/debug/restart") == 0) {
+        if (allow(r, "POST")) api_debug_restart(r);
     } else if (strcmp(p, "/api/v1/liveview") == 0) {
         if (allow(r, "GET")) api_liveview(r);
     } else if (strcmp(p, "/api/v1/log") == 0) {
