@@ -36,8 +36,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.revive360.BuildConfig
 import com.simoneluconi.revive360.R
 import com.simoneluconi.revive360.link.LinkState
-import com.simoneluconi.revive360.protocol.LedChannel
-import com.simoneluconi.revive360.protocol.LedState
 import com.simoneluconi.revive360.settings.Accent
 import com.simoneluconi.revive360.settings.ThemeMode
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
@@ -114,17 +112,6 @@ fun SettingsScreen() {
             }
         }
 
-        val leds = info?.capabilities?.leds.orEmpty()
-        if (leds.isNotEmpty()) {
-            SectionTitle(stringResource(R.string.settings_leds))
-            Card {
-                leds.forEachIndexed { i, led ->
-                    if (i > 0) Hairline()
-                    LedRow(led)
-                }
-            }
-        }
-
         SectionTitle(stringResource(R.string.settings_look))
         Card {
             Label(stringResource(R.string.settings_theme), size = 14.sp, color = colors.text2)
@@ -186,42 +173,6 @@ fun SettingsScreen() {
         ) {
             app.controller.forget()
             nav.home()
-        }
-    }
-}
-
-@Composable
-private fun LedRow(led: LedChannel) {
-    val nav = LocalActions.current
-    val resources = LocalResources.current
-    val scope = rememberCoroutineScope()
-    var current by rememberSaveable(led.id) { mutableStateOf<String?>(null) }
-    Column(Modifier.padding(vertical = 10.dp)) {
-        Label(led.label, weight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            led.states.forEach { state ->
-                Chip(
-                    stringResource(
-                        when (state) {
-                            LedState.OFF -> R.string.led_off
-                            LedState.ON -> R.string.led_on
-                            LedState.BLINK -> R.string.led_blink
-                            LedState.AUTO -> R.string.led_auto
-                        }
-                    ),
-                    selected = current == state.wire,
-                ) {
-                    scope.launch {
-                        try {
-                            nav.app.controller.setLed(led.id, state)
-                            current = state.wire
-                        } catch (e: Exception) {
-                            nav.message(Format.error(resources, e), MessageKind.BAD)
-                        }
-                    }
-                }
-            }
         }
     }
 }

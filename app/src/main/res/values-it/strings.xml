@@ -176,11 +176,6 @@
     <string name="settings_forget">Dimentica</string>
     <string name="forget_title">Dimenticare la fotocamera?</string>
     <string name="forget_message">L\'app smette di collegarsi. Per usarla di nuovo, configurala con il suo codice.</string>
-    <string name="settings_leds">LED della fotocamera</string>
-    <string name="led_off">Spento</string>
-    <string name="led_on">Acceso</string>
-    <string name="led_blink">Lampeggio</string>
-    <string name="led_auto">Automatico</string>
     <string name="settings_look">Aspetto</string>
     <string name="settings_theme">Tema</string>
     <string name="theme_system">Sistema</string>
