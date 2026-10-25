@@ -227,10 +227,9 @@ build.
 
 Flash the **stock** `C200GLU0AQK1_171121_1257_REV00_user.bin` exactly as in [step 4](#4-flash-the-camera):
 rename it to `smc200.bin`, put it at the card root with an empty `fwupgrade.txt` (no `info.tg`),
-battery near full, USB unplugged, then the button combination. **TODO: verify** the button
-combination for recovery: [camera/fw/README.md](../camera/fw/README.md#recovery) says "Shutter +
-Menu", while its flash section says Shutter + power, with Menu not needed. Also **TODO: verify**
-that the stock file has to be renamed to `smc200.bin` (the developer reference does not say).
+battery near full, USB unplugged, then the same buttons: with the camera off, hold **Shutter**
+(the OK button) and press **power**. **TODO: verify** that the stock file has to be renamed to
+`smc200.bin` (the developer reference does not say).
 
 The stock image writes back the stock system partition and the instant-on snapshot, so the camera
 is exactly as it came from Samsung (instant-on included). No step 5 is needed after flashing stock.

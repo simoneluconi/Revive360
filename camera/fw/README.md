@@ -117,7 +117,7 @@ Testing: `sdb.conf` at the card root disables the stock idle auto power-off.
 ## Recovery
 
 Flash the stock `C200GLU0AQK1_171121_1257_REV00_user.bin` as in step 2, with the same conditions
-(near-full battery, USB unplugged, Shutter + Menu, `fwupgrade.txt`). The board version matches, so it
+(near-full battery, USB unplugged, hold Shutter/OK and press power, `fwupgrade.txt`). The board version matches, so it
 writes back the stock rootfs **and** the snapshot, and instant-on returns.
 
 Why this always works: the overlay only adds files and leaves `di-camera-app` stock, so the camera
