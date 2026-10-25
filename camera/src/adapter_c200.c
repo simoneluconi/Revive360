@@ -185,16 +185,13 @@ static const c200_setting_t C200_SETTINGS[] = {
 };
 #define N_C200_SETTINGS ((int)(sizeof C200_SETTINGS / sizeof C200_SETTINGS[0]))
 
-#define KEY_MOVIE_STATE 0x2bc   /* eUS_MEDIA_STATE: 1 standby, 2 rec, 3 stop, 4 pause */
-#define MOVIE_STATE_REC 2
 #define KEY_MODE        0x21c   /* the 360 mode selection, values as in C200_SETTINGS */
 #define MODE_VALUE_PHOTO     1
-#define MODE_VALUE_TIMELAPSE 2
-
-/* video_size_realize=1 in g360r.conf: re-realize the recorder after a movie
- * size change (unrealize, RVF stream, realize, standby) instead of only the
- * movie standby, should the standby not pick the size up */
-static int g_size_realize;
+#define KEY_LENS        0x21a
+#define LENS_VALUE_DUAL      0
+#define KEY_MOVIE_SIZE_MENU  0x223   /* the menu's choice (video_size) */
+#define KEY_MOVIE_SIZE       0x109   /* what the recorder realizes, eUS_MOVIE_SIZE */
+#define KEY_TIMELAPSE_SIZE   0x22a   /* the same for the time-lapse */
 
 static const c200_setting_t *c200_setting(const char *id)
 {
@@ -218,6 +215,43 @@ static int c200_get_setting(adapter_t *a, const char *id, char *out, size_t outl
         }
     }
     LOGW("c200: %s has value %d, which has no protocol token", id, v);
+    return -1;
+}
+
+/* The recorder realizes 0x109 (0x22a in time-lapse), which a mode or lens
+ * change resets to the lens default, not the menu's 0x223 (the same
+ * eUS_MOVIE_SIZE values). Copy the menu's size over when it fits the lens
+ * (2:1 dual, the others single); otherwise the menu follows the recorder. */
+static int c200_movie_size_sync(char *err, size_t errlen)
+{
+    const c200_setting_t *s = c200_setting("video_size");
+    char req[64], reply[256] = "cannot read the recorder's movie size";
+    int menu = -1, lens = -1, w = 0, h = 0, fits = 0;
+
+    if (shim_ui_get(KEY_MOVIE_SIZE_MENU, &menu) < 0 || shim_ui_get(KEY_LENS, &lens) < 0) {
+        snprintf(err, errlen, "cannot read the movie size or lens");
+        return -1;
+    }
+    for (int i = 0; i < s->n; i++)
+        if (s->val[i] == menu && sscanf(s->tok[i], "%dx%d", &w, &h) == 2)
+            fits = (w == 2 * h) == (lens == LENS_VALUE_DUAL);
+    if (fits) {
+        snprintf(req, sizeof req, "uiset 0x%x %d", KEY_MOVIE_SIZE, menu);
+        if (shim_plugin(req, reply, sizeof reply) == 0) {
+            snprintf(req, sizeof req, "uiset 0x%x %d", KEY_TIMELAPSE_SIZE, menu);
+            if (shim_plugin(req, reply, sizeof reply) == 0)
+                return 0;
+        }
+    } else {
+        int rec = -1;
+        if (shim_ui_get(KEY_MOVIE_SIZE, &rec) == 0) {
+            LOGI("c200: movie size %d does not fit lens %d, menu follows the recorder (%d)", menu, lens, rec);
+            snprintf(req, sizeof req, "uiset 0x%x %d", KEY_MOVIE_SIZE_MENU, rec);
+            if (shim_plugin(req, reply, sizeof reply) == 0)
+                return 0;
+        }
+    }
+    snprintf(err, errlen, "%s", reply);
     return -1;
 }
 
@@ -246,43 +280,27 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
         return -1;
     }
     /* A menu value alone does not re-realize the capture/record engine: run
-     * the transition the camera's own menu runs (a2, docs/firmware/12). Photo:
-     * restart the live view; video modes: movie standby, which realizes the
-     * camcorder for the mode and its movie size. */
-    if (strcmp(id, "mode") == 0) {
-        /* Back to photo from a video mode: the app is in its movie sub-state,
-         * and only the movie stop path leaves it (it ends in the photo live
-         * view; a live view restart alone left the next shutter as a movie
-         * stop, no photo). */
-        const char *transition = strcmp(value, "photo") != 0 ? "moviestandby"
-                                 : prev_mode != MODE_VALUE_PHOTO ? "recstop" : "photomode";
+     * the transition the camera's own menu runs (a2, docs/firmware/12). */
+    if (strcmp(id, "mode") == 0 && strcmp(value, "photo") == 0) {
+        /* From a video mode the app is in its movie sub-state, and only the
+         * movie stop path leaves it (it ends in the photo live view; a live
+         * view restart alone left the next shutter as a movie stop, no photo) */
+        const char *transition = prev_mode != MODE_VALUE_PHOTO ? "recstop" : "photomode";
         if (shim_plugin("allsend", reply, sizeof reply) < 0 ||
             shim_plugin(transition, reply, sizeof reply) < 0) {
             snprintf(err, errlen, "%s", reply);
             return -1;
         }
-    }
-    /* A lens change in a video mode changes the movie size: the recorder takes
-     * it on its next standby */
-    if (strcmp(id, "lens") == 0) {
-        int mode = -1;
-        if (shim_ui_get(KEY_MODE, &mode) == 0 && mode != MODE_VALUE_PHOTO &&
-            shim_plugin("moviestandby", reply, sizeof reply) < 0) {
-            snprintf(err, errlen, "%s", reply);
-            return -1;
-        }
-    }
-    if (strcmp(id, "video_size") == 0) {
-        int mode = -1;
-        snprintf(req, sizeof req, "movsize %d", v);
-        if (shim_plugin(req, reply, sizeof reply) < 0) {
-            snprintf(err, errlen, "%s", reply);
-            return -1;
-        }
-        /* In a video mode the recorder takes the size when it is realized again;
-         * in photo mode the next switch to video does it */
-        if (shim_ui_get(KEY_MODE, &mode) == 0 && mode != MODE_VALUE_PHOTO &&
-            shim_plugin(g_size_realize ? "camrealize" : "moviestandby", reply, sizeof reply) < 0) {
+    } else if (strcmp(id, "mode") == 0 || strcmp(id, "lens") == 0 || strcmp(id, "video_size") == 0) {
+        /* A video mode, a lens or a movie size: the recorder realizes the mode
+         * and its size on a new movie standby (from photo the standby itself,
+         * from a video mode a stop first, as the standby is already on) */
+        int is_mode = strcmp(id, "mode") == 0;
+        if (!is_mode && (shim_ui_get(KEY_MODE, &prev_mode) < 0 || prev_mode == MODE_VALUE_PHOTO))
+            return 0;   /* photo: the next switch to a video mode does it */
+        if ((is_mode && shim_plugin("allsend", reply, sizeof reply) < 0) ||
+            c200_movie_size_sync(reply, sizeof reply) < 0 ||
+            shim_plugin(prev_mode == MODE_VALUE_PHOTO ? "moviestandby" : "restandby", reply, sizeof reply) < 0) {
             snprintf(err, errlen, "%s", reply);
             return -1;
         }
@@ -292,39 +310,43 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
 
 /* ------------------------------------------------------------ record */
 
-/* The app's own record entries (the generic dfms shutter never started a
- * time-lapse or looping recording): movie/looping start, time-lapse start,
- * stop. The movie state key tells where the recorder is. */
+/* Recording or not: the movie state in video/looping, the interval capture
+ * in time-lapse (plugin "recording") */
+static int c200_recording(int *out)
+{
+    char reply[256];
+    return shim_plugin("recording", reply, sizeof reply) == 0 &&
+           sscanf(reply, "ok recording = %d", out) == 1 ? 0 : -1;
+}
+
+/* The stock phone app's remote shot (the generic dfms shutter never started a
+ * time-lapse or looping recording, and the movie entries alone skip the
+ * time-lapse's interval capture): start and stop for every video mode */
 static int c200_record(adapter_t *a, int start, char *err, size_t errlen)
 {
-    int state = -1, mode = -1;
+    int rec = -1;
     char reply[256];
-    const char *req;
     (void)a;
 
-    if (shim_ui_get(KEY_MOVIE_STATE, &state) < 0) {
-        snprintf(err, errlen, "cannot read the movie state");
+    if (c200_recording(&rec) < 0) {
+        snprintf(err, errlen, "cannot read the recording state");
         return -1;
     }
-    LOGI("c200: record %s, movie state %d", start ? "start" : "stop", state);
-    if ((state == MOVIE_STATE_REC) == start)
+    LOGI("c200: record %s, recording %d", start ? "start" : "stop", rec);
+    if (rec == start)
         return 0;   /* already where we want it */
-    if (start)
-        req = shim_ui_get(KEY_MODE, &mode) == 0 && mode == MODE_VALUE_TIMELAPSE ? "tlstart" : "recstart";
-    else
-        req = "recstop";
-    if (shim_plugin(req, reply, sizeof reply) < 0) {
+    if (shim_plugin(start ? "remoterec" : "remotestop", reply, sizeof reply) < 0) {
         snprintf(err, errlen, "%s", reply);
         return -1;
     }
     if (start) {
-        /* Confirm, so a mode the shutter does not record in is reported */
+        /* Confirm, so a mode that does not record is reported */
         for (int i = 0; i < 10; i++) {
             sleep_ms(300);
-            if (shim_ui_get(KEY_MOVIE_STATE, &state) == 0 && state == MOVIE_STATE_REC)
+            if (c200_recording(&rec) == 0 && rec)
                 return 0;
         }
-        snprintf(err, errlen, "the recording did not start (movie state %d)", state);
+        snprintf(err, errlen, "the recording did not start");
         return -1;
     }
     return 0;
@@ -372,7 +394,6 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
         if (run_mode && strcmp(run_mode, "normal") == 0 && config_get_int(cfg, "settings_enable", 1)) {
             for (i = 0; i < N_C200_SETTINGS; i++)
                 adapter_add_360_setting(a, C200_SETTINGS[i].id);
-            g_size_realize = config_get_int(cfg, "video_size_realize", 0);
             a->get_setting = c200_get_setting;
             a->set_setting = c200_set_setting;
             a->record = c200_record;

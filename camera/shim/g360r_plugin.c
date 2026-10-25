@@ -239,6 +239,49 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
             return -1;
         return call_void("_Z23UI_Manage_Movie_Standbyv", "camrealize", resp, len);
     }
+    if (n >= 1 && strcmp(verb, "restandby") == 0) {
+        /* The standby is a no-op while it is already on: the movie stop leaves
+         * it (synchronously, when not recording), then a new standby realizes
+         * the recorder with the current mode and movie size (0x109/0x22a) */
+        void_fn standby = (void_fn)app_fn("_Z23UI_Manage_Movie_Standbyv");
+        int_fn stop = (int_fn)app_fn("_Z20UI_Manage_Movie_Stop17eUS_REC_STOP_TYPE");
+        if (!standby || !stop) {
+            snprintf(resp, len, "error no movie stop/standby");
+            return -1;
+        }
+        release_lv_disp_change();
+        stop(0);
+        standby();
+        return call_void("_Z31UI_Draw_Stby_Or_Card_Or_Factoryv", "restandby", resp, len);
+    }
+    /* The remote shot of the stock phone app (CUINETFuncRemoteShot): record
+     * start/stop for every video mode, time-lapse through its interval capture */
+    if (n >= 1 && (strcmp(verb, "remoterec") == 0 || strcmp(verb, "remotestop") == 0)) {
+        void *(*inst)(void) = (void *(*)(void))app_fn("_ZN20CUINETFuncRemoteShot4InstEv");
+        void (*fn)(void *) = (void (*)(void *))app_fn(strcmp(verb, "remoterec") == 0
+                                                      ? "_ZN20CUINETFuncRemoteShot17process_movie_recEv"
+                                                      : "_ZN20CUINETFuncRemoteShot22process_movie_rec_stopEv");
+        void *self;
+        if (!inst || !fn || !(self = inst())) {
+            snprintf(resp, len, "error no remote shot");
+            return -1;
+        }
+        fn(self);
+        snprintf(resp, len, "ok %s", verb);
+        return 0;
+    }
+    if (n >= 1 && strcmp(verb, "recording") == 0) {
+        /* Time-lapse runs as an interval capture, not a movie recording */
+        get_fn get = (get_fn)app_fn("_Z12UI_Get_Value14eUI_VALUE_ITEM");
+        int (*tl_mode)(void) = (int (*)(void))app_fn("_ZN10CUINETUtil15IsTimelapseModeEv");
+        int (*tl_run)(void) = (int (*)(void))app_fn("_ZN10CUINETUtil20IsTimelapseCapturingEv");
+        if (!get || !tl_mode || !tl_run) {
+            snprintf(resp, len, "error no recording state functions");
+            return -1;
+        }
+        snprintf(resp, len, "ok recording = %d", tl_mode() ? tl_run() != 0 : get(KEY_MOVIE_STATE) == 2);
+        return 0;
+    }
     if (n >= 1 && strcmp(verb, "recstart") == 0) {
         int_fn rec = (int_fn)app_fn("_Z19UI_Manage_Movie_Recb");
         if (!rec) {
