@@ -114,6 +114,9 @@ class CameraController(
     private var client: CameraClient? = null
     private var session: Job? = null
     private var releaseJob: Job? = null
+    private var rejoinJob: Job? = null
+    private var rejoinAttempts = 0
+    private var foreground = false
     private val downloadJobs = HashMap<String, Job>()
 
     /** The connected camera's identity, for cache keys. */
@@ -122,13 +125,18 @@ class CameraController(
     // ---- lifecycle ----
 
     fun onForeground() {
+        foreground = true
         releaseJob?.cancel()
         releaseJob = null
-        if (session == null) connect()
+        // A request still searching is left alone: a new one would cancel a join in progress
+        val state = _state.value
+        if (session == null && state != LinkState.Joining && state != LinkState.Handshake) connect()
     }
 
     /** Lets the camera's Wi-Fi go shortly after the app leaves the screen, unless a download runs. */
     fun onBackground() {
+        foreground = false
+        rejoinJob?.cancel()
         releaseJob?.cancel()
         releaseJob = scope.launch {
             delay(BACKGROUND_RELEASE_MS)
@@ -140,6 +148,11 @@ class CameraController(
 
     /** (Re)joins the camera, or the developer's simulator host in debug builds. */
     fun connect() {
+        rejoinAttempts = 0
+        join()
+    }
+
+    private fun join() {
         val camera = store.camera.value
         val devHost = settings.devHost.value?.takeIf { BuildConfig.DEBUG }
         if (camera == null && devHost == null) {
@@ -156,27 +169,48 @@ class CameraController(
         network.request(camera!!, object : CameraNetwork.Listener {
             override fun onAvailable(network: Network, host: String) {
                 scope.launch {
+                    rejoinAttempts = 0
                     startSession(CameraClient(host, Protocol.PORT, Connector { network.openConnection(it) as HttpURLConnection }))
                 }
             }
 
             override fun onLost() {
+                // The camera went off or restarted: the system does not join it again by itself,
+                // so a new request waits for it to come back
                 scope.launch {
                     stopSession()
-                    if (_state.value !is LinkState.Idle) _state.value = LinkState.Joining
+                    if (_state.value is LinkState.Idle) return@launch
+                    _state.value = LinkState.Joining
+                    rejoin(camera)
                 }
             }
 
             override fun onUnavailable() {
                 scope.launch {
                     stopSession()
+                    // Pinned to the paired access point there is no dialog to decline: the request
+                    // was refused (made a moment before the app counted as foreground) or timed out
+                    if (camera.bssid != null && rejoinAttempts < REJOIN_ATTEMPTS && rejoin(camera)) return@launch
                     _state.value = LinkState.Failed(Failure.NOT_FOUND)
                 }
             }
         })
     }
 
+    /** A new network request shortly, while the app is in use; false when it isn't. */
+    private fun rejoin(camera: PairedCamera): Boolean {
+        if (!foreground) return false
+        rejoinJob?.cancel()
+        rejoinAttempts++
+        rejoinJob = scope.launch {
+            delay(REJOIN_MS)
+            if (store.camera.value?.id == camera.id && _state.value == LinkState.Joining) join()
+        }
+        return true
+    }
+
     private fun disconnect(next: LinkState) {
+        rejoinJob?.cancel()
         network.release()
         stopSession()
         _state.value = if (store.camera.value == null && settings.devHost.value == null) LinkState.NotPaired else next
@@ -497,6 +531,9 @@ class CameraController(
 
     private companion object {
         const val BACKGROUND_RELEASE_MS = 20_000L
+        const val REJOIN_MS = 3_000L
+        /** Refused or timed-out requests in a row before the app shows the camera as not found */
+        const val REJOIN_ATTEMPTS = 20
         const val HELLO_ATTEMPTS = 15
         const val HELLO_RETRY_MS = 2_000L
         const val POLL_MS = 5_000L
