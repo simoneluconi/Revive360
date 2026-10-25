@@ -1,4 +1,4 @@
-# Revive360
+# Revive360 – for Samsung Gear 360
 
 **Your Samsung Gear 360 works again: with any Android phone, free, and with no Samsung account.**
 
@@ -80,5 +80,7 @@ Contributions are welcome.
 
 ## License
 
-Free software under the [GNU GPL v3](LICENSE). Revive360 is not made or endorsed by
-Samsung and contains no Samsung software: you download Samsung's original firmware yourself.
+Free software under the [GNU GPL v3](LICENSE). Revive360 is an independent project, not
+made, affiliated with or endorsed by Samsung. Samsung and Gear 360 are trademarks of Samsung
+Electronics; they are used here only to say which camera the app works with. It
+contains no Samsung software: you download Samsung's original firmware yourself.
