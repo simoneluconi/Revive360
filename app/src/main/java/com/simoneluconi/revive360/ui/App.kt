@@ -199,11 +199,13 @@ fun ScreenScaffold(
     scroll: Boolean = true,
     actions: @Composable () -> Unit = {},
     bottomBar: (@Composable ColumnScope.() -> Unit)? = null,
+    /** No title bar and no margins: the content fills the screen (a full-screen picture) */
+    bare: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val nav = LocalActions.current
     Column(Modifier.fillMaxSize()) {
-        Row(
+        if (!bare) Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -219,10 +221,10 @@ fun ScreenScaffold(
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                .padding(horizontal = 16.dp)
-                .padding(bottom = if (scroll) 32.dp else 0.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .then(if (scroll && !bare) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(horizontal = if (bare) 0.dp else 16.dp)
+                .padding(bottom = if (scroll && !bare) 32.dp else 0.dp),
+            verticalArrangement = if (bare) Arrangement.Center else Arrangement.spacedBy(12.dp),
             content = content,
         )
         if (bottomBar != null) {

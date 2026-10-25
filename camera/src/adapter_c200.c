@@ -242,6 +242,8 @@ static int c200_menu(const c200_setting_t *s)
 #define CLIENT_AWAKE_MS 20000
 
 static char g_keep_awake_path[300];
+/* The camera's stream service was started (only then can a session be left behind) */
+static volatile int g_stream_used;
 
 static int keep_awake(void)
 {
@@ -265,6 +267,11 @@ static void *c200_awake_thread(void *arg)
                 LOGI("c200: power timer running again");
             held = 0;
         }
+        /* No live view served: a stream session the camera started late, or
+         * left behind, would run its encoder for nobody (it heats the camera).
+         * The stop is a no-op when none runs. */
+        if (g_stream_used && !g_liveview)
+            shim_plugin("mpegstop", reply, sizeof reply);
         sleep(AWAKE_PERIOD_S);
     }
     return NULL;
@@ -429,6 +436,7 @@ static int c200_liveview_open(adapter_t *a, char *host, size_t hostlen, int *por
         snprintf(err, errlen, "the camera's stream service did not start: %s", reply);
         return -1;
     }
+    g_stream_used = 1;
     u += strlen("url=http://");
     snprintf(host, hostlen, "%.*s", (int)strcspn(u, ":/"), u);
     shim_plugin("mpegstop", reply, sizeof reply);

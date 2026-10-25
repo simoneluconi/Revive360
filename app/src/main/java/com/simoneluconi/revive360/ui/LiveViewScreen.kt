@@ -1,6 +1,16 @@
 package com.simoneluconi.revive360.ui
 
 import android.graphics.SurfaceTexture
+import android.os.Build
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import android.view.Surface
 import android.view.TextureView
 import androidx.compose.foundation.background
@@ -53,8 +63,16 @@ fun LiveViewScreen() {
     val session = remember { LiveSession(nav.app.controller) }
     // The retry the view already acted on (update runs at every recomposition)
     val handled = remember { intArrayOf(0) }
+    var full by rememberSaveable { mutableStateOf(false) }
+    val view = LocalView.current
 
     DisposableEffect(Unit) { onDispose { session.stop() } }
+    BackHandler(enabled = full) { full = false }
+    // Full screen hides the system bars; leaving the screen shows them again
+    DisposableEffect(full) {
+        systemBars(view, show = !full)
+        onDispose { systemBars(view, show = true) }
+    }
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
@@ -64,12 +82,19 @@ fun LiveViewScreen() {
         }
     }
 
-    ScreenScaffold(title = stringResource(R.string.liveview_title)) {
+    // The picture keeps its place in the composition in both layouts: its surface (and the
+    // stream) survive the switch
+    ScreenScaffold(title = stringResource(R.string.liveview_title), scroll = false, bare = full) {
         val ratio = size?.let { (w, h) -> w.toFloat() / h } ?: 2f
         Box(
-            Modifier.fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(20.dp)).background(colors.surface2),
+            (if (full) Modifier.fillMaxSize().background(Color.Black) else Modifier.fillMaxWidth())
+                .pointerInput(Unit) { detectTapGestures { full = !full } },
             contentAlignment = Alignment.Center,
         ) {
+          Box(
+            Modifier.aspectRatio(ratio).clip(RoundedCornerShape(if (full) 0.dp else 20.dp)).background(colors.surface2),
+            contentAlignment = Alignment.Center,
+          ) {
             AndroidView(
                 factory = { context ->
                     TextureView(context).apply {
@@ -111,7 +136,9 @@ fun LiveViewScreen() {
                 modifier = Modifier.fillMaxSize(),
             )
             if (frames == 0L && error == null) Spinner()
+          }
         }
+        if (full) return@ScreenScaffold
         val problem = error
         if (problem != null) {
             Card(color = colors.soft(colors.bad)) {
@@ -128,8 +155,27 @@ fun LiveViewScreen() {
                 Modifier.fillMaxWidth(), size = 13.sp, color = colors.text2, align = TextAlign.Center,
             )
         }
+        Label(stringResource(R.string.liveview_hint_full), Modifier.fillMaxWidth(), size = 13.sp, color = colors.text2,
+            align = TextAlign.Center)
         Label(stringResource(R.string.liveview_hint), Modifier.fillMaxWidth(), size = 13.sp, color = colors.text2,
             align = TextAlign.Center)
+    }
+}
+
+/** Shows or hides the status and navigation bars (swipe brings them back for a moment) */
+@Suppress("DEPRECATION")
+private fun systemBars(view: View, show: Boolean) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val controller = view.windowInsetsController ?: return
+        if (show) {
+            controller.show(WindowInsets.Type.systemBars())
+        } else {
+            controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsets.Type.systemBars())
+        }
+    } else {
+        view.systemUiVisibility = if (show) View.SYSTEM_UI_FLAG_VISIBLE else
+            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
 }
 
