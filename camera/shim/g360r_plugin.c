@@ -34,6 +34,46 @@ static void *app_fn(const char *mangled)
     return dlsym(RTLD_DEFAULT, mangled);
 }
 
+/* The mode transition the app runs itself (a2, from its mode/capture paths):
+ * the menu value 0x21c only selects; the engine mode 0x7d9 is what the screen
+ * and the still/movie pipeline follow. All exported, all void. Only from
+ * standby: not while capturing (0x27b == 2), recording (0x2bc == 2) or during
+ * another mode change (run state & 0x200). The caller waits for 0x7d9 to equal
+ * the target and the run state to clear before the next shot. */
+#define KEY_CAPTURE_STATE 0x27b
+#define KEY_MOVIE_STATE   0x2bc
+#define KEY_ENGINE_MODE   0x7d9
+#define RUN_MODE_CHANGE   0x200
+
+static int mode_change(int engine_mode, char *resp, size_t len)
+{
+    get_fn get = (get_fn)app_fn("_Z12UI_Get_Value14eUI_VALUE_ITEM");
+    get_fn run = (get_fn)app_fn("_Z23Ui_Get_Common_Run_Statev");
+    set_fn load = (set_fn)app_fn("_Z28UI_Load_Variable_Mode_Changeib");
+    int_fn manage = (int_fn)app_fn("_Z36UI_Manage_Capture_Mode_By_Modechangei");
+    void (*ae)(int, int, int, int) = (void (*)(int, int, int, int))app_fn("_Z26UI_Update_Liveview_Ae_Infobbbb");
+    void_fn live = (void_fn)app_fn("_Z29UI_Liveview_State_Constructorv");
+    void (*display)(int, int, int, int, int) =
+        (void (*)(int, int, int, int, int))app_fn("_Z17UI_Display_Manage16eUI_DISPLAY_ITEMiiii");
+
+    if (!get || !run || !load || !manage || !ae || !live || !display) {
+        snprintf(resp, len, "error a mode-change function is missing");
+        return -1;
+    }
+    if (get(KEY_CAPTURE_STATE) == 2 || get(KEY_MOVIE_STATE) == 2 || (run(0) & RUN_MODE_CHANGE)) {
+        snprintf(resp, len, "error busy (capture %d, movie %d, run state 0x%x)",
+                 get(KEY_CAPTURE_STATE), get(KEY_MOVIE_STATE), run(0));
+        return -1;
+    }
+    load(engine_mode, 0);       /* 0: from the given mode, not the (fixed) dial */
+    manage(get(KEY_ENGINE_MODE));
+    ae(1, 1, 0, 0);
+    live();
+    display(100, 1, 0, 0, 0);   /* standby screen redraw */
+    snprintf(resp, len, "ok modechange %d -> engine %d, run state 0x%x", engine_mode, get(KEY_ENGINE_MODE), run(0));
+    return 0;
+}
+
 int g360r_plugin_request(const char *req, char *resp, size_t len)
 {
     char verb[16];
@@ -99,6 +139,18 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         snprintf(resp, len, "ok lens %ld", item);
         return 0;
     }
-    snprintf(resp, len, "error usage: uiget ITEM | uiset ITEM VAL | uisend ITEM VAL | menu ITEM VAL | allsend | lens VAL");
+    if (n >= 1 && strcmp(verb, "runstate") == 0) {
+        get_fn run = (get_fn)app_fn("_Z23Ui_Get_Common_Run_Statev");
+        if (!run) {
+            snprintf(resp, len, "error no Ui_Get_Common_Run_State");
+            return -1;
+        }
+        snprintf(resp, len, "ok runstate = %d", run(0));
+        return 0;
+    }
+    if (n >= 2 && strcmp(verb, "modechange") == 0)
+        return mode_change((int)item, resp, len);
+    snprintf(resp, len, "error usage: uiget ITEM | uiset ITEM VAL | uisend ITEM VAL | menu ITEM VAL | allsend | lens VAL"
+                        " | runstate | modechange ENGINE_MODE");
     return -1;
 }

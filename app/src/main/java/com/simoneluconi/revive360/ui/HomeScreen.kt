@@ -428,7 +428,13 @@ private fun CameraSettings(defs: List<SettingDef>, values: SettingValues?, mode:
             }
         }
     }
-    shown.forEach { def ->
+    shown.forEach { full ->
+        // Video sizes: only the shape the lens gives (2:1 dual, 16:9 single); all while unknown
+        val def = if (full.id == SettingIds.VIDEO_SIZE) {
+            full.copy(values = full.values.filter { fitsLens(it, values?.get(SettingIds.LENS)) || it == values?.get(full.id) })
+        } else {
+            full
+        }
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label(Format.settingTitle(resources, def.id) ?: def.id, size = 13.sp, color = colors.text2)
@@ -445,6 +451,17 @@ private fun CameraSettings(defs: List<SettingDef>, values: SettingValues?, mode:
                 }
             }
         }
+    }
+}
+
+/** Whether a `WxH@fps` video size suits the `lens` setting: 2:1 for both lenses, 16:9 for one. */
+internal fun fitsLens(size: String, lens: String?): Boolean {
+    val (w, h) = size.substringBefore('@').split('x').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
+        ?: return true
+    return when (lens) {
+        "dual" -> w == 2 * h
+        "rear", "front" -> w * 9 == h * 16
+        else -> true
     }
 }
 
