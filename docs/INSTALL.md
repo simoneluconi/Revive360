@@ -11,7 +11,9 @@ you exactly what to do on the camera.
   the details of any photo it took: "Software" (on Windows: Properties, Details, "Program name")
   is **0.85** for C200GLU0AQK1. You do not have to check by hand: `./install.sh flash` reads it
   from the photos on the card and stops if the camera is not a supported one;
-- a **microSD card** and a card reader for the computer (the photos already on it stay);
+- a **microSD card** and a card reader for the computer (the photos already on it stay). **Take
+  at least one photo with the camera on this card** before you start: the script reads the
+  camera's model and firmware from it;
 - a **Windows or Linux computer** with [Docker Desktop](https://www.docker.com/products/docker-desktop/)
   running and [Git](https://git-scm.com/downloads) installed (on Windows, the commands below go
   in **Git Bash**);
@@ -42,7 +44,8 @@ The first time it takes a while (it downloads its tools). It ends with `Built.`
 
 ## 2. Install the firmware on the camera
 
-Put the SD card in the computer, then:
+Put the SD card in the camera and take **one photo** (if it has none from this camera yet). Then
+put the card in the computer and run:
 
 ```sh
 ./install.sh flash
