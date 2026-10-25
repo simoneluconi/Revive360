@@ -194,13 +194,15 @@ static void def(adapter_t *a, const char *id, const char *const *v, int n)
 }
 
 /* Protocol tokens (§5.12) of the Gear 360 settings. Each adapter adds the ones
- * it can drive, in display order. The video sizes are the stock list; the
- * firmware's extra ones (2880x1440, 2560x1280@60/@24, 1080p60) come later. */
+ * it can drive, in display order. The video sizes include the ones the C200
+ * firmware's menu has beyond the stock list (2880x1440, 2560x1280@60, 1080p60);
+ * its 2560x1280@24 is not in the selectable menu. */
 const char *const SET360_MODE[] = { "photo", "video", "timelapse", "looping" };
 const char *const SET360_LENS[] = { "dual", "rear", "front" };
 const char *const SET360_PHOTO_SIZE[] = { "dual_large", "dual_small", "single_large", "single_wide" };
-const char *const SET360_VIDEO_SIZE[] = { "3840x1920@30", "2560x1280@30", "1920x960@30",
-                                          "2560x1440@30", "1920x1080@30", "1280x720@30" };
+const char *const SET360_VIDEO_SIZE[] = { "3840x1920@30", "2880x1440@30", "2560x1280@60", "2560x1280@30",
+                                          "1920x960@30", "2560x1440@30", "1920x1080@60", "1920x1080@30",
+                                          "1280x720@30" };
 /* timer: the C200 menu has off + 3 presets, the order of 2/5/10 is unconfirmed */
 const char *const SET360_TIMER[] = { "off", "2", "5", "10" };
 const char *const SET360_TIMELAPSE[] = { "0.5", "1", "2", "5", "10", "20", "30", "60" };

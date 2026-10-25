@@ -33,7 +33,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#define C200_STATUS "experimental"
+/* Tested on AQK1 with the modified firmware: capture, files, time, LEDs,
+ * settings and recording (2026-10-25) */
+#define C200_STATUS "supported"
 #define ST_BIN      "/usr/bin/st"
 #define ST_TIMEOUT_MS 10000
 #define DFMSTOOL_BIN  "/usr/bin/dfmstool"
@@ -171,9 +173,11 @@ static const c200_setting_t C200_SETTINGS[] = {
     { "mode", 0x21c, 4, { "photo", "video", "timelapse", "looping" }, { 1, 0, 2, 3 } },
     { "lens", 0x21a, 3, { "dual", "rear", "front" }, { 0, 1, 2 } },
     { "photo_size", 0xcf, 4, { "dual_large", "dual_small", "single_large", "single_wide" }, { 0, 1, 3, 5 } },
-    { "video_size", 0x223, 6,
-      { "3840x1920@30", "2560x1280@30", "1920x960@30", "2560x1440@30", "1920x1080@30", "1280x720@30" },
-      { 0, 1, 2, 5, 6, 7 } },
+    /* eUS_MOVIE_SIZE; 3, 4 and 8 are in the firmware's menu but not the stock app's */
+    { "video_size", 0x223, 9,
+      { "3840x1920@30", "2880x1440@30", "2560x1280@60", "2560x1280@30", "1920x960@30",
+        "2560x1440@30", "1920x1080@60", "1920x1080@30", "1280x720@30" },
+      { 0, 3, 4, 1, 2, 5, 8, 6, 7 } },
     { "timer", 0x225, 4, { "off", "2", "5", "10" }, { 0, 1, 2, 3 } },
     { "timelapse_interval", 0x224, 8, { "0.5", "1", "2", "5", "10", "20", "30", "60" },
       { 0, 1, 2, 3, 4, 5, 6, 7 } },
