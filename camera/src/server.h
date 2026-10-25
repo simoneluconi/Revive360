@@ -128,6 +128,7 @@ void api_debug_restart(req_t *r);
 void api_liveview(req_t *r);
 extern volatile int g_liveview;   /* a live view stream is being served */
 int liveview_release(void);        /* ends one kept without a client; 0 = off */
+void liveview_shutdown(void);      /* ends any, cleanly: before the controller exits */
 
 /* settings.c (§5.12) */
 void api_settings(req_t *r);

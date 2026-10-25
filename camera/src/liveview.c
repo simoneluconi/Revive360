@@ -32,6 +32,7 @@ volatile int g_liveview;
 /* The camera starts its camcorder for the stream a few seconds after the
  * request, and longer while it lets an old session go */
 #define UPSTREAM_TIMEOUT_S 30
+#define HEADER_WAIT_MS     90000   /* for the stream to start, at most */
 #define GRACE_MS           15000
 #define SETTLE_MS          3000   /* between the end of a session and the next */
 #define DRAIN_MS           4000   /* reading on after the stop: until the stream runs dry */
@@ -104,10 +105,15 @@ static int upstream_header(int s, char *hdr, size_t cap, char *err, size_t errle
     int status = 0;
     char *end;
 
+    int64_t deadline = now_ms_mono() + HEADER_WAIT_MS;
+
     line[0] = 0;
     while (got < sizeof line - 1 && !(end = strstr(line, "\r\n\r\n"))) {
         ssize_t n = recv(s, line + got, 1, 0);   /* byte by byte: the body follows */
         if (n < 0 && errno == EINTR)
+            continue;
+        /* Slow is not gone: the camera may take long to start its stream */
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) && !g_stop && now_ms_mono() < deadline)
             continue;
         if (n <= 0) {
             snprintf(err, errlen, "the stream closed before its header");
@@ -348,6 +354,12 @@ void api_liveview(req_t *r)
         g_client = -1;
         pthread_cond_broadcast(&g_cv);
         pthread_mutex_unlock(&g_mu);
+        /* Never just close an opened stream: its camcorder may be starting */
+        if (up >= 0) {
+            stop_draining(a, up);
+            up = -1;
+            stopped = 1;
+        }
     } else {
         LOGI("liveview: %s:%d%s to %s", host, port, path, r->peer);
         relay(up, hdr, hdr_len);
@@ -383,4 +395,22 @@ int liveview_release(void)
     while (g_liveview && now_ms_mono() < until)
         sleep_ms(50);
     return g_liveview ? -1 : 0;
+}
+
+/* Before the controller exits (a restart): the session ends through the
+ * drained stop, as its abrupt close would leave the camera's stream writer,
+ * and with it di-camera-app's main loop, blocked. */
+void liveview_shutdown(void)
+{
+    int64_t until = now_ms_mono() + 15000;
+
+    pthread_mutex_lock(&g_mu);
+    if (g_running) {
+        g_stop = 1;
+        g_client = -1;
+        pthread_cond_broadcast(&g_cv);
+    }
+    pthread_mutex_unlock(&g_mu);
+    while (g_liveview && now_ms_mono() < until)
+        sleep_ms(100);
 }

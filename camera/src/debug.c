@@ -238,6 +238,8 @@ void api_debug_restart(req_t *r)
         http_send_json(r, 200, &b);
         sbuf_free(&b);
     }
+    /* A live view session ends cleanly first (see liveview_shutdown) */
+    liveview_shutdown();
     LOGI("debug: restarting the controller");
     /* The log is written line by line: nothing to flush */
     _exit(0);
