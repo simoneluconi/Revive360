@@ -21,13 +21,19 @@
  *   dlnastate | dlnastart | dlnastop   the stock remote viewfinder service
  *   mpegstop            stops its live stream session
  *   powerstop | powerrestart   holds off / re-arms the auto power off timer
+ *   rawfix              fixes the RTOS raw dump names (both lenses), see raw_fopen
  *   chain FILE          loads FILE (in the card's g360r/) as a second plugin
  *   x TEXT              hands TEXT to that plugin
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
+#include <elf.h>
+#include <link.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 typedef int (*get_fn)(int);
 typedef void (*set_fn)(int, int);
@@ -261,6 +267,137 @@ static int dlna_flags(char *resp, size_t len)
     return 0;
 }
 
+/* ------------------------------------------------ RTOS dump file names */
+
+/* The A7 RTOS writes its SSIF raw dumps ("st cap back unitest ssifdump on")
+ * through libcapture's RunAdjustFunction, which fopen()s the name straight from
+ * the RTOS's RAM (/dev/mem). The RTOS cleans its data cache only for
+ * strlen(name) bytes, not the terminator: the rear name, one byte shorter than
+ * the front one and printed into the same buffer, reaches Linux with the front
+ * name's leftovers after ".raw" and the rear dump is lost. "rawfix" points
+ * libcapture's fopen slot at raw_fopen, which cuts card names after ".raw". */
+#define RAW_LIB  "libcapture-fw-prod.so"
+#define RAW_CARD "/mnt/mmc/"
+#define SHIM_LOG "/tmp/g360r/shim.log"
+
+typedef FILE *(*fopen_fn)(const char *, const char *);
+static fopen_fn g_libc_fopen;
+static int g_raw_opens, g_raw_cut;
+
+static void raw_log(const char *what, const char *path, size_t shown, FILE *res)
+{
+    char text[512];
+    size_t o = 0;
+    FILE *f;
+
+    /* the name as it came, bytes outside printable ASCII as \xNN */
+    for (size_t i = 0; i < shown && o + 5 < sizeof text; i++) {
+        unsigned char c = (unsigned char)path[i];
+        o += (size_t)snprintf(text + o, sizeof text - o, c >= 0x20 && c < 0x7f ? "%c" : "\\x%02x", c);
+    }
+    text[o] = 0;
+    if (!(f = g_libc_fopen(SHIM_LOG, "a")))
+        return;
+    fprintf(f, "rawfix: %s \"%s\" -> %s\n", what, text, res ? "open" : "FAILED");
+    fclose(f);
+}
+
+static FILE *raw_fopen(const char *path, const char *mode)
+{
+    char name[256];
+    const char *ext;
+    size_t n, tail;
+    FILE *res;
+
+    if (!path || strncmp(path, RAW_CARD, sizeof RAW_CARD - 1) != 0)
+        return g_libc_fopen(path, mode);
+    g_raw_opens++;
+    ext = strstr(path, ".raw");
+    n = ext ? (size_t)(ext - path) + 4 : 0;
+    if (!ext || !path[n] || n >= sizeof name) {
+        res = g_libc_fopen(path, mode);
+        raw_log("name", path, strlen(path), res);
+        return res;
+    }
+    memcpy(name, path, n);
+    name[n] = 0;
+    g_raw_cut++;
+    res = g_libc_fopen(name, mode);
+    /* the leftovers too, up to 32 bytes but not past the page (the name is mapped from /dev/mem) */
+    tail = 4096 - (((uintptr_t)path + n) & 4095);
+    raw_log("cut", path, n + strnlen(path + n, tail < 32 ? tail : 32), res);
+    return res;
+}
+
+/* the GOT slot of SYM in the loaded library whose path ends in LIB */
+struct got_find {
+    const char *lib, *sym;
+    void **slot;
+};
+
+static int got_find_cb(struct dl_phdr_info *info, size_t size, void *data)
+{
+    struct got_find *g = data;
+    const char *name = info->dlpi_name;
+    size_t ln = strlen(name), lb = strlen(g->lib);
+    uintptr_t base = info->dlpi_addr, jmprel = 0, symtab = 0, strtab = 0, relsz = 0;
+    const ElfW(Dyn) *dyn = NULL;
+
+    (void)size;
+    if (ln < lb || strcmp(name + ln - lb, g->lib) != 0)
+        return 0;
+    for (int i = 0; i < info->dlpi_phnum; i++)
+        if (info->dlpi_phdr[i].p_type == PT_DYNAMIC)
+            dyn = (const ElfW(Dyn) *)(base + info->dlpi_phdr[i].p_vaddr);
+    for (; dyn && dyn->d_tag != DT_NULL; dyn++) {
+        /* glibc relocates these in place on ARM; an unrelocated one is below the base */
+        uintptr_t p = dyn->d_un.d_ptr < base ? base + dyn->d_un.d_ptr : dyn->d_un.d_ptr;
+        switch (dyn->d_tag) {
+        case DT_JMPREL:   jmprel = p; break;
+        case DT_SYMTAB:   symtab = p; break;
+        case DT_STRTAB:   strtab = p; break;
+        case DT_PLTRELSZ: relsz = dyn->d_un.d_val; break;
+        }
+    }
+    if (!jmprel || !symtab || !strtab)
+        return 1;
+    for (const ElfW(Rel) *r = (const ElfW(Rel) *)jmprel; (uintptr_t)(r + 1) <= jmprel + relsz; r++) {
+        const ElfW(Sym) *s = (const ElfW(Sym) *)symtab + ELF32_R_SYM(r->r_info);
+        if (ELF32_R_TYPE(r->r_info) == R_ARM_JUMP_SLOT && strcmp((const char *)strtab + s->st_name, g->sym) == 0) {
+            g->slot = (void **)(base + r->r_offset);
+            break;
+        }
+    }
+    return 1;
+}
+
+static int raw_fix(char *resp, size_t len)
+{
+    struct got_find g = { RAW_LIB, "fopen", NULL };
+    long page = sysconf(_SC_PAGESIZE);
+    uintptr_t at;
+
+    if (!g_libc_fopen && !(g_libc_fopen = (fopen_fn)dlsym(RTLD_DEFAULT, "fopen"))) {
+        snprintf(resp, len, "error no fopen");
+        return -1;
+    }
+    dl_iterate_phdr(got_find_cb, &g);
+    if (!g.slot) {
+        snprintf(resp, len, "error no fopen slot in %s (not loaded here?)", RAW_LIB);
+        return -1;
+    }
+    if (*g.slot != (void *)raw_fopen) {
+        at = (uintptr_t)g.slot & ~(uintptr_t)(page - 1);
+        if (mprotect((void *)at, (size_t)page, PROT_READ | PROT_WRITE) != 0) {
+            snprintf(resp, len, "error mprotect %p failed", (void *)at);
+            return -1;
+        }
+        *(void *volatile *)g.slot = (void *)raw_fopen;   /* one aligned word: atomic on ARM */
+    }
+    snprintf(resp, len, "ok rawfix slot %p, card opens %d, names cut %d", (void *)g.slot, g_raw_opens, g_raw_cut);
+    return 0;
+}
+
 /* ------------------------------------------------ chained plugin */
 
 /* The shim (in the firmware) loads one plugin for good. This one can load
@@ -364,6 +501,8 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         return call_static("_ZN10CUINETUtil14StopPowerTimerEv", "powerstop", resp, len);
     if (n >= 1 && strcmp(verb, "powerrestart") == 0)
         return call_static("_ZN10CUINETUtil17RestartPowerTimerEv", "powerrestart", resp, len);
+    if (n >= 1 && strcmp(verb, "rawfix") == 0)
+        return raw_fix(resp, len);
     if (strncmp(req, "chain ", 6) == 0)
         return chain_load(req + 6, resp, len);
     if (strncmp(req, "x ", 2) == 0) {
