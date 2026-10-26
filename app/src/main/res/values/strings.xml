@@ -96,6 +96,8 @@
     <string name="setting_beep">Camera sounds</string>
     <string name="setting_led">Indicator LEDs</string>
     <string name="setting_auto_power_off">Auto power off</string>
+    <string name="setting_raw">Also save RAW</string>
+    <string name="setting_raw_hint">The sensor data of both lenses, in DCIM/RAW: about 60 MB per photo. 360 photos in good light only.</string>
     <string name="settings_more">More settings</string>
     <string name="settings_less">Fewer settings</string>
     <string name="value_off">Off</string>

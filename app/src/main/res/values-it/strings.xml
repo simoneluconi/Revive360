@@ -94,6 +94,8 @@
     <string name="setting_beep">Suoni della fotocamera</string>
     <string name="setting_led">LED di stato</string>
     <string name="setting_auto_power_off">Spegnimento automatico</string>
+    <string name="setting_raw">Salva anche RAW</string>
+    <string name="setting_raw_hint">I dati del sensore di entrambe le lenti, in DCIM/RAW: circa 60 MB per foto. Solo foto 360 con buona luce.</string>
     <string name="settings_more">Altre impostazioni</string>
     <string name="settings_less">Meno impostazioni</string>
     <string name="value_off">No</string>

@@ -68,6 +68,13 @@ object Format {
         SettingIds.BEEP -> resources.getString(R.string.setting_beep)
         SettingIds.LED -> resources.getString(R.string.setting_led)
         SettingIds.AUTO_POWER_OFF -> resources.getString(R.string.setting_auto_power_off)
+        SettingIds.RAW -> resources.getString(R.string.setting_raw)
+        else -> null
+    }
+
+    /** A line under a setting row, for the ones whose effect needs saying; null for most. */
+    fun settingHint(resources: Resources, id: String): String? = when (id) {
+        SettingIds.RAW -> resources.getString(R.string.setting_raw_hint)
         else -> null
     }
 

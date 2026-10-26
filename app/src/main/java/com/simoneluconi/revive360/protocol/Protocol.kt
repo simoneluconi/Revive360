@@ -113,6 +113,7 @@ object SettingIds {
     const val BEEP = "beep"
     const val LED = "led"
     const val AUTO_POWER_OFF = "auto_power_off"
+    const val RAW = "raw"
 
     /** Picture and camera settings, kept out of the way of the shooting ones */
     val ADVANCED = setOf(EV, ISO_LIMIT, WHITE_BALANCE, METERING, HDR, SHARPNESS, WIND_CUT, AUDIO, BEEP, LED, AUTO_POWER_OFF)

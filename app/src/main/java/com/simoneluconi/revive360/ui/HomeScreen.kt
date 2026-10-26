@@ -528,7 +528,7 @@ private fun SettingRows(defs: List<SettingDef>, settings: CameraSettings?, mode:
     val shown = defs.filter { def ->
         when (def.id) {
             SettingIds.MODE -> false
-            SettingIds.PHOTO_SIZE, SettingIds.TIMER, SettingIds.HDR -> mode == ShootingModes.PHOTO
+            SettingIds.PHOTO_SIZE, SettingIds.TIMER, SettingIds.HDR, SettingIds.RAW -> mode == ShootingModes.PHOTO
             SettingIds.VIDEO_SIZE -> ShootingModes.records(mode)
             SettingIds.TIMELAPSE_INTERVAL -> mode == ShootingModes.TIMELAPSE
             SettingIds.LOOP_TIME -> mode == ShootingModes.LOOPING
@@ -593,6 +593,10 @@ private fun CameraSettingRow(full: SettingDef, settings: CameraSettings?, change
                 changer.change(values, def.id, token)
             }
         }
+    }
+    Format.settingHint(resources, def.id)?.let {
+        Spacer(Modifier.height(6.dp))
+        Label(it, size = 12.sp, color = colors.text2)
     }
 }
 
