@@ -128,6 +128,10 @@ frame flow via PIM**, and **owning the OLED / grabbing the keys** against the st
 
 ## CORRECTION: RAW/SRW is present but UNPROVEN on the C200 (hardware)
 
+> **Superseded (2026-10-26):** neither `.SRW` nor the `USERDATA_RAW_SAVE` route below produced a raw
+> file on the camera. RAW works through the RTOS SSIF debug dump instead: see
+> [14_raw_capture.md](14_raw_capture.md).
+
 The "Still capture (JPEG + RAW SRW) — LOW RISK" claim above was based on the quality tokens
 existing in the binary; hardware testing (modified firmware, normal mode, AQK1) revised it:
 - The RAW machinery is real in the C200 build — file types `eUI_FILE_TYPE_SRW`(4)/`PHOTO_SRW`(5),

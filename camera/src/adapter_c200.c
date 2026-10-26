@@ -2,9 +2,10 @@
  * Adapter "c200": Samsung Gear 360 (2016), SM-C200, firmware APE4 and AQK1.
  *
  * Mechanisms (docs/firmware/03, 08, 09) - all by name/path, no addresses:
- *  - capture: JPEG only, at the camera's fixed quality. The 360 pipeline has no
+ *  - capture: JPEG at the camera's fixed quality. The 360 pipeline has no
  *    quality or RAW setting (its settings are size, movie size, lens, timer,
- *    format); `st app nx capture quality` writes the NX menu it never reads
+ *    format; the sensor data comes from an RTOS debug dump instead, see "RAW
+ *    dumps"); `st app nx capture quality` writes the NX menu it never reads
  *    (no size change even on the physical shutter, 2026-10-24). The shot
  *    goes through dfms: dfmstool --script "capture still" sets the vconf key
  *    memory/dfms/script_cmd, which the dfmsd that ran our SD hook keeps watching
@@ -28,9 +29,14 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Tested on AQK1 with the modified firmware: capture, files, time, LEDs,
@@ -40,6 +46,9 @@
 #define ST_TIMEOUT_MS 10000
 #define DFMSTOOL_BIN  "/usr/bin/dfmstool"
 #define VCONFTOOL_BIN "/usr/bin/vconftool"
+
+static int raw_saving(void);
+static void raw_arm(void);
 
 static void log_app_result(const char *what, int rc, const char *out)
 {
@@ -134,6 +143,8 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
         return -1;
     }
     LOGI("c200: capture via dfms (%s mode)", factory ? "factory" : "normal");
+    if (!factory && raw_saving())
+        raw_arm();   /* the still's recipe reads the flag when it is built */
     /* Factory mode only: 360 photo mode, and the live view asked once (dfms
      * `capture still` needs a live pipeline, Test 2). In normal mode both are
      * there already, and `st app mode_360` has no visible effect anyway. */
@@ -154,6 +165,147 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
         }
     }
     return dfms_capture_still(err, errlen);
+}
+
+/* ------------------------------------------------------------ RAW dumps */
+
+/* "raw" on: for every 360 still the A7 RTOS also writes each lens's sensor data
+ * (Bayer RGGB, 12 bit left-aligned in 16, 3888x3888 from row 40) with its own
+ * SSIF debug dump, in normal mode (st cap back unitest ssifdump on). Kept on the
+ * card (raw_save), like keep_awake:
+ *  - the dump flag is RTOS RAM, cleared at every boot and when its capture back
+ *    end restarts: a thread watches it and re-arms it, and so does every still
+ *    taken through us;
+ *  - the plugin's rawfix makes the rear lens's file come out under its name;
+ *  - the RTOS writes the dumps into the card root, row by row: once complete
+ *    they move to DCIM/RAW.
+ * Dual-lens photos in good light only: the single-lens, time-lapse and high-ISO
+ * still pipelines have no dump. */
+#define RAW_PERIOD_MS    2000
+#define RAW_REFRESH_MS   30000    /* rawfix again, and the flag when it cannot be read */
+#define RAW_SETTLE_S     2        /* a complete dump left alone this long is done */
+#define RAW_DIR          "DCIM/RAW"
+/* AQK1: the back end's uniTest singleton 0x8160f788, flag at +0x19 (RTOS RAM,
+ * mapped 1:1 in /dev/mem) */
+#define RAW_FLAG_PHYS    0x8160f7a1UL
+
+static char g_raw_save_path[300];
+static int g_raw_flag_readable;   /* the firmware is AQK1 */
+
+static int raw_saving(void)
+{
+    return g_raw_save_path[0] && access(g_raw_save_path, F_OK) == 0;
+}
+
+/* The RTOS dump flag: 0/1, or -1 when it cannot be read */
+static int raw_flag(void)
+{
+    long page = sysconf(_SC_PAGESIZE);
+    unsigned long base = RAW_FLAG_PHYS & ~(unsigned long)(page - 1);
+    volatile unsigned char *p;
+    int fd, v;
+
+    if (!g_raw_flag_readable || (fd = open("/dev/mem", O_RDONLY | O_SYNC)) < 0)
+        return -1;
+    p = mmap(NULL, (size_t)page, PROT_READ, MAP_SHARED, fd, (off_t)base);
+    close(fd);
+    if (p == MAP_FAILED)
+        return -1;
+    v = p[RAW_FLAG_PHYS - base];
+    munmap((void *)p, (size_t)page);
+    return v <= 1 ? v : -1;
+}
+
+static void raw_st(int on)
+{
+    char out[256];
+    char *argv[] = { ST_BIN, "cap", "back", "unitest", "ssifdump", on ? "on" : "off", NULL };
+    int rc = run_cmd(argv, ST_TIMEOUT_MS, out, sizeof out);
+    LOGI("c200: RAW dump flag %s -> rc=%d", on ? "on" : "off", rc);
+}
+
+/* rawfix, and the dump flag on unless it reads on already */
+static void raw_arm(void)
+{
+    char reply[256];
+    if (shim_plugin("rawfix", reply, sizeof reply) < 0)
+        LOGW("c200: rawfix: %s", reply);
+    if (raw_flag() != 1)
+        raw_st(1);
+}
+
+/* Moves the complete dumps from the card root to DCIM/RAW. The name keeps the
+ * RTOS's AxBxC (row bytes x width x rows, the size check here and the DNG
+ * converter's input), without its parentheses; its counter restarts at every
+ * boot, so a name already taken gets a "-N". */
+static void raw_collect(const adapter_t *a)
+{
+    DIR *d = opendir(a->storage_root);
+    struct dirent *de;
+    char dir[600];
+
+    if (!d)
+        return;
+    snprintf(dir, sizeof dir, "%s/" RAW_DIR, a->storage_root);
+    while ((de = readdir(d)) != NULL) {
+        char from[600], name[256], to[900], *paren;
+        unsigned long rowbytes, width, rows;
+        struct stat st;
+        size_t n;
+
+        if (strncmp(de->d_name, "ssif_", 5) != 0 || !str_iendswith(de->d_name, ".raw") ||
+            sscanf(strchr(de->d_name + 5, '_') ? strchr(de->d_name + 5, '_') + 1 : "", "%lux%lux%lu",
+                   &rowbytes, &width, &rows) != 3)
+            continue;
+        snprintf(from, sizeof from, "%s/%s", a->storage_root, de->d_name);
+        if (stat(from, &st) < 0 || (unsigned long long)st.st_size != (unsigned long long)rowbytes * rows ||
+            time(NULL) - st.st_mtime < RAW_SETTLE_S)
+            continue;   /* still being written */
+        snprintf(name, sizeof name, "%s", de->d_name);
+        if ((paren = strchr(name, '(')) != NULL) {   /* "_10bit(16bit).raw" -> "_10bit_16bit.raw" */
+            *paren = '_';
+            if ((paren = strchr(paren, ')')) != NULL)
+                memmove(paren, paren + 1, strlen(paren));
+        }
+        n = strlen(name) - 4;   /* before ".raw" */
+        mkdir_p(dir, 0755);
+        snprintf(to, sizeof to, "%s/%s", dir, name);
+        for (int i = 1; file_exists(to) && i < 1000; i++)
+            snprintf(to, sizeof to, "%s/%.*s-%d.raw", dir, (int)n, name, i);
+        if (rename(from, to) == 0)
+            LOGI("c200: RAW dump %s -> %s", de->d_name, to + strlen(a->storage_root) + 1);
+        else
+            LOGW("c200: cannot move %s: %s", de->d_name, strerror(errno));
+    }
+    closedir(d);
+}
+
+static void *c200_raw_thread(void *arg)
+{
+    const adapter_t *a = arg;
+    int64_t refreshed = 0;
+    int was = -1;
+    for (;;) {
+        int on = raw_saving();
+        if (on != was)
+            LOGI("c200: RAW saving %s", on ? "on" : "off");
+        was = on;
+        if (on) {
+            int64_t now = now_ms_mono();
+            int flag = raw_flag();
+            /* A cleared flag right away; rawfix (the camera app may have
+             * restarted) and an unreadable flag now and then */
+            if (flag == 0 || !refreshed || now - refreshed >= RAW_REFRESH_MS) {
+                if (flag == 0)
+                    LOGI("c200: RAW dump flag found off");
+                raw_arm();
+                refreshed = now;
+            }
+        }
+        raw_collect(a);   /* also the dumps of a shot taken before "off" */
+        sleep_ms(RAW_PERIOD_MS);
+    }
+    return NULL;
 }
 
 /* ------------------------------------------------------------ settings */
@@ -282,6 +434,10 @@ static int c200_get_setting(adapter_t *a, const char *id, char *out, size_t outl
     const c200_setting_t *s = c200_setting(id);
     int v, best = -1;
     (void)a;
+    if (strcmp(id, "raw") == 0) {
+        snprintf(out, outlen, "%s", raw_saving() ? "on" : "off");
+        return 0;
+    }
     if (s && strcmp(id, "auto_power_off") == 0 && keep_awake()) {
         snprintf(out, outlen, "never");
         return 0;
@@ -345,6 +501,22 @@ static int c200_set_setting(adapter_t *a, const char *id, const char *value, cha
     int v = -1;
     (void)a;
 
+    if (strcmp(id, "raw") == 0) {
+        /* ours, on the card; "on" arms the dump now, for the next still */
+        if (strcmp(value, "on") == 0) {
+            FILE *f = fopen(g_raw_save_path, "w");
+            if (!f) {
+                snprintf(err, errlen, "cannot write %s", g_raw_save_path);
+                return -1;
+            }
+            fclose(f);
+            raw_arm();
+        } else {
+            unlink(g_raw_save_path);
+            raw_st(0);
+        }
+        return 0;
+    }
     for (int i = 0; s && i < s->n; i++)
         if (strcmp(s->tok[i], value) == 0)
             v = s->val[i];
@@ -504,6 +676,12 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
                 a->liveview_close = c200_liveview_close;
             }
             snprintf(g_keep_awake_path, sizeof g_keep_awake_path, "%s/g360r/keep_awake", a->storage_root);
+            /* RAW: proven on AQK1 (2026-10-26), where the dump flag's address is known */
+            g_raw_flag_readable = strstr(a->firmware, "AQK1") != NULL;
+            if (g_raw_flag_readable && config_get_int(cfg, "raw_enable", 1)) {
+                adapter_add_360_setting(a, "raw");
+                snprintf(g_raw_save_path, sizeof g_raw_save_path, "%s/g360r/raw_save", a->storage_root);
+            }
             {
                 pthread_t th;
                 pthread_attr_t at;
@@ -511,6 +689,8 @@ void adapter_c200_init(adapter_t *a, const config_t *cfg)
                 pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
                 pthread_attr_setstacksize(&at, 128 * 1024);
                 pthread_create(&th, &at, c200_awake_thread, NULL);
+                if (g_raw_save_path[0])
+                    pthread_create(&th, &at, c200_raw_thread, a);
             }
         }
     }

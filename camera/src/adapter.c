@@ -235,7 +235,7 @@ void adapter_add_360_setting(adapter_t *a, const char *id)
     else if (strcmp(id, "white_balance") == 0) def(a, id, SET360_WB, N(SET360_WB));
     else if (strcmp(id, "metering") == 0) def(a, id, SET360_METERING, N(SET360_METERING));
     else if (strcmp(id, "hdr") == 0 || strcmp(id, "wind_cut") == 0 || strcmp(id, "audio") == 0 ||
-             strcmp(id, "led") == 0)
+             strcmp(id, "led") == 0 || strcmp(id, "raw") == 0)
         def(a, id, SET360_ONOFF, N(SET360_ONOFF));
     else if (strcmp(id, "sharpness") == 0) def(a, id, SET360_SHARPNESS, N(SET360_SHARPNESS));
     else if (strcmp(id, "beep") == 0) def(a, id, SET360_BEEP, N(SET360_BEEP));

@@ -59,3 +59,4 @@ selftest=0
 # storage_mount=/opt/storage/sdcard
 # battery_supply=battery  force the power_supply entry used for status
 # capture_enable=1
+# raw_enable=1           offer the "raw" setting (AQK1 only)
