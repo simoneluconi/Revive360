@@ -33,6 +33,9 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 - **Change the camera's settings**: lens, size, self-timer, exposure, white balance and more.
 - **Get your photos and videos** onto the phone, or delete them from the camera, one or many at a time.
 - **Get real 360° photos**, ready for Google Photos and other apps.
+- **Shoot RAW**, which Samsung's own app never offered: the camera also keeps the sensor data of
+  both lenses, and the app turns it into a DNG for Lightroom and other raw editors, one photo or
+  many at once. 360° photos in good light; about 60 MB per photo.
 - **Make normal photos from a 360° one**: look around, straighten it, choose the frame you want,
   or make a "little planet".
 
@@ -77,6 +80,8 @@ The step-by-step guide: **[docs/INSTALL.md](docs/INSTALL.md)**.
 ## For developers
 
 How it works, how to build it and how to add other cameras: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+How the RAW capture was found and what the files contain: [docs/firmware/14_raw_capture.md](docs/firmware/14_raw_capture.md);
+scripts to make the DNGs on a computer instead: [tools/raw/](tools/raw/).
 Contributions are welcome.
 
 ## License

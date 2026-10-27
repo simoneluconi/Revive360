@@ -2,8 +2,9 @@
 
 `g360rd` is a small static ARM binary that runs on the camera as root, started from the SD
 card through the factory hook (`info.tg` → `cmd.tg` → `shell script`). It implements
-[docs/protocol.md](../docs/protocol.md) v1: info, status, capture (photo / RAW / RAW+photo),
-file list, thumbnails, downloads with Range, delete, LEDs, and the debug log. Everything is
+[docs/protocol.md](../docs/protocol.md) v1: info, status, capture, settings (with `raw`, the
+sensor data of each lens: [docs/firmware/14](../docs/firmware/14_raw_capture.md)), file list,
+thumbnails, downloads with Range, delete, LEDs, and the debug log. Everything is
 volatile. Pull the card and power-cycle, and the camera is stock again.
 
 ## Layout
@@ -158,7 +159,8 @@ the card.
 1. Your LED notes for steps 1–10.
 2. The whole `g360r/log/` folder from the card (zip it).
 3. A listing of the newest files in `DCIM/100PHOTO/` (names and sizes). Keep the 3–4 new
-   files: the `.SRW` and `.JPG` let us check the RAW and thumbnail handling.
+   files: the `.SRW` and `.JPG` let us check the RAW and thumbnail handling. (Later found: the
+   C200 never writes `.SRW`; its RAW comes from the RTOS dump, see docs/firmware/14.)
 
 **What we learn:** that the hook-to-launcher-to-server chain works from tmpfs; the `led.0..4`
 mapping (and whether `st app 360 led` drives the same GPIOs: `g360r.log` contains

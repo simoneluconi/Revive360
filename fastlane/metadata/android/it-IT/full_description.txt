@@ -13,6 +13,7 @@ COSA PUOI FARE
 • Copiare foto e video sul telefono, o cancellarli dalla fotocamera, uno o tanti alla volta
 • Trasformare le foto della fotocamera in vere foto a 360° che Google Foto e le altre app riconoscono
 • Guardarti intorno in una foto a 360°, raddrizzarla, scegliere un'inquadratura o creare un "little planet", e salvarla come foto normale
+• Scattare in RAW, che l'app di Samsung non offriva: la fotocamera conserva anche i dati del sensore di entrambi gli obiettivi, e l'app li salva come DNG per Lightroom e gli altri programmi di sviluppo RAW (foto a 360° con buona luce)
 
 SEMPLICE
 • Funziona con qualsiasi telefono Android (Android 10 o successivo): non serve un Samsung

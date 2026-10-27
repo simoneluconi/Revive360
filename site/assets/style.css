@@ -122,6 +122,7 @@ h2 { font-size: clamp(26px, 3.4vw, 36px); line-height: 1.2; margin: 0 0 12px; le
 .sub { color: var(--text-2); margin: 0 0 30px; max-width: 40em; }
 
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.card.wide { grid-column: 1 / -1; }
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 22px; box-shadow: var(--shadow);

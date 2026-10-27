@@ -17,6 +17,8 @@ Android app (Kotlin, Jetpack Compose, Android 10+):
   multi-select.
 - **360 viewer**, and **stitching** of dual-fisheye photos to equirectangular JPEGs with GPano XMP
   metadata on the GPU, so other 360 viewers and sites recognise them.
+- **RAW**: the "Also save RAW" setting, a RAW mark on the photos that have it, and DNGs written on
+  the phone (`media/DngWriter.kt`), for one photo or many.
 - **Phone gallery** of the photos and videos already saved on the phone.
 - **Camera info and control**: battery and storage, Wi-Fi band/channel/link details, time sync,
   auto power-off setting, reboot and power off over Wi-Fi.
@@ -27,6 +29,8 @@ Camera side:
   the softAP, drives the LEDs and lists/serves/deletes files.
 - An `LD_PRELOAD` shim and a plugin loaded into Samsung's stock camera app, so that capture,
   recording and settings go through the camera's own code instead of poking the hardware.
+- RAW through the capture RTOS's own sensor-data dump, kept switched on by `g360rd`, the dumps
+  named after their photo in `DCIM/RAW/` ([firmware/14_raw_capture.md](firmware/14_raw_capture.md)).
 - A firmware overlay that only **adds** files to the stock firmware (nothing stock is changed or
   removed), and an SD-card configuration that switches it on.
 - A simulator adapter and 139 smoke tests, so the controller and the app can be developed without
@@ -117,6 +121,7 @@ docs/
   firmware/         camera-side reverse-engineering notes
   app/              notes on the stock phone app's protocols
   screenshots/      README screenshots
+tools/raw/          PC scripts for the RAW dumps: DNG writer, dump checker, colour matrix fit
 tools/slp_unpack.py unpacks Samsung SLP firmware containers (research helper)
 ```
 

@@ -13,6 +13,7 @@ WHAT YOU CAN DO
 • Copy photos and videos to your phone, or delete them from the camera, one or many at a time
 • Turn the camera's photos into real 360° photos that Google Photos and other apps recognise
 • Look around a 360° photo, straighten it, pick a frame or make a "little planet", and save it as a normal photo
+• Shoot RAW, which Samsung's app never offered: the camera also keeps the sensor data of both lenses, and the app saves it as a DNG for Lightroom and other raw editors (360° photos in good light)
 
 SIMPLE
 • Works with any Android phone (Android 10 or later): it does not have to be a Samsung
