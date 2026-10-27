@@ -194,6 +194,7 @@
     <string name="selection_close">Done</string>
     <string name="delete_many_title">Delete %1$d files from the camera?</string>
     <string name="delete_many_message">They will be removed from the SD card. Copies on the phone stay.</string>
+    <string name="delete_many_message_raw">They will be removed from the SD card, with their RAW. Copies on the phone stay.</string>
     <string name="delete_many_done">%1$d deleted</string>
     <string name="delete_many_partial">%1$d deleted, %2$d failed: %3$s</string>
 

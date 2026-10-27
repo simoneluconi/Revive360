@@ -192,6 +192,7 @@
     <string name="selection_close">Fine</string>
     <string name="delete_many_title">Eliminare %1$d file dalla fotocamera?</string>
     <string name="delete_many_message">Verranno rimossi dalla scheda SD. Le copie sul telefono restano.</string>
+    <string name="delete_many_message_raw">Verranno rimossi dalla scheda SD, con i loro RAW. Le copie sul telefono restano.</string>
     <string name="delete_many_done">%1$d eliminati</string>
     <string name="delete_many_partial">%1$d eliminati, %2$d non riusciti: %3$s</string>
 

@@ -240,7 +240,7 @@ fun GalleryScreen() {
     if (confirmDelete && chosen != null) {
         ConfirmDialog(
             title = stringResource(R.string.delete_many_title, chosen.size),
-            message = stringResource(R.string.delete_many_message),
+            message = stringResource(if (chosen.any { pairs?.of(it) != null }) R.string.delete_many_message_raw else R.string.delete_many_message),
             confirm = stringResource(R.string.delete_action),
             cancel = stringResource(R.string.action_cancel),
             danger = true,
