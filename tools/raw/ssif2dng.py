@@ -1,4 +1,5 @@
-"""Convert the C200 RTOS SSIF dumps (ssif_front/rear_<A>x<B>x<C>_<n>_10bit(16bit).raw) to a DNG.
+"""Convert the C200 RTOS SSIF dumps to a DNG: DCIM/RAW/<photo>_front_<A>x<B>x<C>.raw and _rear_
+(as g360rd names them; the RTOS's own ssif_front_<A>x<B>x<C>_<n>_10bit(16bit).raw works too).
 
 Facts measured on the first real dump (2026-10-26, AQK1, normal mode):
   - 16-bit little-endian words holding 12-bit values shifted left by 4 (low 4 bits always 0)
@@ -42,7 +43,7 @@ COLOR_MATRIX = np.load(os.environ['SSIF_CM']).tolist() if os.environ.get('SSIF_C
 
 
 def load_lens(path):
-    m = re.search(r'_(\d+)x(\d+)x(\d+)_\d+', os.path.basename(path))
+    m = re.search(r'_(\d+)x(\d+)x(\d+)', os.path.basename(path))
     if not m:
         sys.exit(f'{path}: no AxBxC in the name')
     rowbytes, width, rows = map(int, m.groups())

@@ -178,12 +178,13 @@ static int c200_capture(adapter_t *a, int mode, const char *quality,
  *    taken through us;
  *  - the plugin's rawfix makes the rear lens's file come out under its name;
  *  - the RTOS writes the dumps into the card root, row by row: once complete
- *    they move to DCIM/RAW.
+ *    they move to DCIM/RAW, named after the shot's JPEG.
  * Dual-lens photos in good light only: the single-lens, time-lapse and high-ISO
  * still pipelines have no dump. */
 #define RAW_PERIOD_MS    2000
 #define RAW_REFRESH_MS   30000    /* rawfix again, and the flag when it cannot be read */
 #define RAW_SETTLE_S     2        /* a complete dump left alone this long is done */
+#define RAW_PAIR_S       60       /* the shot's JPEG comes within this after its dumps */
 #define RAW_DIR          "DCIM/RAW"
 /* AQK1: the back end's uniTest singleton 0x8160f788, flag at +0x19 (RTOS RAM,
  * mapped 1:1 in /dev/mem) */
@@ -234,10 +235,53 @@ static void raw_arm(void)
         raw_st(1);
 }
 
-/* Moves the complete dumps from the card root to DCIM/RAW. The name keeps the
- * RTOS's AxBxC (row bytes x width x rows, the size check here and the DNG
- * converter's input), without its parentheses; its counter restarts at every
- * boot, so a name already taken gets a "-N". */
+/* The shot's JPEG, for a dump finished at "dumped": the RTOS writes both
+ * dumps first and the JPEG after them (2026-10-26: front :47, rear :52, JPEG
+ * :53), so it is the oldest JPEG in DCIM/<dir>/ not older than the dump (1 s
+ * of timestamp slack) nor RAW_PAIR_S newer. Its name without ".JPG" into base;
+ * -1 while there is none. */
+static int raw_shot_jpeg(const adapter_t *a, time_t dumped, char *base, size_t len)
+{
+    char dcim[600];
+    DIR *d, *sd;
+    struct dirent *de, *fe;
+    time_t best = 0;
+
+    snprintf(dcim, sizeof dcim, "%s/DCIM", a->storage_root);
+    if (!(d = opendir(dcim)))
+        return -1;
+    while ((de = readdir(d)) != NULL) {
+        char sub[900];
+        if (de->d_name[0] == '.' || strcmp(de->d_name, "RAW") == 0)
+            continue;
+        snprintf(sub, sizeof sub, "%s/%s", dcim, de->d_name);
+        if (!(sd = opendir(sub)))
+            continue;
+        while ((fe = readdir(sd)) != NULL) {
+            char f[1200];
+            struct stat st;
+            if (!str_iendswith(fe->d_name, ".jpg"))
+                continue;
+            snprintf(f, sizeof f, "%s/%s", sub, fe->d_name);
+            if (stat(f, &st) < 0 || st.st_mtime < dumped - 1 || st.st_mtime > dumped + RAW_PAIR_S)
+                continue;
+            if (!best || st.st_mtime < best) {
+                best = st.st_mtime;
+                snprintf(base, len, "%.*s", (int)strlen(fe->d_name) - 4, fe->d_name);
+            }
+        }
+        closedir(sd);
+    }
+    closedir(d);
+    return best ? 0 : -1;
+}
+
+/* Moves the complete dumps from the card root to DCIM/RAW, named after the
+ * shot's JPEG: 360_0383.JPG -> 360_0383_front_7776x3888x3950.raw and _rear_.
+ * The AxBxC (row bytes x width x rows) is the size check here and the DNG
+ * converter's input. A dump whose JPEG never comes (a failed shot) keeps the
+ * RTOS name, without its parentheses. The RTOS counter restarts at every boot,
+ * so a name already taken gets a "-N". */
 static void raw_collect(const adapter_t *a)
 {
     DIR *d = opendir(a->storage_root);
@@ -248,7 +292,8 @@ static void raw_collect(const adapter_t *a)
         return;
     snprintf(dir, sizeof dir, "%s/" RAW_DIR, a->storage_root);
     while ((de = readdir(d)) != NULL) {
-        char from[600], name[256], to[900], *paren;
+        char from[600], name[256], base[128], to[900], *paren;
+        const char *lens;
         unsigned long rowbytes, width, rows;
         struct stat st;
         size_t n;
@@ -257,15 +302,24 @@ static void raw_collect(const adapter_t *a)
             sscanf(strchr(de->d_name + 5, '_') ? strchr(de->d_name + 5, '_') + 1 : "", "%lux%lux%lu",
                    &rowbytes, &width, &rows) != 3)
             continue;
+        lens = strncmp(de->d_name + 5, "front_", 6) == 0 ? "front" :
+               strncmp(de->d_name + 5, "rear_", 5) == 0 ? "rear" : NULL;
         snprintf(from, sizeof from, "%s/%s", a->storage_root, de->d_name);
-        if (stat(from, &st) < 0 || (unsigned long long)st.st_size != (unsigned long long)rowbytes * rows ||
+        if (!lens || stat(from, &st) < 0 ||
+            (unsigned long long)st.st_size != (unsigned long long)rowbytes * rows ||
             time(NULL) - st.st_mtime < RAW_SETTLE_S)
             continue;   /* still being written */
-        snprintf(name, sizeof name, "%s", de->d_name);
-        if ((paren = strchr(name, '(')) != NULL) {   /* "_10bit(16bit).raw" -> "_10bit_16bit.raw" */
-            *paren = '_';
-            if ((paren = strchr(paren, ')')) != NULL)
-                memmove(paren, paren + 1, strlen(paren));
+        if (raw_shot_jpeg(a, st.st_mtime, base, sizeof base) == 0) {
+            snprintf(name, sizeof name, "%s_%s_%lux%lux%lu.raw", base, lens, rowbytes, width, rows);
+        } else if (time(NULL) - st.st_mtime < RAW_PAIR_S) {
+            continue;   /* its JPEG comes after it */
+        } else {
+            snprintf(name, sizeof name, "%s", de->d_name);
+            if ((paren = strchr(name, '(')) != NULL) {   /* "_10bit(16bit).raw" -> "_10bit_16bit.raw" */
+                *paren = '_';
+                if ((paren = strchr(paren, ')')) != NULL)
+                    memmove(paren, paren + 1, strlen(paren));
+            }
         }
         n = strlen(name) - 4;   /* before ".raw" */
         mkdir_p(dir, 0755);

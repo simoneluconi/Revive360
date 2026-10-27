@@ -167,7 +167,7 @@ Setting ids and their tokens (an adapter offers a subset):
 | `beep` | `off`, `low`, `mid`, `high` | Camera sound volume. |
 | `led` | `off`, `on` | The camera's indicator LEDs. |
 | `auto_power_off` | minutes (`1`, `3`, `5`, `30`) or `never` | Idle time before the camera switches off. The camera never switches off while a client talks to the server. |
-| `raw` | `off`, `on` | Also save the sensor data of each still (dual-lens photos in good light only; ~30 MB per lens). The dumps appear in `DCIM/RAW/` as `ssif_<front\|rear>_<rowbytes>x<width>x<rows>_<n>_10bit_16bit.raw`: 16-bit little-endian words, 12-bit Bayer RGGB values shifted left by 4, black 128, the image the square below the first 40 rows. |
+| `raw` | `off`, `on` | Also save the sensor data of each still (dual-lens photos in good light only; ~30 MB per lens). The dumps appear in `DCIM/RAW/`, named after the photo: `<photo>_<front\|rear>_<rowbytes>x<width>x<rows>.raw` (`360_0383_front_7776x3888x3950.raw` for `360_0383.JPG`): 16-bit little-endian words, 12-bit Bayer RGGB values shifted left by 4, black 128, the image the square below the first 40 rows. |
 
 Values above are illustrative; each camera adapter reports its own. A not-yet-confirmed hardware
 mapping is reported honestly (e.g. `role: "unknown"`, `label: "LED 3"`).

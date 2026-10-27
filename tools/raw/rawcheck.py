@@ -23,7 +23,7 @@ import numpy as np
 
 
 def dims_from_name(path):
-    m = re.search(r'_(\d+)x(\d+)x(\d+)_\d+', os.path.basename(path))
+    m = re.search(r'_(\d+)x(\d+)x(\d+)', os.path.basename(path))
     if not m:
         return None
     return int(m.group(1)), int(m.group(2)), int(m.group(3))   # rowbytes, width px, rows
