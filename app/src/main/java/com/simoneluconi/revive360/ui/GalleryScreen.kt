@@ -41,8 +41,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.revive360.R
+import com.simoneluconi.revive360.link.DngBatch
 import com.simoneluconi.revive360.link.DownloadProgress
 import com.simoneluconi.revive360.link.LinkState
+import com.simoneluconi.revive360.media.MediaSaver
 import com.simoneluconi.revive360.protocol.CameraFile
 import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.protocol.RawPairs
@@ -60,6 +62,7 @@ fun GalleryScreen() {
     val files by controller.files.collectAsStateWithLifecycle()
     val downloads by controller.downloads.collectAsStateWithLifecycle()
     val saved by controller.saved.keys.collectAsStateWithLifecycle()
+    val batch by controller.dngBatch.collectAsStateWithLifecycle()
     val connected = state is LinkState.Connected
     val canDelete = (state as? LinkState.Connected)?.info?.capabilities?.delete == true
     var refreshing by remember { mutableStateOf(false) }
@@ -74,6 +77,12 @@ fun GalleryScreen() {
     val list = pairs?.shown
     // Files gone from the card leave the selection
     val chosen = selected?.let { sel -> list.orEmpty().filter { it.path in sel } }
+    // DNGs to save together: the chosen photos with RAW, else every one not saved yet
+    val dngTargets = pairs?.let { p ->
+        (chosen ?: list.orEmpty().filter { controller.dngSavedKey(it) !in saved })
+            .mapNotNull { photo -> p.of(photo)?.let { photo to it } }
+    }.orEmpty()
+    var confirmDngs by remember { mutableStateOf(false) }
 
     BackHandler(enabled = selected != null) { selected = null }
     LaunchedEffect(onPhone) { if (onPhone) selected = null }
@@ -120,6 +129,17 @@ fun GalleryScreen() {
     }
 
     LaunchedEffect(connected) { if (connected) refresh() }
+    // The outcome of a batch, once
+    LaunchedEffect(batch?.finished) {
+        val b = batch?.takeIf { it.finished } ?: return@LaunchedEffect
+        val ok = b.done - b.failed
+        when {
+            b.done < b.total -> nav.message(resources.getString(R.string.dng_all_stopped, ok), MessageKind.INFO)
+            b.failed == 0 -> nav.message(resources.getString(R.string.dng_all_done, ok, MediaSaver.FOLDER), MessageKind.GOOD)
+            else -> nav.message(resources.getString(R.string.dng_all_partial, ok, b.failed), MessageKind.BAD)
+        }
+        controller.dismissDngBatch()
+    }
 
     ScreenScaffold(
         title = chosen?.let { stringResource(R.string.gallery_selected, it.size) } ?: stringResource(R.string.gallery_title),
@@ -134,6 +154,10 @@ fun GalleryScreen() {
                     label = stringResource(if (all) R.string.select_none else R.string.select_all),
                 ) { selected = if (all) emptySet() else list.orEmpty().map { it.path }.toSet() }
                 Spacer(Modifier.width(8.dp))
+                if (connected && batch == null && dngTargets.isNotEmpty()) {
+                    RoundIconButton(AppIcons.Raw, label = stringResource(R.string.dng_all_action)) { confirmDngs = true }
+                    Spacer(Modifier.width(8.dp))
+                }
                 if (deleting) {
                     Spinner()
                 } else if (canDelete && chosen.isNotEmpty()) {
@@ -146,6 +170,10 @@ fun GalleryScreen() {
             } else if (refreshing) {
                 Spinner()
             } else if (connected) {
+                if (!onPhone && batch == null && dngTargets.isNotEmpty()) {
+                    RoundIconButton(AppIcons.Raw, label = stringResource(R.string.dng_all_action)) { confirmDngs = true }
+                    Spacer(Modifier.width(8.dp))
+                }
                 RoundIconButton(AppIcons.Refresh, label = stringResource(R.string.action_refresh)) { refresh() }
             }
         },
@@ -159,6 +187,9 @@ fun GalleryScreen() {
         if (onPhone) {
             PhoneGallery()
             return@ScreenScaffold
+        }
+        batch?.takeIf { !it.finished }?.let { b ->
+            DngBatchCard(b, downloads[b.current?.let { "$it#dng" }]?.fraction ?: 0f) { controller.cancelDngs() }
         }
         when {
             list == null && !connected -> EmptyNote(stringResource(R.string.gallery_not_connected))
@@ -175,9 +206,13 @@ fun GalleryScreen() {
                     val sel = selected
                     FileTile(
                         file = file,
-                        progress = downloads[file.path],
+                        progress = downloads[file.path] ?: downloads[controller.dngKey(file)],
                         saved = controller.savedKey(file) in saved,
-                        raw = pairs?.of(file) != null,
+                        raw = when {
+                            pairs?.of(file) == null -> RawMark.NONE
+                            controller.dngSavedKey(file) in saved -> RawMark.SAVED
+                            else -> RawMark.ON_CAMERA
+                        },
                         connected = connected,
                         selected = sel?.let { file.path in it },
                         onLongClick = { selected = (sel ?: emptySet()) + file.path },
@@ -189,6 +224,19 @@ fun GalleryScreen() {
             }
         }
     }
+    if (confirmDngs && dngTargets.isNotEmpty()) {
+        val targets = dngTargets
+        ConfirmDialog(
+            title = stringResource(R.string.dng_all_title, targets.size),
+            message = stringResource(R.string.dng_all_message, Format.bytes(targets.sumOf { it.second.size }), MediaSaver.FOLDER),
+            confirm = stringResource(R.string.dng_action),
+            cancel = stringResource(R.string.action_cancel),
+            onDismiss = { confirmDngs = false },
+        ) {
+            controller.saveDngs(targets)
+            selected = null
+        }
+    }
     if (confirmDelete && chosen != null) {
         ConfirmDialog(
             title = stringResource(R.string.delete_many_title, chosen.size),
@@ -198,6 +246,26 @@ fun GalleryScreen() {
             danger = true,
             onDismiss = { confirmDelete = false },
         ) { deleteChosen(chosen) }
+    }
+}
+
+/** A photo's RAW in the grid: none, on the camera only, or saved as a DNG too. */
+private enum class RawMark { NONE, ON_CAMERA, SAVED }
+
+/** The DNGs being saved together: which one, overall progress, a way to stop. */
+@Composable
+private fun DngBatchCard(batch: DngBatch, current: Float, onCancel: () -> Unit) {
+    val colors = LocalAppColors.current
+    val fraction = ((batch.done + current) / batch.total).coerceIn(0f, 1f)
+    Card(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Label(stringResource(R.string.dng_all_running, minOf(batch.done + 1, batch.total), batch.total), Modifier.weight(1f), size = 15.sp)
+            PillButton(stringResource(R.string.action_cancel), icon = AppIcons.Close, onClick = onCancel)
+        }
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(colors.line)) {
+            Box(Modifier.fillMaxWidth(fraction.coerceAtLeast(0.02f)).height(6.dp).clip(CircleShape).background(colors.accent))
+        }
     }
 }
 
@@ -214,7 +282,7 @@ private fun FileTile(
     file: CameraFile,
     progress: DownloadProgress?,
     saved: Boolean,
-    raw: Boolean,
+    raw: RawMark,
     connected: Boolean,
     selected: Boolean?,
     onLongClick: () -> Unit,
@@ -255,7 +323,9 @@ private fun FileTile(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Label(file.name, Modifier.weight(1f), size = 12.sp, weight = FontWeight.Bold, maxLines = 1, mono = true)
-                if (raw) Label("RAW", size = 11.sp, weight = FontWeight.ExtraBold, color = colors.accent)
+                if (raw != RawMark.NONE) {
+                    Label("RAW", size = 11.sp, weight = FontWeight.ExtraBold, color = if (raw == RawMark.SAVED) colors.good else colors.accent)
+                }
             }
         }
         Box(Modifier.align(Alignment.TopEnd).padding(6.dp)) {

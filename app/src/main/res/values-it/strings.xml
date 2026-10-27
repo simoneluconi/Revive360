@@ -174,6 +174,13 @@
     <string name="dng_running">Salvataggio del DNG… %1$d%%</string>
     <string name="dng_failed">Il DNG non è stato salvato. Riprovando, il trasferimento continua da dove si era fermato.</string>
     <string name="dng_saved">In Download/%1$s sul telefono</string>
+    <string name="dng_all_action">Salva i RAW come DNG</string>
+    <string name="dng_all_title">Salvare %1$d DNG?</string>
+    <string name="dng_all_message">Dalla fotocamera arrivano %1$s; i DNG vanno in Download/%2$s sul telefono. La fotocamera resta collegata finché non hanno finito.</string>
+    <string name="dng_all_running">Salvataggio DNG %1$d di %2$d</string>
+    <string name="dng_all_done">%1$d DNG salvati in Download/%2$s</string>
+    <string name="dng_all_partial">%1$d DNG salvati, %2$d non riusciti: apri la foto per riprovare</string>
+    <string name="dng_all_stopped">Interrotto: %1$d DNG salvati</string>
     <string name="delete_action">Elimina</string>
     <string name="delete_title">Eliminare dalla fotocamera?</string>
     <string name="delete_message">%1$s verrà rimosso dalla scheda SD. Le copie sul telefono restano.</string>

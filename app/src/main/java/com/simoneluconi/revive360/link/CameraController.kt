@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,6 +99,9 @@ data class DownloadProgress(val done: Long, val total: Long, val failed: String?
     val fraction: Float get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
 }
 
+/** Many DNGs in a row: [done] of [total] handled, [failed] of them not saved, [current] the photo in hand. */
+data class DngBatch(val done: Int, val total: Int, val failed: Int, val current: String?, val finished: Boolean = false)
+
 /**
  * The process-wide link to the camera: joins its Wi-Fi while the app is in use, says hello, polls
  * its status and runs captures, file transfers and LED commands. Screens only read the flows and
@@ -149,6 +153,10 @@ class CameraController(
     private val _downloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
     /** Transfers in progress (or failed) by file path. */
     val downloads: StateFlow<Map<String, DownloadProgress>> = _downloads.asStateFlow()
+
+    private val _dngBatch = MutableStateFlow<DngBatch?>(null)
+    /** The DNGs being saved together ([saveDngs]); null when none. */
+    val dngBatch: StateFlow<DngBatch?> = _dngBatch.asStateFlow()
 
     @Volatile
     private var client: CameraClient? = null
@@ -711,49 +719,107 @@ class CameraController(
      */
     fun saveDng(photo: CameraFile, raw: RawPair) {
         val key = dngKey(photo)
-        if (downloadJobs.containsKey(key)) return
-        val client = client ?: return
-        val resume = (state.value as? LinkState.Connected)?.info?.capabilities?.range == true
-        _downloads.update { it + (key to DownloadProgress(0, raw.size)) }
-        val job = scope.launch {
-            val parts = listOf(raw.front, raw.rear).map { it to partFile(savedKey(it)) }
+        if (downloadJobs.containsKey(key) || client == null) return
+        downloadJobs[key] = scope.launch {
             try {
-                EventLog.log("DNG: ${photo.name} from ${raw.front.name} + ${raw.rear.name}")
-                withContext(Dispatchers.IO) {
-                    var before = 0L
-                    for ((file, part) in parts) {
-                        client.download(file.path, part, resume) { done, _ ->
-                            ensureActive()
-                            _downloads.update { it + (key to DownloadProgress(before + done, raw.size)) }
-                        }
-                        before += file.size
-                    }
-                    val layout = RawLayout.of(raw.front.name) ?: error("no layout in ${raw.front.name}")
-                    MediaSaver.publish(context, "${photo.baseName}.dng", FileKind.RAW, "image/x-adobe-dng", photo.mtime) { out ->
-                        DngWriter.write(parts[0].second, parts[1].second, layout, out)
-                    }
-                    parts.forEach { it.second.delete() }
-                }
-                saved.add(dngSavedKey(photo))
-                EventLog.log("DNG: ${photo.baseName}.dng saved")
-                _downloads.update { it - key }
-            } catch (e: Exception) {
-                val cancelled = !coroutineContext.isActive
-                EventLog.log("DNG: ${photo.name} ${if (cancelled) "cancelled" else "failed (${e.message})"}")
-                _downloads.update {
-                    if (cancelled) it - key
-                    else it + (key to (it[key] ?: DownloadProgress(0, raw.size)).copy(failed = e.message ?: "error"))
-                }
+                writeDng(photo, raw)
             } finally {
                 downloadJobs.remove(key)
             }
         }
-        downloadJobs[key] = job
+    }
+
+    /** One DNG, its progress and outcome in [downloads]; true when saved. */
+    private suspend fun writeDng(photo: CameraFile, raw: RawPair): Boolean {
+        val key = dngKey(photo)
+        val client = client ?: return false
+        val resume = (state.value as? LinkState.Connected)?.info?.capabilities?.range == true
+        _downloads.update { it + (key to DownloadProgress(0, raw.size)) }
+        val parts = listOf(raw.front, raw.rear).map { it to partFile(savedKey(it)) }
+        try {
+            EventLog.log("DNG: ${photo.name} from ${raw.front.name} + ${raw.rear.name}")
+            withContext(Dispatchers.IO) {
+                var before = 0L
+                for ((file, part) in parts) {
+                    client.download(file.path, part, resume) { done, _ ->
+                        ensureActive()
+                        _downloads.update { it + (key to DownloadProgress(before + done, raw.size)) }
+                    }
+                    before += file.size
+                }
+                val layout = RawLayout.of(raw.front.name) ?: error("no layout in ${raw.front.name}")
+                MediaSaver.publish(context, "${photo.baseName}.dng", FileKind.RAW, "image/x-adobe-dng", photo.mtime) { out ->
+                    DngWriter.write(parts[0].second, parts[1].second, layout, out)
+                }
+                parts.forEach { it.second.delete() }
+            }
+            saved.add(dngSavedKey(photo))
+            EventLog.log("DNG: ${photo.baseName}.dng saved")
+            _downloads.update { it - key }
+            return true
+        } catch (e: Exception) {
+            val cancelled = !coroutineContext.isActive
+            EventLog.log("DNG: ${photo.name} ${if (cancelled) "cancelled" else "failed (${e.message})"}")
+            _downloads.update {
+                if (cancelled) it - key
+                else it + (key to (it[key] ?: DownloadProgress(0, raw.size)).copy(failed = e.message ?: "error"))
+            }
+            if (cancelled) throw e
+            return false
+        }
     }
 
     fun cancelDng(photo: CameraFile) {
         downloadJobs.remove(dngKey(photo))?.cancel()
         _downloads.update { it - dngKey(photo) }
+    }
+
+    /**
+     * Saves many photos' DNGs one after the other ([saveDng] each); a failed one does not stop the
+     * rest, one cancelled from its page neither. Progress in [dngBatch], which stays at the end
+     * (finished) until [dismissDngBatch]. The camera link stays while it runs, the app in the
+     * background too.
+     */
+    fun saveDngs(photos: List<Pair<CameraFile, RawPair>>) {
+        if (downloadJobs.containsKey(DNG_BATCH) || photos.isEmpty() || client == null) return
+        _dngBatch.value = DngBatch(0, photos.size, 0, photos.first().first.path)
+        EventLog.log("DNG: ${photos.size} to save")
+        downloadJobs[DNG_BATCH] = scope.launch {
+            var failed = 0
+            var done = 0
+            try {
+                for ((photo, raw) in photos) {
+                    _dngBatch.value = DngBatch(done, photos.size, failed, photo.path)
+                    val key = dngKey(photo)
+                    if (!downloadJobs.containsKey(key)) {
+                        val one = async { writeDng(photo, raw) }
+                        downloadJobs[key] = one
+                        val ok = try {
+                            one.await()
+                        } catch (e: CancellationException) {
+                            ensureActive()   // the whole batch stops; one photo cancelled: on to the next
+                            false
+                        } finally {
+                            downloadJobs.remove(key)
+                        }
+                        if (!ok) failed++
+                    }
+                    done++
+                }
+            } finally {
+                EventLog.log("DNG: $done of ${photos.size} done, $failed failed")
+                _dngBatch.value = DngBatch(done, photos.size, failed, null, finished = true)
+                downloadJobs.remove(DNG_BATCH)
+            }
+        }
+    }
+
+    fun cancelDngs() {
+        downloadJobs[DNG_BATCH]?.cancel()
+    }
+
+    fun dismissDngBatch() {
+        if (_dngBatch.value?.finished == true) _dngBatch.value = null
     }
 
     fun cancelDownload(file: CameraFile) {
@@ -780,6 +846,8 @@ class CameraController(
     private companion object {
         const val BACKGROUND_RELEASE_MS = 20_000L
         const val ORIGINALS_KEPT = 6
+        /** The [downloadJobs] entry of [saveDngs]: the link stays while it runs */
+        const val DNG_BATCH = "#dng-batch"
         const val REJOIN_MS = 3_000L
         const val WAKE_ATTEMPTS = 2
         /** The access point takes a few seconds; more on a 2.4 GHz fallback */

@@ -138,7 +138,11 @@ cache (a broken transfer resumes), then `DngWriter` (the Kotlin port of `ssif2dn
 straight into shared storage. Its output decodes identically to the script's (libraw: same raw
 data, black, white balance, developed picture). The dumps stay on the camera.
 
+Many at once: the gallery's RAW button saves the DNG of every photo not saved yet (or of the chosen
+ones in a selection), one after the other, with an overall progress card and a stop. A failed one
+does not stop the rest; the camera link stays while it runs. The mark turns green once a photo's DNG
+is on the phone.
+
 ## Open
 
 - The high-ISO pipeline (low light) has no dump.
-- A bulk "save all RAW as DNG" in the gallery.
