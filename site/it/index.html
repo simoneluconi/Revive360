@@ -64,8 +64,8 @@
       ],
       "operatingSystem": "Android 10 o successivo",
       "applicationCategory": "MultimediaApplication",
-      "softwareVersion": "0.1.1",
-      "downloadUrl": "https://play.google.com/store/apps/details?id=com.simoneluconi.revive360",
+      "softwareVersion": "0.2.0",
+      "downloadUrl": ["https://play.google.com/store/apps/details?id=com.simoneluconi.revive360", "https://github.com/simoneluconi/Revive360/releases/latest"],
       "installUrl": "https://play.google.com/store/apps/details?id=com.simoneluconi.revive360",
       "softwareHelp": "https://github.com/simoneluconi/Revive360/blob/main/docs/INSTALL.md",
       "license": "https://www.gnu.org/licenses/gpl-3.0.html",
@@ -92,7 +92,9 @@
         { "@type": "Question", "name": "È gratis?",
           "acceptedAnswer": { "@type": "Answer", "text": "Sì. Revive360 è software libero e open source con licenza GNU GPL v3, senza pubblicità." } },
         { "@type": "Question", "name": "È su Google Play?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Sì. Revive360 è gratis su Google Play." } }
+          "acceptedAnswer": { "@type": "Answer", "text": "Sì. Revive360 è gratis su Google Play." } },
+        { "@type": "Question", "name": "Si può installare senza Google Play?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Sì. Ogni versione è anche nelle release del progetto su GitHub, come APK. Le versioni di Google Play e di GitHub sono firmate in modo diverso: per passare dall'una all'altra, disinstalla prima l'app." } }
       ]
     }
   ]
@@ -121,6 +123,9 @@
         <a class="btn primary" href="https://play.google.com/store/apps/details?id=com.simoneluconi.revive360">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
           Scarica da Google Play</a>
+        <a class="btn" href="https://github.com/simoneluconi/Revive360/releases/latest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+          Scarica l'APK</a>
         <a class="btn" href="https://github.com/simoneluconi/Revive360/blob/main/docs/INSTALL.md" hreflang="en">Guida all'installazione (in inglese)</a>
       </div>
       <ul class="facts">
@@ -204,7 +209,7 @@
     <h2 id="inizia-titolo">Come iniziare</h2>
     <p class="sub">Circa mezz'ora, una volta sola. Servono la fotocamera, la sua scheda microSD, un telefono Android e un computer.</p>
     <ol class="steps">
-      <li><h3>Scarica l'app</h3><p>Installa Revive360 gratis da <a href="https://play.google.com/store/apps/details?id=com.simoneluconi.revive360">Google Play</a>.</p></li>
+      <li><h3>Scarica l'app</h3><p>Installa Revive360 gratis da <a href="https://play.google.com/store/apps/details?id=com.simoneluconi.revive360">Google Play</a>, o scarica l'APK dall'<a href="https://github.com/simoneluconi/Revive360/releases/latest">ultima release su GitHub</a>.</p></li>
       <li><h3>Prepara la fotocamera</h3><p>Pochi comandi sul computer preparano la scheda e ti dicono cosa fare sulla fotocamera. Segui la <a href="https://github.com/simoneluconi/Revive360/blob/main/docs/INSTALL.md" hreflang="en">guida all'installazione</a> (in inglese).</p></li>
       <li><h3>Associa e scatta</h3><p>Accendi la fotocamera e tocca "Cerca la fotocamera" nell'app. Da lì in poi si collega da sola.</p></li>
     </ol>
@@ -231,6 +236,7 @@
     <details><summary>Servono un account o internet?</summary><p>No. Il telefono parla direttamente con la fotocamera via Bluetooth e tramite il Wi-Fi della fotocamera. Niente passa da internet. Vedi l'<a href="privacy/">informativa sulla privacy</a>.</p></details>
     <details><summary>È gratis?</summary><p>Sì. Revive360 è software libero e open source con licenza GNU GPL v3, senza pubblicità.</p></details>
     <details><summary>È su Google Play?</summary><p>Sì. Revive360 è gratis su <a href="https://play.google.com/store/apps/details?id=com.simoneluconi.revive360">Google Play</a>.</p></details>
+    <details><summary>Si può installare senza Google Play?</summary><p>Sì. Ogni versione è anche nelle <a href="https://github.com/simoneluconi/Revive360/releases/latest">release su GitHub</a> come APK: scaricalo sul telefono e aprilo. Le versioni di Google Play e di GitHub sono firmate in modo diverso: per passare dall'una all'altra, disinstalla prima l'app.</p></details>
     <p class="note">Modificare il software della fotocamera è a tuo rischio. La <a href="https://github.com/simoneluconi/Revive360/blob/main/docs/INSTALL.md" hreflang="en">guida all'installazione</a> spiega ogni passo, compreso come tornare al software originale Samsung.</p>
   </section>
 </main>
