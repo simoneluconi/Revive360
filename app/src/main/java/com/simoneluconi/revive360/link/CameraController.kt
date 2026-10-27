@@ -5,6 +5,7 @@ import android.net.Network
 import androidx.compose.ui.graphics.ImageBitmap
 import com.simoneluconi.revive360.BuildConfig
 import com.simoneluconi.revive360.EventLog
+import com.simoneluconi.revive360.media.DngWriter
 import com.simoneluconi.revive360.media.MediaSaver
 import com.simoneluconi.revive360.media.SavedFiles
 import com.simoneluconi.revive360.media.ThumbCache
@@ -23,6 +24,9 @@ import com.simoneluconi.revive360.protocol.LedState
 import com.simoneluconi.revive360.protocol.LiveStream
 import com.simoneluconi.revive360.protocol.Protocol
 import com.simoneluconi.revive360.protocol.CameraSettings
+import com.simoneluconi.revive360.protocol.RawLayout
+import com.simoneluconi.revive360.protocol.RawPair
+import com.simoneluconi.revive360.protocol.RawPairs
 import com.simoneluconi.revive360.settings.AppSettings
 import com.simoneluconi.revive360.settings.CameraStore
 import com.simoneluconi.revive360.settings.PairedCamera
@@ -585,12 +589,18 @@ class CameraController(
         }
     }
 
+    /** Deletes a file from the card; a photo takes its RAW pair with it (it would be left alone in the list). */
     suspend fun delete(file: CameraFile) {
         val client = requireClient()
-        withContext(Dispatchers.IO) { client.delete(file.path) }
-        EventLog.log("Deleted ${file.path}")
+        val raw = _files.value?.let { RawPairs.of(it).of(file) }
+        withContext(Dispatchers.IO) {
+            client.delete(file.path)
+            raw?.let { client.delete(it.front.path); client.delete(it.rear.path) }
+        }
+        EventLog.log("Deleted ${file.path}${if (raw != null) " and its RAW pair" else ""}")
         thumbs.forget(thumbs.key(cameraKey, file))
-        _files.update { list -> list?.filterNot { it.path == file.path } }
+        val gone = setOfNotNull(file.path, raw?.front?.path, raw?.rear?.path)
+        _files.update { list -> list?.filterNot { it.path in gone } }
     }
 
     suspend fun setLed(id: String, state: LedState, onMs: Int? = null, offMs: Int? = null) {
@@ -687,6 +697,63 @@ class CameraController(
         check(part.renameTo(done)) { "can't keep ${file.name}" }
         dir.listFiles { f -> !f.name.endsWith(".part") }?.sortedByDescending { it.lastModified() }?.drop(ORIGINALS_KEPT)?.forEach { it.delete() }
         done
+    }
+
+    /** The [downloads] entry of a photo's DNG, and its mark in [saved]. */
+    fun dngKey(photo: CameraFile): String = "${photo.path}#dng"
+
+    fun dngSavedKey(photo: CameraFile): String = savedKey(photo) + "|dng"
+
+    /**
+     * Saves a photo's RAW pair as one DNG (both lenses side by side) in the phone's Download/Revive360:
+     * the two dumps come to the cache (a broken transfer resumes), the DNG is written from them
+     * straight into the shared storage, the dumps go. Progress in [downloads] under [dngKey].
+     */
+    fun saveDng(photo: CameraFile, raw: RawPair) {
+        val key = dngKey(photo)
+        if (downloadJobs.containsKey(key)) return
+        val client = client ?: return
+        val resume = (state.value as? LinkState.Connected)?.info?.capabilities?.range == true
+        _downloads.update { it + (key to DownloadProgress(0, raw.size)) }
+        val job = scope.launch {
+            val parts = listOf(raw.front, raw.rear).map { it to partFile(savedKey(it)) }
+            try {
+                EventLog.log("DNG: ${photo.name} from ${raw.front.name} + ${raw.rear.name}")
+                withContext(Dispatchers.IO) {
+                    var before = 0L
+                    for ((file, part) in parts) {
+                        client.download(file.path, part, resume) { done, _ ->
+                            ensureActive()
+                            _downloads.update { it + (key to DownloadProgress(before + done, raw.size)) }
+                        }
+                        before += file.size
+                    }
+                    val layout = RawLayout.of(raw.front.name) ?: error("no layout in ${raw.front.name}")
+                    MediaSaver.publish(context, "${photo.baseName}.dng", FileKind.RAW, "image/x-adobe-dng", photo.mtime) { out ->
+                        DngWriter.write(parts[0].second, parts[1].second, layout, out)
+                    }
+                    parts.forEach { it.second.delete() }
+                }
+                saved.add(dngSavedKey(photo))
+                EventLog.log("DNG: ${photo.baseName}.dng saved")
+                _downloads.update { it - key }
+            } catch (e: Exception) {
+                val cancelled = !coroutineContext.isActive
+                EventLog.log("DNG: ${photo.name} ${if (cancelled) "cancelled" else "failed (${e.message})"}")
+                _downloads.update {
+                    if (cancelled) it - key
+                    else it + (key to (it[key] ?: DownloadProgress(0, raw.size)).copy(failed = e.message ?: "error"))
+                }
+            } finally {
+                downloadJobs.remove(key)
+            }
+        }
+        downloadJobs[key] = job
+    }
+
+    fun cancelDng(photo: CameraFile) {
+        downloadJobs.remove(dngKey(photo))?.cancel()
+        _downloads.update { it - dngKey(photo) }
     }
 
     fun cancelDownload(file: CameraFile) {

@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import com.simoneluconi.revive360.protocol.CameraFile
 import com.simoneluconi.revive360.protocol.FileKind
 import java.io.File
+import java.io.OutputStream
 
 /**
  * Publishes a downloaded original to the phone's shared storage, untouched (the camera's dual-fisheye
@@ -21,7 +22,11 @@ object MediaSaver {
         publish(context, file.name, file.kind, mimeType(file), file.mtime, source)
 
     /** A file made on the phone from a camera file (a stitched 360 photo), next to the originals. */
-    fun publish(context: Context, name: String, kind: FileKind, mime: String, mtime: Long, source: File): Uri {
+    fun publish(context: Context, name: String, kind: FileKind, mime: String, mtime: Long, source: File): Uri =
+        publish(context, name, kind, mime, mtime) { out -> source.inputStream().use { it.copyTo(out) } }
+
+    /** As above, the content written straight into the new entry by [write] (a DNG made on the way). */
+    fun publish(context: Context, name: String, kind: FileKind, mime: String, mtime: Long, write: (OutputStream) -> Unit): Uri {
         val resolver = context.contentResolver
         val (collection, directory) = when (kind) {
             FileKind.PHOTO -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_PICTURES
@@ -41,8 +46,7 @@ object MediaSaver {
         }
         val uri = resolver.insert(collection, values) ?: error("the system refused a new $kind entry")
         try {
-            resolver.openOutputStream(uri)?.use { out -> source.inputStream().use { it.copyTo(out) } }
-                ?: error("can't write $name")
+            resolver.openOutputStream(uri)?.use(write) ?: error("can't write $name")
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         } catch (e: Exception) {
             runCatching { resolver.delete(uri, null, null) }

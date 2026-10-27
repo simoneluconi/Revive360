@@ -167,9 +167,17 @@
     <string name="download_running">Salvataggio… %1$d%%</string>
     <string name="download_failed">Il trasferimento si è interrotto. Riprendi continua da dove era arrivato.</string>
     <string name="download_saved">Sul telefono, nella cartella %1$s</string>
+    <string name="dng_title">RAW</string>
+    <string name="dng_info">I dati del sensore di entrambe le lenti, %1$s sulla fotocamera. Si salvano come un unico DNG per i programmi di sviluppo RAW, con le due lenti affiancate.</string>
+    <string name="dng_action">Salva DNG</string>
+    <string name="dng_again">Salva di nuovo il DNG</string>
+    <string name="dng_running">Salvataggio del DNG… %1$d%%</string>
+    <string name="dng_failed">Il DNG non è stato salvato. Riprovando, il trasferimento continua da dove si era fermato.</string>
+    <string name="dng_saved">In Download/%1$s sul telefono</string>
     <string name="delete_action">Elimina</string>
     <string name="delete_title">Eliminare dalla fotocamera?</string>
     <string name="delete_message">%1$s verrà rimosso dalla scheda SD. Le copie sul telefono restano.</string>
+    <string name="delete_message_raw">%1$s e il suo RAW verranno rimossi dalla scheda SD. Le copie sul telefono restano.</string>
     <string name="delete_done">%1$s eliminato</string>
     <string name="gallery_selected">%1$d selezionati</string>
     <string name="select_all">Seleziona tutto</string>

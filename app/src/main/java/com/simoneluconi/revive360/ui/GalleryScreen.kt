@@ -45,6 +45,7 @@ import com.simoneluconi.revive360.link.DownloadProgress
 import com.simoneluconi.revive360.link.LinkState
 import com.simoneluconi.revive360.protocol.CameraFile
 import com.simoneluconi.revive360.protocol.FileKind
+import com.simoneluconi.revive360.protocol.RawPairs
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
 import kotlinx.coroutines.launch
 
@@ -68,7 +69,9 @@ fun GalleryScreen() {
     var selected by remember { mutableStateOf<Set<String>?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
-    val list = files
+    // The RAW dumps of a photo are not files of their own here: the photo carries a mark
+    val pairs = remember(files) { files?.let { RawPairs.of(it) } }
+    val list = pairs?.shown
     // Files gone from the card leave the selection
     val chosen = selected?.let { sel -> list.orEmpty().filter { it.path in sel } }
 
@@ -174,6 +177,7 @@ fun GalleryScreen() {
                         file = file,
                         progress = downloads[file.path],
                         saved = controller.savedKey(file) in saved,
+                        raw = pairs?.of(file) != null,
                         connected = connected,
                         selected = sel?.let { file.path in it },
                         onLongClick = { selected = (sel ?: emptySet()) + file.path },
@@ -210,6 +214,7 @@ private fun FileTile(
     file: CameraFile,
     progress: DownloadProgress?,
     saved: Boolean,
+    raw: Boolean,
     connected: Boolean,
     selected: Boolean?,
     onLongClick: () -> Unit,
@@ -248,7 +253,10 @@ private fun FileTile(
                 .background(colors.bg.copy(alpha = 0.72f))
                 .padding(horizontal = 10.dp, vertical = 5.dp),
         ) {
-            Label(file.name, size = 12.sp, weight = FontWeight.Bold, maxLines = 1, mono = true)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Label(file.name, Modifier.weight(1f), size = 12.sp, weight = FontWeight.Bold, maxLines = 1, mono = true)
+                if (raw) Label("RAW", size = 11.sp, weight = FontWeight.ExtraBold, color = colors.accent)
+            }
         }
         Box(Modifier.align(Alignment.TopEnd).padding(6.dp)) {
             when {

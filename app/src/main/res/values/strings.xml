@@ -169,9 +169,17 @@
     <string name="download_running">Saving… %1$d%%</string>
     <string name="download_failed">The transfer stopped. Resume picks up where it was.</string>
     <string name="download_saved">On the phone, in the %1$s folder</string>
+    <string name="dng_title">RAW</string>
+    <string name="dng_info">The sensor data of both lenses, %1$s on the camera. Saved as one DNG for raw editors, both lenses side by side.</string>
+    <string name="dng_action">Save DNG</string>
+    <string name="dng_again">Save DNG again</string>
+    <string name="dng_running">Saving the DNG… %1$d%%</string>
+    <string name="dng_failed">The DNG was not saved. Trying again picks the transfer up where it stopped.</string>
+    <string name="dng_saved">In Download/%1$s on the phone</string>
     <string name="delete_action">Delete</string>
     <string name="delete_title">Delete from the camera?</string>
     <string name="delete_message">%1$s will be removed from the SD card. Copies on the phone stay.</string>
+    <string name="delete_message_raw">%1$s and its RAW will be removed from the SD card. Copies on the phone stay.</string>
     <string name="delete_done">%1$s deleted</string>
     <string name="gallery_selected">%1$d selected</string>
     <string name="select_all">Select all</string>

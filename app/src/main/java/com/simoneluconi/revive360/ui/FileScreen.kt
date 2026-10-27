@@ -28,7 +28,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.revive360.R
 import com.simoneluconi.revive360.link.LinkState
 import com.simoneluconi.revive360.media.MediaSaver
+import com.simoneluconi.revive360.protocol.CameraFile
 import com.simoneluconi.revive360.protocol.FileKind
+import com.simoneluconi.revive360.protocol.RawPair
+import com.simoneluconi.revive360.protocol.RawPairs
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
 import kotlinx.coroutines.launch
 
@@ -49,6 +52,7 @@ fun FileScreen(path: String) {
     val info = (state as? LinkState.Connected)?.info
     val caps = info?.capabilities
     val file = files?.firstOrNull { it.path == path }
+    val raw = file?.let { f -> files?.let { RawPairs.of(it).of(f) } }
 
     ScreenScaffold(title = file?.name ?: path.substringAfterLast('/')) {
         if (file == null) {
@@ -119,6 +123,10 @@ fun FileScreen(path: String) {
             }
         }
 
+        if (raw != null && (caps?.download == true || downloads[controller.dngKey(file)] != null)) {
+            DngCard(file, raw, connected = info != null)
+        }
+
         if (caps?.delete == true) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 PillButton(
@@ -134,7 +142,7 @@ fun FileScreen(path: String) {
     if (confirmDelete && file != null) {
         ConfirmDialog(
             title = stringResource(R.string.delete_title),
-            message = stringResource(R.string.delete_message, file.name),
+            message = stringResource(if (raw != null) R.string.delete_message_raw else R.string.delete_message, file.name),
             confirm = stringResource(R.string.delete_action),
             cancel = stringResource(R.string.action_cancel),
             danger = true,
@@ -151,6 +159,55 @@ fun FileScreen(path: String) {
                 } finally {
                     deleting = false
                 }
+            }
+        }
+    }
+}
+
+/** A photo's RAW pair: what it is, and saving it as a DNG on the phone. */
+@Composable
+private fun DngCard(photo: CameraFile, raw: RawPair, connected: Boolean) {
+    val controller = LocalActions.current.app.controller
+    val colors = LocalAppColors.current
+    val downloads by controller.downloads.collectAsStateWithLifecycle()
+    val saved by controller.saved.keys.collectAsStateWithLifecycle()
+    val progress = downloads[controller.dngKey(photo)]
+    val isSaved = controller.dngSavedKey(photo) in saved
+    Card(Modifier.fillMaxWidth()) {
+        Label(stringResource(R.string.dng_title), size = 15.sp)
+        Spacer(Modifier.height(6.dp))
+        Label(stringResource(R.string.dng_info, Format.bytes(raw.size)), size = 13.sp, color = colors.text2)
+        Spacer(Modifier.height(12.dp))
+        when {
+            progress != null && progress.failed == null -> {
+                Label(stringResource(R.string.dng_running, (progress.fraction * 100).toInt()), size = 15.sp)
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(colors.line)) {
+                    Box(Modifier.fillMaxWidth(progress.fraction.coerceAtLeast(0.02f)).height(6.dp).clip(CircleShape).background(colors.accent))
+                }
+                Spacer(Modifier.height(4.dp))
+                Label("${Format.bytes(progress.done)} / ${Format.bytes(progress.total)}", size = 13.sp, color = colors.text2, tabular = true)
+                Spacer(Modifier.height(12.dp))
+                PillButton(stringResource(R.string.action_cancel), icon = AppIcons.Close) { controller.cancelDng(photo) }
+            }
+            else -> {
+                if (progress?.failed != null) {
+                    Label(stringResource(R.string.dng_failed), size = 14.sp, color = colors.bad)
+                    Spacer(Modifier.height(10.dp))
+                } else if (isSaved) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(AppIcons.Check, colors.good, size = 18.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Label(stringResource(R.string.dng_saved, MediaSaver.FOLDER), size = 14.sp, color = colors.text2)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+                PillButton(
+                    stringResource(if (isSaved && progress?.failed == null) R.string.dng_again else R.string.dng_action),
+                    icon = AppIcons.Raw,
+                    style = ButtonStyle.PRIMARY,
+                    enabled = connected,
+                ) { controller.saveDng(photo, raw) }
             }
         }
     }

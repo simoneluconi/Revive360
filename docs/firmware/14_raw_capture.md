@@ -123,11 +123,22 @@ add `ColorMatrix2`.
   cleared. Every 30 s it sends `rawfix` again, in case the camera app restarted. Every still
   taken through the API does the same first, because the recipe reads the flag when it is built.
 - Complete dumps (size = rowbytes × rows, untouched for 2 s) move from the card root to
-  `DCIM/RAW/`, without the parentheses. A name already there gets `-N`, since the counter
-  restarts at boot.
+  `DCIM/RAW/`, named after the shot's JPEG: `360_0383.JPG` → `360_0383_front_7776x3888x3950.raw`
+  and `360_0383_rear_…`. The RTOS writes both dumps before the JPEG (front done at :47, rear
+  :52, JPEG :53), so the shot's JPEG is the oldest one not older than the dump (within 60 s).
+  A dump whose JPEG never comes keeps the RTOS name without the parentheses. A name already
+  there gets `-N`.
+
+## In the app
+
+The gallery takes each photo's pair out of the list and marks the photo "RAW" (`RawPairs`); deleting
+the photo deletes its pair. The photo's page saves the pair as one DNG in the phone's
+`Download/Revive360/` (out of the photo gallery, so a shot is not shown twice): both dumps to the
+cache (a broken transfer resumes), then `DngWriter` (the Kotlin port of `ssif2dng.py`) streams the DNG
+straight into shared storage. Its output decodes identically to the script's (libraw: same raw
+data, black, white balance, developed picture). The dumps stay on the camera.
 
 ## Open
 
 - The high-ISO pipeline (low light) has no dump.
-- DNG for the user: the plan is to build it on the phone (or with the PC script), not on the
-  camera, so the camera's card I/O stays free for the next shot's own dump.
+- A bulk "save all RAW as DNG" in the gallery.
