@@ -20,7 +20,7 @@ class MainActivity : ComponentActivity() {
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         EventLog.log("Permissions: ${granted.entries.joinToString { "${it.key.substringAfterLast('.')}=${it.value}" }}")
         // The connection started without them (at the app's start): again, with them
-        if (granted.values.any { it }) app.controller.connect()
+        if (granted.any { it.value && it.key in requiredPermissions() }) app.controller.connect()
     }
 
     /** Waiting for the companion chooser's answer (lost if the activity is recreated meanwhile). */
@@ -36,7 +36,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val missing = requiredPermissions().filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        // Notifications only show the transfers' one (TransferService): asked here, not needed for the link
+        val notifications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
+        val missing = (requiredPermissions() + notifications).filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) permissions.launch(missing.toTypedArray())
         setContent {
             AppRoot(app = app, findCamera = ::findCamera)

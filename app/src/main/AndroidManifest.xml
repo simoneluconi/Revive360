@@ -43,6 +43,8 @@
     <!-- TransferService: downloads and DNGs go on with the app in the background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13+: the transfers' notification is shown only with it -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Cleartext: the camera only speaks plain HTTP, on a private WPA2 network the app joins on purpose -->
     <application

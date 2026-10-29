@@ -19,7 +19,7 @@ android {
         applicationId = "com.simoneluconi.revive360"
         minSdk = 29
         targetSdk = 37
-        versionCode = 4
+        versionCode = 5
         versionName = "0.3.0"
     }
 
