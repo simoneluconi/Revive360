@@ -128,7 +128,12 @@ _netup_write_hostapd_conf() {
             echo "hw_mode=g"
             echo "ieee80211n=1"
         fi
-        echo "max_num_sta=1"
+        # Room for more than one: Android joins an app's network with a new random MAC
+        # each time, and with 1 a phone whose link died stayed in the table and kept the
+        # phone out (association rejected) until hostapd dropped it, 5 min by default;
+        # dead stations are polled and dropped after 30 s
+        echo "max_num_sta=3"
+        echo "ap_max_inactivity=30"
         echo "ignore_broadcast_ssid=$HIDE"
         echo "wpa=2"
         echo "wpa_key_mgmt=WPA-PSK"
