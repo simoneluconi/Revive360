@@ -42,7 +42,9 @@ else
 fi
 IMAGE=firmware/out/$CARD_IMAGE
 SD_SRC=camera/out/sd
+# The shim loads the plugin from the card as g360r/libg360r_plugin.so: the r210 has its own
 PLUGIN=camera/out/libg360r_plugin.so
+[ "$MODEL" = r210 ] && PLUGIN=camera/out/libg360r_plugin_r210.so
 BLE=camera/out/g360r-ble
 export MSYS_NO_PATHCONV=1
 export G360R_SYSROOT=${SYSROOT#camera/}
@@ -178,8 +180,7 @@ cmd_build() {
     say "== camera controller, with its tests"
     sh camera/build.sh smoke
     say "== plugin and Bluetooth side"
-    # The r210 image has no shim yet, so nothing would load the plugin
-    [ "$MODEL" = r210 ] || sh camera/build.sh plugin
+    if [ "$MODEL" = r210 ]; then sh camera/build.sh plugin-r210; else sh camera/build.sh plugin; fi
     sh camera/build.sh ble
     say "== firmware"
     sh camera/tools/make_firmware.sh "$STOCK"
@@ -189,24 +190,20 @@ cmd_build() {
 # "r210 " when that is the model, so the commands we print can be pasted as they are
 model_arg() { [ "$MODEL" = c200 ] || printf '%s ' "$MODEL"; }
 
-# The controller, the plugin (c200) and the Bluetooth side in card/g360r/, and the
+# The controller, the model's plugin and the Bluetooth side in card/g360r/, and the
 # settings (kept when the card has some). A new r210 card gets its Wi-Fi passphrase
 # here, printed for the app's manual pairing: the r210's Bluetooth side is untested.
 copy_payload() {
     local card=$1 f
     [ -f "$SD_SRC/g360r/bin/g360rd" ] || die "no $SD_SRC yet: run ./install.sh $(model_arg)build first"
-    [ "$MODEL" = r210 ] || [ -f "$PLUGIN" ] || die "no $PLUGIN yet: run ./install.sh build first"
+    [ -f "$PLUGIN" ] || die "no $PLUGIN yet: run ./install.sh $(model_arg)build first"
     [ -f "$BLE" ] || die "no $BLE yet: run ./install.sh $(model_arg)build first"
     mkdir -p "$card/g360r/bin" "$card/g360r/log"
     for f in "$SD_SRC"/g360r/*; do [ -f "$f" ] && cp "$f" "$card/g360r/"; done
     cp "$SD_SRC/g360r/bin/g360rd" "$card/g360r/bin/g360rd"
     cp "$BLE" "$card/g360r/bin/g360r-ble"
-    if [ "$MODEL" = r210 ]; then
-        step "controller and Bluetooth side copied to card/g360r/"
-    else
-        cp "$PLUGIN" "$card/g360r/libg360r_plugin.so"
-        step "controller, plugin and Bluetooth side copied to card/g360r/"
-    fi
+    cp "$PLUGIN" "$card/g360r/libg360r_plugin.so"
+    step "controller, plugin and Bluetooth side copied to card/g360r/"
     local conf="$card/g360r/g360r.conf"
     if [ -f "$conf" ]; then
         step "settings kept"

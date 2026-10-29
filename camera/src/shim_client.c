@@ -27,8 +27,9 @@ int shim_request(const char *req, char *reply, size_t len)
 {
     struct sockaddr_un sa;
     struct timeval tv = { 15, 0 };
-    char line[256];
-    ssize_t n;
+    char line[1024];
+    ssize_t n = 0;
+    size_t got = 0;
     int s, rc = -1;
 
     reply[0] = 0;
@@ -46,12 +47,20 @@ int shim_request(const char *req, char *reply, size_t len)
         snprintf(reply, len, "error no shim (%s: %s)", SHIM_SOCK, strerror(errno));
     } else if (send(s, line, strlen(line), MSG_NOSIGNAL) < 0) {
         snprintf(reply, len, "error send: %s", strerror(errno));
-    } else if ((n = read(s, reply, len - 1)) <= 0) {
-        snprintf(reply, len, "error read: %s", n < 0 ? strerror(errno) : "no answer");
     } else {
-        reply[n] = 0;
-        reply[strcspn(reply, "\r\n")] = 0;
-        rc = 0;
+        /* One line back, possibly in several pieces (the shim answers up to 16 KB) */
+        while (got < len - 1 && (n = read(s, reply + got, len - 1 - got)) > 0) {
+            got += (size_t)n;
+            reply[got] = 0;
+            if (strchr(reply, '\n'))
+                break;
+        }
+        if (got == 0) {
+            snprintf(reply, len, "error read: %s", n < 0 ? strerror(errno) : "no answer");
+        } else {
+            reply[strcspn(reply, "\r\n")] = 0;
+            rc = 0;
+        }
     }
     close(s);
     return rc;

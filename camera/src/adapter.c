@@ -221,6 +221,11 @@ const char *const SET360_POWER_OFF[] = { "1", "3", "5", "30", "never" };
 
 #define N(x) ((int)(sizeof x / sizeof x[0]))
 
+void adapter_def_setting(adapter_t *a, const char *id, const char *const *values, int n)
+{
+    def(a, id, values, n);
+}
+
 void adapter_add_360_setting(adapter_t *a, const char *id)
 {
     if (strcmp(id, "mode") == 0) def(a, id, SET360_MODE, N(SET360_MODE));

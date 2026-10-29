@@ -116,6 +116,8 @@ int  adapter_storage_mounted(const adapter_t *a);
  * timelapse_interval, loop_time, ev, iso_limit, white_balance, metering, hdr,
  * sharpness, wind_cut, audio, beep, led, auto_power_off) with its protocol tokens. */
 void adapter_add_360_setting(adapter_t *a, const char *id);
+/* The same with the model's own tokens, for a camera whose menus differ */
+void adapter_def_setting(adapter_t *a, const char *id, const char *const *values, int n);
 
 /* Adapter constructors (adapter_*.c) */
 void adapter_c200_init(adapter_t *a, const config_t *cfg);

@@ -315,7 +315,7 @@ void api_debug_shim(req_t *r)
     jobj_t o;
     const char *req;
     int wrong = 0, s;
-    char reply[1024] = "", logtail[16384] = "", files[4096] = "";
+    static char reply[16384], logtail[16384], files[4096];
     char *tail[] = { "/bin/sh", "-c", "tail -n 60 /tmp/g360r/shim.log 2>&1", NULL };
     char *lsdir[] = { "/bin/sh", "-c",
         "ls -la /tmp/g360r/; cat /proc/self/attr/current 2>/dev/null; echo;"
@@ -325,6 +325,8 @@ void api_debug_shim(req_t *r)
     sbuf_t b;
     ssize_t n;
 
+    /* Static: 36 KB is a lot for a connection thread's stack; a debug aid, one request at a time */
+    reply[0] = logtail[0] = files[0] = 0;
     if (jobj_parse(r->body, r->body_len, &o) < 0) {
         http_send_error(r, 400, "bad_request", "body is not a JSON object");
         return;
