@@ -11,7 +11,7 @@
 
     <!-- Home -->
     <string name="welcome_title">Set up your camera</string>
-    <string name="welcome_text">Prepare the camera\'s SD card once with ./install.sh, then switch the camera on and pair it: the app finds it over Bluetooth, and from then on connects by itself while the phone stays on the internet.</string>
+    <string name="welcome_text">Revive360 only works with a camera running the Revive360 firmware: with the stock firmware the app can\'t find it. Install it once with the guide, then switch the camera on and pair it: the app finds it over Bluetooth and connects by itself from then on, while the phone stays on the internet.</string>
     <string name="welcome_action">Set up the camera</string>
     <string name="adapter_not_supported">This camera is not fully supported yet (%1$s): only what it reports is shown.</string>
     <string name="status_battery">Battery</string>
@@ -137,7 +137,12 @@
 
     <!-- Pairing -->
     <string name="pair_title">Set up</string>
-    <string name="pair_step_sd">Prepare the camera\'s SD card with ./install.sh (see the install guide) and put it in the camera.</string>
+    <string name="pair_step_sd">Install the Revive360 firmware on the camera and prepare its SD card, as the guide explains.</string>
+    <string name="models_title">BEFORE YOU START</string>
+    <string name="models_custom_firmware">Needs the Revive360 firmware. It does not work with the stock firmware.</string>
+    <string name="models_stock_firmware">Works with the stock firmware.</string>
+    <string name="models_coming">Not supported yet.</string>
+    <string name="models_guide">Install guide</string>
     <string name="pair_step_power">Switch the camera on: for 3 minutes it accepts a new phone. If it has been on longer, switch it off and on again.</string>
     <string name="pair_code_label">CAMERA CODE</string>
     <string name="pair_code_placeholder">8-digit code</string>
@@ -266,7 +271,7 @@
     <string name="pano_saving_flat">Saving…</string>
     <string name="pair_step_find">Tap Find the camera and pick yours. Then Android shows its own window once: pick the G360R network.</string>
     <string name="pair_searching">Searching…</string>
-    <string name="pair_none">No camera found. Is it on and close by, with the phone\'s Bluetooth on?</string>
+    <string name="pair_none">No camera found. Is it on and close by, with the phone\'s Bluetooth on? Does it run the Revive360 firmware? With the stock firmware the app can\'t see it.</string>
     <string name="pair_choose">PICK YOUR CAMERA</string>
     <string name="pair_use">Pair</string>
     <string name="pair_connecting">Connecting to the camera…</string>

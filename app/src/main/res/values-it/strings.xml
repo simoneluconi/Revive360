@@ -9,7 +9,7 @@
 
     <!-- Home -->
     <string name="welcome_title">Configura la fotocamera</string>
-    <string name="welcome_text">Prepara una volta la scheda SD della fotocamera con ./install.sh, poi accendila e associala: l\'app la trova via Bluetooth e da lì in poi si collega da sola, mentre il telefono resta connesso a internet.</string>
+    <string name="welcome_text">Revive360 funziona solo con la fotocamera aggiornata al firmware Revive360: con il firmware stock l\'app non la trova. Installalo una volta seguendo la guida, poi accendi la fotocamera e associala: l\'app la trova via Bluetooth e da lì in poi si collega da sola, mentre il telefono resta connesso a internet.</string>
     <string name="welcome_action">Configura la fotocamera</string>
     <string name="adapter_not_supported">Questa fotocamera non è ancora supportata del tutto (%1$s): vedi solo quello che dichiara.</string>
     <string name="status_battery">Batteria</string>
@@ -135,7 +135,12 @@
 
     <!-- Pairing -->
     <string name="pair_title">Configurazione</string>
-    <string name="pair_step_sd">Prepara la scheda SD della fotocamera con ./install.sh (vedi la guida d\'installazione) e inseriscila.</string>
+    <string name="pair_step_sd">Installa il firmware Revive360 sulla fotocamera e prepara la sua scheda SD, come spiega la guida.</string>
+    <string name="models_title">PRIMA DI INIZIARE</string>
+    <string name="models_custom_firmware">Serve il firmware Revive360. Con il firmware stock non funziona.</string>
+    <string name="models_stock_firmware">Funziona con il firmware stock.</string>
+    <string name="models_coming">Non ancora supportata.</string>
+    <string name="models_guide">Guida all\'installazione</string>
     <string name="pair_step_power">Accendi la fotocamera: per 3 minuti accetta un nuovo telefono. Se è accesa da più tempo, spegnila e riaccendila.</string>
     <string name="pair_code_label">CODICE DELLA FOTOCAMERA</string>
     <string name="pair_code_placeholder">Codice di 8 cifre</string>
@@ -264,7 +269,7 @@
     <string name="pano_saving_flat">Salvataggio…</string>
     <string name="pair_step_find">Tocca Cerca la fotocamera e scegli la tua. Poi Android mostra una sua finestra una sola volta: scegli la rete G360R.</string>
     <string name="pair_searching">Cerco…</string>
-    <string name="pair_none">Nessuna fotocamera trovata. È accesa e vicina, con il Bluetooth del telefono attivo?</string>
+    <string name="pair_none">Nessuna fotocamera trovata. È accesa e vicina, con il Bluetooth del telefono attivo? Ha il firmware Revive360? Con il firmware stock l\'app non la vede.</string>
     <string name="pair_choose">SCEGLI LA TUA FOTOCAMERA</string>
     <string name="pair_use">Associa</string>
     <string name="pair_connecting">Mi collego alla fotocamera…</string>

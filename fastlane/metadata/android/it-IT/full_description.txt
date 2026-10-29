@@ -2,8 +2,8 @@ Revive360 fa tornare a funzionare la fotocamera Samsung Gear 360 (2016, SM-C200)
 
 Le app Samsung per la Gear 360 non funzionano più sui telefoni di oggi. Revive360 è un'app gratuita e open source che riporta in vita la fotocamera: scatta dal telefono, guarda quello che vede la fotocamera, cambia le impostazioni e ottieni vere foto a 360°.
 
-IMPORTANTE: LA FOTOCAMERA HA BISOGNO DI UN PICCOLO COMPONENTE
-Revive360 parla con un piccolo componente da installare una volta sola sulla fotocamera, dal computer, tramite la sua scheda microSD. La guida gratuita ti accompagna in circa mezz'ora, e il software originale Samsung della fotocamera si può sempre rimettere. Senza il componente l'app non può collegarsi alla fotocamera.
+IMPORTANTE: SERVE IL FIRMWARE REVIVE360
+Revive360 funziona solo con la fotocamera aggiornata al firmware Revive360, da installare una volta sola dal computer tramite la scheda microSD (circa mezz'ora, guida gratuita). Con il firmware stock l'app non la trova. Il firmware stock si può sempre rimettere.
 Guida all'installazione (in inglese): https://github.com/simoneluconi/Revive360
 
 COSA PUOI FARE

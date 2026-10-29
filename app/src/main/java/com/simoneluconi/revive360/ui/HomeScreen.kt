@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalUriHandler
+import com.simoneluconi.revive360.settings.CameraModels
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -152,6 +154,7 @@ fun HomeScreen() {
 private fun WelcomeCard() {
     val nav = LocalActions.current
     val colors = LocalAppColors.current
+    val uri = LocalUriHandler.current
     Card {
         Box(Modifier.size(64.dp).clip(CircleShape).background(colors.accentSoft), contentAlignment = Alignment.Center) {
             Icon(AppIcons.Camera360, colors.accent, size = 34.dp)
@@ -161,8 +164,11 @@ private fun WelcomeCard() {
         Spacer(Modifier.height(6.dp))
         Label(stringResource(R.string.welcome_text), color = colors.text2)
         Spacer(Modifier.height(18.dp))
-        PillButton(stringResource(R.string.welcome_action), icon = AppIcons.Wifi, style = ButtonStyle.PRIMARY) {
-            nav.navigate(Screen.Pair())
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton(stringResource(R.string.welcome_action), icon = AppIcons.Wifi, style = ButtonStyle.PRIMARY) {
+                nav.navigate(Screen.Pair())
+            }
+            PillButton(stringResource(R.string.models_guide)) { uri.openUri(CameraModels.INSTALL_GUIDE) }
         }
     }
 }

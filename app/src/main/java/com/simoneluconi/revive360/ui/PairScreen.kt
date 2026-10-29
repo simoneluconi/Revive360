@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -37,6 +38,9 @@ import com.simoneluconi.revive360.link.BleSession
 import com.simoneluconi.revive360.link.CameraBle
 import com.simoneluconi.revive360.link.CompanionWifi
 import com.simoneluconi.revive360.protocol.Protocol
+import com.simoneluconi.revive360.settings.CameraModels
+import com.simoneluconi.revive360.settings.Requirement
+import com.simoneluconi.revive360.settings.Support
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -119,6 +123,7 @@ fun PairScreen(replaceId: String? = null) {
     }
 
     ScreenScaffold(title = stringResource(R.string.pair_title)) {
+        BeforeYouStart()
         Card {
             Step(1, stringResource(R.string.pair_step_sd))
             Spacer(Modifier.height(12.dp))
@@ -173,6 +178,29 @@ fun PairScreen(replaceId: String? = null) {
         } else {
             ManualPairing(replaceId)
         }
+    }
+}
+
+/** Which cameras work and what each one needs, before the user looks for one ([CameraModels]). */
+@Composable
+private fun BeforeYouStart() {
+    val colors = LocalAppColors.current
+    val uri = LocalUriHandler.current
+    Card {
+        Label(stringResource(R.string.models_title), size = 13.sp, color = colors.text2, weight = FontWeight.Bold)
+        CameraModels.all.forEach { model ->
+            Spacer(Modifier.height(10.dp))
+            Label("${model.name} · ${model.code}", size = 15.sp, weight = FontWeight.Bold)
+            val need = when {
+                model.support == Support.COMING -> R.string.models_coming
+                model.requirement == Requirement.CUSTOM_FIRMWARE -> R.string.models_custom_firmware
+                model.requirement == Requirement.STOCK_FIRMWARE -> R.string.models_stock_firmware
+                else -> R.string.models_coming
+            }
+            Label(stringResource(need), size = 14.sp, color = colors.text2)
+        }
+        Spacer(Modifier.height(14.dp))
+        PillButton(stringResource(R.string.models_guide)) { uri.openUri(CameraModels.INSTALL_GUIDE) }
     }
 }
 
