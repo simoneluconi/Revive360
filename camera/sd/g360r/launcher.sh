@@ -165,8 +165,9 @@ status_led() {
 # (lens LEDs red when ready) is not overwritten.
 led_signature() {
     [ "$MODE" = normal ] || return 0
-    # The LED map above is the SM-C200's; the SM-R210's 7 LEDs are not mapped yet
-    grep -q 'Model=SMC200' /etc/info.ini 2>/dev/null || return 0
+    # The SM-R210's led.0-4 are the same (charge R/G/B, lens LEDs green there; its
+    # led.5-6 are the lens LEDs red): the same signature on both
+    grep -qE 'Model=SM(C200|R210)' /etc/info.ini 2>/dev/null || return 0
     L=/sys/class/leds
     saved=""
     for n in 0 1 2 3 4; do

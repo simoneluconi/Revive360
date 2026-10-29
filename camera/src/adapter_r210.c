@@ -9,8 +9,13 @@
  * drove them. Status, files and time are the generic ones. The camera is kept
  * awake while a client talks to us.
  *
+ * LEDs: 7 gpio LEDs /sys/class/leds/led.0..6 (mapped on the hardware,
+ * 2026-10-29): led.0-2 charge LED red/green/blue, led.3 the lens LED on the
+ * display side green, led.4 the other lens LED green, led.5 and led.6 the same
+ * two lens LEDs red. 0-4 mean what they mean on the C200; roles still come
+ * from the SD config.
+ *
  * TODO(r210):
- *  - map /sys/class/leds/led.0-6 (run `g360rd ledtest`) and call adapter_discover_leds;
  *  - RAW (the RTOS has the same ssifdump command as the C200's).
  */
 #include "adapter.h"
@@ -451,7 +456,7 @@ void adapter_r210_init(adapter_t *a, const config_t *cfg)
     a->n_video_modes = 0;
     a->files_delete = 1;
     a->thumbnails = 1;
-    a->n_leds = 0;
+    adapter_discover_leds(a, "/sys/class/leds", 7, cfg);
     /* As on the C200, the camera shows its clock through a fixed +9 h zone (ARB2:
      * set to 19:33 UTC, its log read 04:33): timeset.c compensates */
     a->clock_local = 1;
