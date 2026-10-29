@@ -93,6 +93,10 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
                 // Already complete (or the file shrank): the size check below decides
                 val total = contentRangeTotal(connection.getHeaderField("Content-Range")) ?: offset
                 if (total == offset) return progress(offset, total)
+                // Longer than the file: the part is no good (no resume ever fits it), so from zero
+                connection.disconnect()
+                target.delete()
+                return download(path, target, resume, progress)
             }
             if (code !in 200..299) throw failure(connection, code)
             val append = code == 206 && offset > 0
@@ -105,7 +109,12 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
             FileOutputStream(target, append).use { out ->
                 connection.inputStream.use { input -> copy(input, out, start, total, progress) }
             }
-            if (total >= 0 && target.length() != total) throw IOException("download ended at ${target.length()} of $total bytes")
+            if (total >= 0 && target.length() != total) {
+                val got = target.length()
+                // Short: resumable. Longer than the file: something else wrote to it, it can only start over
+                if (got > total) target.delete()
+                throw IOException("download ended at $got of $total bytes")
+            }
         } finally {
             connection.disconnect()
         }
@@ -113,10 +122,12 @@ class CameraClient(host: String, port: Int = Protocol.PORT, private val connecto
 
     /**
      * The live view stream (protocol §5.14), open until [LiveStream.close]. The camera's stream starts
-     * its camcorder a few seconds after the request: the read timeout leaves room for it.
+     * its camcorder a few seconds after the request: the read timeout leaves room for it. [opening]
+     * gets the connection before the wait, so another thread can disconnect it to give up.
      */
-    fun openLiveView(quality: String? = null): LiveStream {
+    fun openLiveView(quality: String? = null, opening: (HttpURLConnection) -> Unit = {}): LiveStream {
         val connection = open("GET", "/api/v1/liveview" + (quality?.let { "?quality=$it" } ?: ""), LIVE_READ_TIMEOUT_MS)
+        opening(connection)
         val code = connection.responseCode
         if (code != 200) {
             val failure = failure(connection, code)

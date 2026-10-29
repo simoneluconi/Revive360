@@ -1,5 +1,6 @@
 package com.simoneluconi.revive360.ui
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -186,6 +187,8 @@ fun SettingsScreen() {
                 try {
                     app.controller.power(off)
                     nav.message(resources.getString(if (off) R.string.power_off_done else R.string.power_reboot_done), MessageKind.GOOD)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     nav.message(Format.error(resources, e), MessageKind.BAD)
                 }

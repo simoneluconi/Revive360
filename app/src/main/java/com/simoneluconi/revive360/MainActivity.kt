@@ -19,6 +19,8 @@ class MainActivity : ComponentActivity() {
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         EventLog.log("Permissions: ${granted.entries.joinToString { "${it.key.substringAfterLast('.')}=${it.value}" }}")
+        // The connection started without them (at the app's start): again, with them
+        if (granted.values.any { it }) app.controller.connect()
     }
 
     /** Waiting for the companion chooser's answer (lost if the activity is recreated meanwhile). */
@@ -58,18 +60,21 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun requiredPermissions(): List<String> = when {
-        // Local network protection: the camera's LAN address is unreachable without it
-        Build.VERSION.SDK_INT >= 37 -> listOf(Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_LOCAL_NETWORK)
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> listOf(Manifest.permission.NEARBY_WIFI_DEVICES)
-        else -> listOf(Manifest.permission.ACCESS_FINE_LOCATION)
-    } + bluetoothPermissions()
+    companion object {
+        /** What the app asks for at start; the connection card asks again for what is still missing. */
+        fun requiredPermissions(): List<String> = when {
+            // Local network protection: the camera's LAN address is unreachable without it
+            Build.VERSION.SDK_INT >= 37 -> listOf(Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_LOCAL_NETWORK)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> listOf(Manifest.permission.NEARBY_WIFI_DEVICES)
+            else -> listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        } + bluetoothPermissions()
 
-    /** Android 12+: finding the camera and asking it for its Wi-Fi over Bluetooth (protocol §9) */
-    private fun bluetoothPermissions(): List<String> =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-        } else {
-            emptyList()
-        }
+        /** Android 12+: finding the camera and asking it for its Wi-Fi over Bluetooth (protocol §9) */
+        private fun bluetoothPermissions(): List<String> =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                emptyList()
+            }
+    }
 }

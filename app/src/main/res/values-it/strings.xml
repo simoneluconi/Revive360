@@ -132,6 +132,15 @@
     <string name="error_not_found">Il file non è più sulla fotocamera</string>
     <string name="error_link">Contatto con la fotocamera perso</string>
     <string name="error_camera">La fotocamera ha rifiutato (%1$s)</string>
+    <string name="error_memory">Memoria del telefono insufficiente per questa foto</string>
+
+    <!-- Permissions -->
+    <string name="permission_missing">All\'app mancano dei permessi: senza, non può svegliare la fotocamera via Bluetooth né raggiungere il suo Wi-Fi.</string>
+    <string name="permission_grant">Consenti</string>
+
+    <!-- Transfers (foreground service) -->
+    <string name="transfer_channel">Trasferimenti</string>
+    <string name="transfer_running">Copia dei file dalla fotocamera</string>
 
     <!-- Pairing -->
     <string name="pair_title">Configurazione</string>

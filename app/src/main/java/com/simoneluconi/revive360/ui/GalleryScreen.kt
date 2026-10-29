@@ -49,6 +49,7 @@ import com.simoneluconi.revive360.protocol.CameraFile
 import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.protocol.RawPairs
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -96,6 +97,8 @@ fun GalleryScreen() {
                 try {
                     controller.delete(file)
                     done++
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     lastError = e
                 }
@@ -120,6 +123,8 @@ fun GalleryScreen() {
         scope.launch {
             try {
                 controller.refreshFiles()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 nav.message(Format.error(resources, e), MessageKind.BAD)
             } finally {

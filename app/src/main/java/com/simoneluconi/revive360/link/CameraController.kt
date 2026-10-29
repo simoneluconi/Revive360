@@ -32,7 +32,9 @@ import com.simoneluconi.revive360.settings.AppSettings
 import com.simoneluconi.revive360.settings.CameraStore
 import com.simoneluconi.revive360.settings.PairedCamera
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -44,7 +46,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -115,7 +120,10 @@ class CameraController(
     val thumbs: ThumbCache,
     val saved: SavedFiles,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // A failure nothing caught is logged, not a crash of the whole app
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, e ->
+        EventLog.log("Unexpected error: ${e.javaClass.simpleName} ${e.message}")
+    })
     private val network = CameraNetwork(context)
 
     private val _state = MutableStateFlow<LinkState>(if (store.camera.value == null) LinkState.NotPaired else LinkState.Idle)
@@ -168,6 +176,9 @@ class CameraController(
     private var rejoinAttempts = 0
     private var foreground = false
     private val downloadJobs = HashMap<String, Job>()
+    /** [TransferService] runs (see [transfersChanged]) */
+    private var transferService = false
+    private val originals = Mutex()
 
     /** The connected camera's identity, for cache keys. */
     private val cameraKey: String get() = (state.value as? LinkState.Connected)?.info?.mac ?: store.camera.value?.mac ?: "camera"
@@ -200,6 +211,12 @@ class CameraController(
     fun connect() {
         rejoinAttempts = 0
         join()
+    }
+
+    /** Stops a connection in progress (or a failed one): the camera stays idle until asked again. */
+    fun cancel() {
+        EventLog.log("Connection cancelled")
+        disconnect(LinkState.Idle)
     }
 
     private fun join() {
@@ -371,7 +388,15 @@ class CameraController(
             launch {
                 // The clock first: file times are only right once the camera knows the phone's zone
                 if (info.capabilities.time) syncTime(client)
-                if (info.capabilities.listFiles) refreshFiles()
+                // A failed listing (logged there) must not end the session: the gallery lists again
+                if (info.capabilities.listFiles) {
+                    try {
+                        refreshFiles()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                    }
+                }
             }
             if (info.capabilities.settings.isNotEmpty()) launch { runCatching { refreshSettings() } }
             poll(client)
@@ -490,6 +515,7 @@ class CameraController(
     private fun resetCameraState() {
         downloadJobs.values.forEach { it.cancel() }
         downloadJobs.clear()
+        transfersChanged()
         _downloads.value = emptyMap()
         _files.value = null
         _lastCapture.value = null
@@ -500,8 +526,16 @@ class CameraController(
 
     private fun requireClient(): CameraClient = client ?: throw IllegalStateException("not connected")
 
+    /**
+     * Runs in the controller's scope: a screen left meanwhile stops waiting, but the shot (which the
+     * camera takes anyway) still reaches [lastCapture] and [files].
+     */
     suspend fun capture(mode: CaptureMode, quality: String?): CaptureResult {
         val client = requireClient()
+        return scope.async { capture(client, mode, quality) }.await()
+    }
+
+    private suspend fun capture(client: CameraClient, mode: CaptureMode, quality: String?): CaptureResult {
         _capturing.value = true
         try {
             EventLog.log("Capture: ${mode.wire}${quality?.let { " / $it" } ?: ""}")
@@ -543,9 +577,9 @@ class CameraController(
     }
 
     /** Opens the live view (protocol §5.14); the caller closes it. Blocking: call off the main thread. */
-    fun openLiveView(quality: String? = null): LiveStream {
+    fun openLiveView(quality: String? = null, opening: (HttpURLConnection) -> Unit = {}): LiveStream {
         EventLog.log("Live view: opening${quality?.let { " ($it)" } ?: ""}")
-        return requireClient().openLiveView(quality)
+        return requireClient().openLiveView(quality, opening)
     }
 
     /** Changes one camera setting; the flow takes the values the camera answers. */
@@ -566,9 +600,16 @@ class CameraController(
         }
     }
 
-    /** Starts or stops a video recording; stopping adds the new video to the files. */
+    /**
+     * Starts or stops a video recording; stopping adds the new video to the files. In the
+     * controller's scope, as [capture]: a screen left meanwhile does not lose the video.
+     */
     suspend fun record(start: Boolean) {
         val client = requireClient()
+        scope.async { record(client, start) }.await()
+    }
+
+    private suspend fun record(client: CameraClient, start: Boolean) {
         _recordBusy.value = true
         try {
             EventLog.log("Recording: ${if (start) "start" else "stop"}")
@@ -601,6 +642,11 @@ class CameraController(
     /** Deletes a file from the card; a photo takes its RAW pair with it (it would be left alone in the list). */
     suspend fun delete(file: CameraFile) {
         val client = requireClient()
+        // In the controller's scope, as [capture]: a delete that went through always leaves the list
+        scope.async { delete(client, file) }.await()
+    }
+
+    private suspend fun delete(client: CameraClient, file: CameraFile) {
         val raw = _files.value?.let { RawPairs.of(it).of(file) }
         withContext(Dispatchers.IO) {
             client.delete(file.path)
@@ -634,6 +680,8 @@ class CameraController(
                 val bytes = try {
                     // Videos have no thumbnail on the camera: their first frame, decoded here
                     if (file.kind == FileKind.VIDEO) VideoThumbnails.firstFrame(client, file) else client.thumbnail(file.path)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     // Not remembered as missing: a dropped link is not a file without thumbnail
                     return@withContext null
@@ -652,13 +700,13 @@ class CameraController(
 
     /** Downloads the original to the phone's shared storage; resumes a broken transfer where it stopped. */
     fun download(file: CameraFile) {
-        if (downloadJobs.containsKey(file.path)) return
+        if (downloadJobs[file.path]?.isActive == true) return
         val client = client ?: return
         val info = (state.value as? LinkState.Connected)?.info
         val resume = info?.capabilities?.range == true
         val key = savedKey(file)
         _downloads.update { it + (file.path to DownloadProgress(0, file.size)) }
-        val job = scope.launch {
+        startTransfer(file.path) {
             val part = partFile(key)
             try {
                 EventLog.log("Download: ${file.path} (${file.size} bytes)${if (part.exists()) ", resuming at ${part.length()}" else ""}")
@@ -676,22 +724,62 @@ class CameraController(
             } catch (e: Exception) {
                 val cancelled = !coroutineContext.isActive
                 EventLog.log("Download: ${file.name} ${if (cancelled) "cancelled" else "failed (${e.message})"}")
-                _downloads.update {
+                // A newer transfer of the file may hold the entry by now: its progress is not this one's
+                if (downloadJobs[file.path] === coroutineContext.job) _downloads.update {
                     if (cancelled) it - file.path
                     else it + (file.path to (it[file.path] ?: DownloadProgress(0, file.size)).copy(failed = e.message ?: "error"))
                 }
-            } finally {
-                downloadJobs.remove(file.path)
             }
         }
-        downloadJobs[file.path] = job
+    }
+
+    /**
+     * Runs a transfer as the [downloadJobs] entry [key]: registered before it starts and removed
+     * only by itself, so one finishing late never drops a newer one. A cancelled one still finishing
+     * (its blocking read stops at the next block) is waited for first: both would write the same
+     * .part. Nothing starts while one under [key] is active.
+     */
+    private fun startTransfer(key: String, block: suspend CoroutineScope.() -> Unit) {
+        val previous = downloadJobs[key]
+        if (previous?.isActive == true) return
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                previous?.join()
+                block()
+            } finally {
+                if (downloadJobs[key] === coroutineContext.job) removeTransfer(key)
+            }
+        }
+        putTransfer(key, job)
+        job.start()
+    }
+
+    private fun putTransfer(key: String, job: Job) {
+        downloadJobs[key] = job
+        transfersChanged()
+    }
+
+    private fun removeTransfer(key: String) {
+        downloadJobs.remove(key)
+        transfersChanged()
+    }
+
+    /** A foreground service while anything transfers: the system lets it finish with the app in the background. */
+    private fun transfersChanged() {
+        val busy = downloadJobs.isNotEmpty()
+        if (busy == transferService) return
+        transferService = busy
+        TransferService.set(context, busy)
     }
 
     /**
      * The original of [file] in the app's cache (the 360 viewer and the stitcher read it there),
      * downloaded if it isn't yet. The few most recent ones are kept.
      */
-    suspend fun original(file: CameraFile, progress: (Long, Long) -> Unit): File = withContext(Dispatchers.IO) {
+    suspend fun original(file: CameraFile, progress: (Long, Long) -> Unit): File = originals.withLock { fetchOriginal(file, progress) }
+
+    // One at a time: a fetch left behind (still finishing its read) and a new one would share the .part
+    private suspend fun fetchOriginal(file: CameraFile, progress: (Long, Long) -> Unit): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "originals").apply { mkdirs() }
         val name = MessageDigest.getInstance("SHA-1").digest(savedKey(file).toByteArray()).joinToString("") { "%02x".format(it) }
         val done = File(dir, "$name.${file.name.substringAfterLast('.', "bin").lowercase()}")
@@ -719,15 +807,8 @@ class CameraController(
      * straight into the shared storage, the dumps go. Progress in [downloads] under [dngKey].
      */
     fun saveDng(photo: CameraFile, raw: RawPair) {
-        val key = dngKey(photo)
-        if (downloadJobs.containsKey(key) || client == null) return
-        downloadJobs[key] = scope.launch {
-            try {
-                writeDng(photo, raw)
-            } finally {
-                downloadJobs.remove(key)
-            }
-        }
+        if (client == null) return
+        startTransfer(dngKey(photo)) { writeDng(photo, raw) }
     }
 
     /** One DNG, its progress and outcome in [downloads]; true when saved. */
@@ -764,7 +845,8 @@ class CameraController(
         } catch (e: Exception) {
             val cancelled = !coroutineContext.isActive
             EventLog.log("DNG: ${photo.name} ${if (cancelled) "cancelled" else "failed (${e.message})"}")
-            _downloads.update {
+            // A newer DNG of the photo may hold the entry by now (see startTransfer)
+            if (downloadJobs[key] === coroutineContext.job) _downloads.update {
                 if (cancelled) it - key
                 else it + (key to (it[key] ?: DownloadProgress(0, raw.size)).copy(failed = e.message ?: "error"))
             }
@@ -782,8 +864,9 @@ class CameraController(
         DngWriter.Reference(bitmap.width, bitmap.height, pixels).also { bitmap.recycle() }
     }.getOrNull()
 
+    /** The entry stays until the transfer has stopped writing (see [startTransfer]). */
     fun cancelDng(photo: CameraFile) {
-        downloadJobs.remove(dngKey(photo))?.cancel()
+        downloadJobs[dngKey(photo)]?.cancel()
         _downloads.update { it - dngKey(photo) }
     }
 
@@ -794,26 +877,32 @@ class CameraController(
      * background too.
      */
     fun saveDngs(photos: List<Pair<CameraFile, RawPair>>) {
-        if (downloadJobs.containsKey(DNG_BATCH) || photos.isEmpty() || client == null) return
+        if (downloadJobs[DNG_BATCH]?.isActive == true || photos.isEmpty() || client == null) return
         _dngBatch.value = DngBatch(0, photos.size, 0, photos.first().first.path)
         EventLog.log("DNG: ${photos.size} to save")
-        downloadJobs[DNG_BATCH] = scope.launch {
+        // Registered before it runs: a batch whose photos all run already ends without suspending
+        startTransfer(DNG_BATCH) {
             var failed = 0
             var done = 0
             try {
                 for ((photo, raw) in photos) {
                     _dngBatch.value = DngBatch(done, photos.size, failed, photo.path)
                     val key = dngKey(photo)
-                    if (!downloadJobs.containsKey(key)) {
-                        val one = async { writeDng(photo, raw) }
-                        downloadJobs[key] = one
+                    val previous = downloadJobs[key]
+                    if (previous?.isActive != true) {
+                        // As startTransfer: in the list before it runs, after a cancelled one of the photo
+                        val one = async(start = CoroutineStart.LAZY) {
+                            previous?.join()
+                            writeDng(photo, raw)
+                        }
+                        putTransfer(key, one)
                         val ok = try {
                             one.await()
                         } catch (e: CancellationException) {
                             ensureActive()   // the whole batch stops; one photo cancelled: on to the next
                             false
                         } finally {
-                            downloadJobs.remove(key)
+                            if (downloadJobs[key] === one) removeTransfer(key)
                         }
                         if (!ok) failed++
                     }
@@ -822,7 +911,6 @@ class CameraController(
             } finally {
                 EventLog.log("DNG: $done of ${photos.size} done, $failed failed")
                 _dngBatch.value = DngBatch(done, photos.size, failed, null, finished = true)
-                downloadJobs.remove(DNG_BATCH)
             }
         }
     }
@@ -835,8 +923,9 @@ class CameraController(
         if (_dngBatch.value?.finished == true) _dngBatch.value = null
     }
 
+    /** The entry stays until the transfer has stopped writing (see [startTransfer]). */
     fun cancelDownload(file: CameraFile) {
-        downloadJobs.remove(file.path)?.cancel()
+        downloadJobs[file.path]?.cancel()
         _downloads.update { it - file.path }
     }
 

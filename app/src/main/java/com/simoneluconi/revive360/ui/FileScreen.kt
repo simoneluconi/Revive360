@@ -33,6 +33,7 @@ import com.simoneluconi.revive360.protocol.FileKind
 import com.simoneluconi.revive360.protocol.RawPair
 import com.simoneluconi.revive360.protocol.RawPairs
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** One camera file: preview, details, download to the phone, delete from the card. */
@@ -154,6 +155,8 @@ fun FileScreen(path: String) {
                     controller.delete(file)
                     nav.message(resources.getString(R.string.delete_done, file.name), MessageKind.GOOD)
                     nav.back()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     nav.message(Format.error(resources, e), MessageKind.BAD)
                 } finally {

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.simoneluconi.revive360.protocol.CameraFile
 import java.io.File
@@ -16,7 +17,10 @@ import java.security.MessageDigest
  */
 class ThumbCache(context: Context) {
     private val dir = File(context.cacheDir, "thumbs").apply { mkdirs() }
-    private val memory = LruCache<String, ImageBitmap>(MEMORY_ENTRIES)
+    // Bounded by the pixels' bytes, not a count: a video's frame weighs more than a photo's thumbnail
+    private val memory = object : LruCache<String, ImageBitmap>(MEMORY_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.asAndroidBitmap().byteCount
+    }
     private val missing = HashSet<String>()
 
     fun key(camera: String, file: CameraFile): String {
@@ -57,6 +61,7 @@ class ThumbCache(context: Context) {
     }
 
     private companion object {
-        const val MEMORY_ENTRIES = 240
+        /** About 160 of the C200's 320 x 160 thumbnails */
+        const val MEMORY_BYTES = 32 * 1024 * 1024
     }
 }

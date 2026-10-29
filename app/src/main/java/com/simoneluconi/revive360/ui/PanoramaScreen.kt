@@ -227,6 +227,10 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
         } catch (e: Exception) {
             EventLog.log("360 view: ${target.title} failed (${e.message})")
             error = Format.error(resources, e)
+        } catch (e: OutOfMemoryError) {
+            // The two lens halves of a big picture: a phone short of memory says so, it does not close
+            EventLog.log("360 view: ${target.title} out of memory")
+            error = Format.error(resources, e)
         }
     }
 
@@ -243,6 +247,10 @@ private fun PanoramaContent(source: PanoramaSource?, fallbackTitle: String) {
                 throw e
             } catch (e: Exception) {
                 EventLog.log("$label: failed (${e.message})")
+                nav.message(Format.error(resources, e), MessageKind.BAD)
+            } catch (e: OutOfMemoryError) {
+                // A full-size stitch needs its whole picture in memory: too much for some phones
+                EventLog.log("$label: out of memory")
                 nav.message(Format.error(resources, e), MessageKind.BAD)
             } finally {
                 saving = false

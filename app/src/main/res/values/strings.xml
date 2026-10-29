@@ -134,6 +134,15 @@
     <string name="error_not_found">The file is no longer on the camera</string>
     <string name="error_link">Lost contact with the camera</string>
     <string name="error_camera">The camera refused (%1$s)</string>
+    <string name="error_memory">Not enough memory on the phone for this picture</string>
+
+    <!-- Permissions -->
+    <string name="permission_missing">The app is missing permissions: without them it can\'t wake the camera over Bluetooth or reach its Wi-Fi.</string>
+    <string name="permission_grant">Allow</string>
+
+    <!-- Transfers (foreground service) -->
+    <string name="transfer_channel">Transfers</string>
+    <string name="transfer_running">Copying files from the camera</string>
 
     <!-- Pairing -->
     <string name="pair_title">Set up</string>

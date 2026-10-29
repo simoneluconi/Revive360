@@ -173,7 +173,9 @@ object Format {
         }
     }
 
-    fun error(resources: Resources, error: Throwable): String = when (val code = (error as? CameraException)?.code) {
+    fun error(resources: Resources, error: Throwable): String = if (error is OutOfMemoryError) {
+        resources.getString(R.string.error_memory)
+    } else when (val code = (error as? CameraException)?.code) {
         CameraException.BUSY -> resources.getString(R.string.error_busy)
         CameraException.NO_STORAGE -> resources.getString(R.string.error_no_storage)
         CameraException.CAPTURE_TIMEOUT -> resources.getString(R.string.error_capture_timeout)

@@ -83,8 +83,11 @@ void main() {
                 val row0 = GLES30.glGetUniformLocation(program, "uRow0")
                 GLES30.glViewport(0, 0, width, STRIP)
 
-                val pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
+                // Each strip goes straight into the bitmap: no second copy of the whole picture (a C200
+                // photo is 7776 x 3888, 121 MB a copy)
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 val strip = ByteBuffer.allocateDirect(width * STRIP * 4).order(ByteOrder.nativeOrder())
+                val argb = IntArray(width * STRIP)
                 var y = 0
                 while (y < height) {
                     val rows = minOf(STRIP, height - y)
@@ -94,14 +97,16 @@ void main() {
                     // Row 0 read back is the strip's first output row (uRow0 + 0.5)
                     GLES30.glReadPixels(0, 0, width, rows, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, strip)
                     Gl.check("strip at row $y")
-                    strip.limit(width * rows * 4)
-                    strip.position(0)
-                    pixels.position(y * width * 4)
-                    pixels.put(strip)
+                    // R, G, B, A bytes, read as little-endian ints: A B G R; the bitmap wants A R G B
+                    val ints = strip.asIntBuffer()
+                    for (i in 0 until width * rows) {
+                        val p = ints.get(i)
+                        argb[i] = (p and 0xFF00FF00.toInt()) or ((p and 0xFF) shl 16) or ((p ushr 16) and 0xFF)
+                    }
+                    bitmap.setPixels(argb, 0, width, 0, y, width, rows)
                     y += rows
                 }
-                pixels.position(0)
-                return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { copyPixelsFromBuffer(pixels) }
+                return bitmap
             } finally {
                 GLES30.glDeleteFramebuffers(1, fbo, 0)
                 GLES30.glDeleteTextures(3, intArrayOf(frontTexture, backTexture, target[0]), 0)

@@ -26,6 +26,7 @@ import com.simoneluconi.revive360.EventLog
 import com.simoneluconi.revive360.R
 import com.simoneluconi.revive360.link.LinkState
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** The phone's event log and, when the camera offers it, the camera controller's own log. */
@@ -48,6 +49,8 @@ fun LogScreen() {
         scope.launch {
             cameraText = try {
                 nav.app.controller.cameraLog()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Format.error(resources, e)
             }

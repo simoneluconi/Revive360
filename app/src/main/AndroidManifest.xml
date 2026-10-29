@@ -40,6 +40,9 @@
         android:maxSdkVersion="30" />
     <!-- Android 17+: without it, connections to the camera's 192.168.107.1 are silently dropped -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- TransferService: downloads and DNGs go on with the app in the background -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Cleartext: the camera only speaks plain HTTP, on a private WPA2 network the app joins on purpose -->
     <application
@@ -62,5 +65,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".link.TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

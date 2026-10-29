@@ -96,7 +96,8 @@ Then, **within 3 minutes of switching the camera on**, open the app on the phone
 and Android asks once to confirm the camera's network (`G360R-...`). The camera only lets a new
 phone pair in those first minutes: if they are over, switch it off and on again.
 
-That's it. From then on the camera's Wi-Fi stays off until the app needs it: the app switches
+That's it. The app's home lists your cameras: tap one and the app connects to it (its card shows
+how far it got) and opens it once it is connected. From then on the camera's Wi-Fi stays off until the app needs it: the app switches
 it on over Bluetooth by itself, and it goes off again after 10 minutes without use. To update
 our software later, run `./install.sh build` and `./install.sh sd` again.
 

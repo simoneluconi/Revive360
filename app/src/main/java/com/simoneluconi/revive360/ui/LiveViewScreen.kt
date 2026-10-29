@@ -49,6 +49,8 @@ import com.simoneluconi.revive360.media.LiveViewDecoder
 import com.simoneluconi.revive360.protocol.LiveStream
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
+import java.io.IOException
+import java.net.HttpURLConnection
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
@@ -192,6 +194,8 @@ internal fun systemBars(view: View, show: Boolean) {
  */
 private class LiveSession(private val controller: CameraController) {
     private val stream = AtomicReference<LiveStream?>(null)
+    /** The request while it waits for the camera to start streaming */
+    private val pending = AtomicReference<HttpURLConnection?>(null)
     private var worker: Thread? = null
     private var surface: Surface? = null
     @Volatile private var stopping = false
@@ -213,7 +217,12 @@ private class LiveSession(private val controller: CameraController) {
             while (!stopping) {
                 var played = false
                 val failure = try {
-                    val opened = controller.openLiveView()
+                    val opened = controller.openLiveView { connection ->
+                        pending.set(connection)
+                        // Stopped meanwhile: the request goes no further
+                        if (stopping) throw IOException("stopped")
+                    }
+                    pending.set(null)
                     stream.set(opened)
                     if (stopping) break
                     EventLog.log("Live view: ${opened.contentType}")
@@ -239,8 +248,12 @@ private class LiveSession(private val controller: CameraController) {
 
     fun stop() {
         stopping = true
-        stream.getAndSet(null)?.close()
-        worker?.join(STOP_WAIT_MS)
+        // A request still waiting for the camera's stream (it takes seconds) gives up now
+        pending.getAndSet(null)?.disconnect()
+        // Only a decoder can be on the surface, and only with a stream: without one the worker never
+        // starts it (it checks stopping after setting the stream), so nothing to wait for here
+        val decoding = stream.getAndSet(null)?.also { it.close() } != null
+        if (decoding) worker?.join(STOP_WAIT_MS)
         worker = null
         surface?.release()
         surface = null

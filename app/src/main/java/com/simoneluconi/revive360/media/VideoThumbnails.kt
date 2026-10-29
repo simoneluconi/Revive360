@@ -5,8 +5,10 @@ import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import com.simoneluconi.revive360.protocol.CameraClient
 import com.simoneluconi.revive360.protocol.CameraFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.Semaphore
 
 /**
  * A video's first frame as a JPEG thumbnail, decoded on the phone: the camera stores none in its
@@ -16,36 +18,40 @@ import java.util.concurrent.Semaphore
 object VideoThumbnails {
     private const val BLOCK_BYTES = 256 * 1024
     private const val CACHED_BLOCKS = 24
-    private const val WIDTH = 640
+    /** As wide as the photos' thumbnails: the memory cache holds them by their bytes */
+    private const val WIDTH = 320
     private const val JPEG_QUALITY = 85
 
-    /** A 4K HEVC decode each: a gallery full of videos must not start them all at once */
-    private val decoders = Semaphore(2)
+    /**
+     * A 4K HEVC decode each: a gallery full of videos must not start them all at once. Two at a
+     * time; the others wait without holding a thread, and go if no longer wanted (scrolled away).
+     */
+    private val decoders = Dispatchers.IO.limitedParallelism(2)
 
-    /** The JPEG, or null when the video does not decode. Network and decoder work: call off the main thread. */
-    fun firstFrame(client: CameraClient, file: CameraFile): ByteArray? {
-        decoders.acquire()
+    /** The JPEG, or null when the video does not decode. */
+    suspend fun firstFrame(client: CameraClient, file: CameraFile): ByteArray? = withContext(decoders) {
+        ensureActive()
+        decode(client, file)
+    }
+
+    private fun decode(client: CameraClient, file: CameraFile): ByteArray? {
+        val retriever = MediaMetadataRetriever()
         try {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(RangeSource(client, file.path, file.size))
-                val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
-                val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-                val frame = if (w > 0 && h > 0) {
-                    retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, WIDTH, WIDTH * h / w)
-                } else {
-                    retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                } ?: return null
-                return ByteArrayOutputStream().use { out ->
-                    frame.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-                    frame.recycle()
-                    out.toByteArray()
-                }
-            } finally {
-                retriever.release()
+            retriever.setDataSource(RangeSource(client, file.path, file.size))
+            val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+            val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+            val frame = if (w > 0 && h > 0) {
+                retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, WIDTH, WIDTH * h / w)
+            } else {
+                retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            } ?: return null
+            return ByteArrayOutputStream().use { out ->
+                frame.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+                frame.recycle()
+                out.toByteArray()
             }
         } finally {
-            decoders.release()
+            retriever.release()
         }
     }
 

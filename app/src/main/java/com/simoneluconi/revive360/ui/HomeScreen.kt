@@ -1,5 +1,12 @@
 package com.simoneluconi.revive360.ui
 
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -38,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import com.simoneluconi.revive360.settings.CameraModels
@@ -46,7 +54,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simoneluconi.revive360.MainActivity
 import com.simoneluconi.revive360.R
 import com.simoneluconi.revive360.link.LinkState
 import com.simoneluconi.revive360.protocol.Battery
@@ -63,11 +73,16 @@ import com.simoneluconi.revive360.protocol.ShootingModes
 import com.simoneluconi.revive360.protocol.Storage
 import com.simoneluconi.revive360.settings.PairedCamera
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** The paired cameras, one card each, also with a single one: a tap opens that camera's page. */
+/**
+ * The paired cameras, one card each, also with a single one. A tap on the connected camera opens its
+ * page; on another one it connects first, the card showing how far it got, and the page opens once
+ * the link is up.
+ */
 @Composable
 fun HomeScreen() {
     val nav = LocalActions.current
@@ -75,6 +90,14 @@ fun HomeScreen() {
     val state by controller.state.collectAsStateWithLifecycle()
     val camera by nav.app.store.camera.collectAsStateWithLifecycle()
     val cameras by nav.app.store.cameras.collectAsStateWithLifecycle()
+    // The camera tapped: its page opens once it is connected (forgotten when Home is left)
+    var opening by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(opening, camera?.id, state) {
+        if (opening != null && opening == camera?.id && state is LinkState.Connected) {
+            opening = null
+            nav.navigate(Screen.Camera)
+        }
+    }
 
     ScreenScaffold(
         title = stringResource(R.string.app_name),
@@ -89,10 +112,33 @@ fun HomeScreen() {
         }
         cameras.forEach { c ->
             // Only the camera in use has a link: the others show as not connected
-            CameraCard(c, if (c.id == camera?.id) state else LinkState.Idle) {
-                controller.select(c.id)
-                nav.navigate(Screen.Camera)
-            }
+            val current = c.id == camera?.id
+            CameraCard(
+                c, if (current) state else LinkState.Idle,
+                onClick = {
+                    when {
+                        current && state is LinkState.Connected -> nav.navigate(Screen.Camera)
+                        // Another camera: switching to it connects it
+                        !current -> {
+                            opening = c.id
+                            controller.select(c.id)
+                        }
+                        else -> {
+                            opening = c.id
+                            // A connection already on its way is left alone
+                            if (!connecting(state)) controller.connect()
+                        }
+                    }
+                },
+                onRetry = {
+                    opening = c.id
+                    controller.connect()
+                },
+                onCancel = {
+                    opening = null
+                    controller.cancel()
+                },
+            )
         }
         PillButton(stringResource(R.string.settings_add_camera), Modifier.fillMaxWidth(), icon = AppIcons.Camera360) {
             nav.navigate(Screen.Pair())
@@ -109,9 +155,16 @@ fun HomeScreen() {
     }
 }
 
-/** One paired camera in the list: its model's icon, name, model and firmware, and its link. */
+/** Waking, joining or saying hello: on its way to connected. */
+private fun connecting(state: LinkState): Boolean =
+    state == LinkState.Waking || state == LinkState.Joining || state == LinkState.Handshake
+
+/**
+ * One paired camera in the list: its model's icon, name, model and firmware, and its link; while it
+ * connects or after it failed, the way to stop or try again.
+ */
 @Composable
-private fun CameraCard(camera: PairedCamera, state: LinkState, onClick: () -> Unit) {
+private fun CameraCard(camera: PairedCamera, state: LinkState, onClick: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit) {
     val colors = LocalAppColors.current
     val resources = LocalResources.current
     val dot = when (state) {
@@ -120,8 +173,9 @@ private fun CameraCard(camera: PairedCamera, state: LinkState, onClick: () -> Un
         LinkState.Waking, LinkState.Joining, LinkState.Handshake -> colors.warn
         else -> colors.text2
     }
-    Card(Modifier.fillMaxWidth().pressable(label = camera.label, onClick = onClick)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    // The buttons sit outside the tappable part: a tap on them is not a tap on the camera
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().pressable(label = camera.label, onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(52.dp).clip(CircleShape).background(colors.surface2), contentAlignment = Alignment.Center) {
                 Icon(AppIcons.cameraFor(camera.model), colors.text, size = 28.dp)
             }
@@ -137,7 +191,16 @@ private fun CameraCard(camera: PairedCamera, state: LinkState, onClick: () -> Un
                     Label(Format.state(resources, state), size = 14.sp, color = colors.text2, maxLines = 1)
                 }
             }
-            Icon(AppIcons.Chevron, colors.text2, size = 20.dp)
+            if (connecting(state)) Spinner() else Icon(AppIcons.Chevron, colors.text2, size = 20.dp)
+        }
+        if (connecting(state) || state is LinkState.Failed) {
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (state is LinkState.Failed) {
+                    PillButton(stringResource(R.string.action_retry), icon = AppIcons.Refresh, style = ButtonStyle.PRIMARY, onClick = onRetry)
+                }
+                PillButton(stringResource(R.string.action_cancel), icon = AppIcons.Close, onClick = onCancel)
+            }
         }
     }
 }
@@ -281,6 +344,49 @@ private fun ConnectionCard(state: LinkState, savedName: String?, savedModel: Str
                 Label(stringResource(R.string.connection_wifi, l.band, l.channel, l.linkMbps), size = 13.sp,
                     color = colors.text2, maxLines = 1)
             }
+        }
+        MissingPermissions()
+    }
+}
+
+/**
+ * The permissions refused when the app asked at start: without them the link only fails ("not found",
+ * "no answer"), so they are named here. The button asks again, or opens the app's settings once
+ * Android no longer asks.
+ */
+@Composable
+private fun MissingPermissions() {
+    val nav = LocalActions.current
+    val context = LocalContext.current
+    val colors = LocalAppColors.current
+    fun missingNow() = MainActivity.requiredPermissions().filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+    var missing by remember { mutableStateOf(missingNow()) }
+    // Granted in the system's settings meanwhile: seen when the app is back
+    LifecycleResumeEffect(Unit) {
+        missing = missingNow()
+        onPauseOrDispose {}
+    }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        missing = missingNow()
+        if (missing.isEmpty()) nav.app.controller.connect()
+    }
+    if (missing.isEmpty()) return
+    Spacer(Modifier.height(14.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(AppIcons.Warning, colors.warn, size = 20.dp)
+        Spacer(Modifier.width(12.dp))
+        Label(stringResource(R.string.permission_missing), Modifier.weight(1f), size = 14.sp)
+    }
+    Spacer(Modifier.height(10.dp))
+    PillButton(stringResource(R.string.permission_grant), icon = AppIcons.Key) {
+        val activity = context as? Activity
+        // Asked at start already: no rationale left means refused for good, and only the settings can grant it
+        if (activity != null && missing.none { activity.shouldShowRequestPermissionRationale(it) }) {
+            runCatching {
+                context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+            }
+        } else {
+            request.launch(missing.toTypedArray())
         }
     }
 }
@@ -442,6 +548,8 @@ private fun CaptureBar(info: CameraInfo, shot: ShotChoice, changer: SettingChang
                         if (saved && recording && name != null) {
                             nav.message(resources.getString(R.string.record_done, name), MessageKind.GOOD)
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         haptic(Haptic.REJECT)
                         nav.message(Format.error(resources, e), MessageKind.BAD)
@@ -455,6 +563,8 @@ private fun CaptureBar(info: CameraInfo, shot: ShotChoice, changer: SettingChang
                         val result = controller.capture(mode, if (mode == CaptureMode.RAW) null else shot.quality(v.caps))
                         haptic(Haptic.CONFIRM)
                         nav.message(resources.getString(R.string.capture_done, result.files.size), MessageKind.GOOD)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         haptic(Haptic.REJECT)
                         nav.message(Format.error(resources, e), MessageKind.BAD)
@@ -561,6 +671,8 @@ private class SettingChanger(
         scope.launch {
             try {
                 send(id, token)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 failed(e)
             } finally {
