@@ -1,149 +1,115 @@
 # Installing Revive360
 
-Five steps. In each one a script does the work on your computer and on the SD card, then tells
-you exactly what to do on the camera. The steps below are for the Gear 360 (2016); the Gear 360
-(2017) takes the same ones with a few differences: see [Gear 360 (2017)](#gear-360-2017-sm-r210).
+The same steps for the Gear 360 2016 (SM-C200) and the Gear 360 2017 (SM-R210). You type one
+command on the computer, and it tells you what to do on the camera. About half an hour, once.
 
-## Before you start
+## What you need
 
-**You need:**
+1. **The camera**, updated to Samsung's last firmware. Only that one is supported:
+   **C200GLU0AQK1** on the 2016 and **R210GLU0ARB2** on the 2017. Not sure? Just go ahead: the
+   script checks and tells you. If yours is older, see [Going back to Samsung's firmware](#going-back-to-samsungs-firmware):
+   the same command updates it.
+2. **Its microSD card**, with **one photo taken with this camera** on it (the script reads the
+   camera's model from it), and a card reader. The photos on the card stay.
+3. **A Windows or Linux computer** with [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   (running) and [Git](https://git-scm.com/downloads). On Windows, type the commands in **Git Bash**.
+4. **This project**, downloaded: `git clone https://github.com/simoneluconi/Revive360`, then open a
+   terminal in the `Revive360` folder.
+5. **Samsung's firmware file** for your camera, from the [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93),
+   put in the `firmware/stock` folder (we cannot share it: it is Samsung's):
 
-- a **Gear 360 (2016, SM-C200)** with firmware **C200GLU0AQK1**, the last one Samsung released.
-  Only the last firmware of each camera is supported. To see yours, look at the details of any
-  photo it took: "Software" (on Windows: Properties, Details, "Program name") is **0.85** for
-  C200GLU0AQK1. You do not have to check by hand: `./install.sh flash` reads it from the photos
-  on the card, stops if the camera is not an SM-C200 and warns if its firmware is older. **If your
-  camera has an older firmware, update it first**: run `./install.sh stock` and do
-  [step 5](#5-going-back-to-samsungs-firmware), which installs Samsung's C200GLU0AQK1, then
-  start from step 1;
-- a **microSD card** and a card reader for the computer (the photos already on it stay). **Take
-  at least one photo with the camera on this card** before you start: the script reads the
-  camera's model and firmware from it;
-- a **Windows or Linux computer** with [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-  running and [Git](https://git-scm.com/downloads) installed (on Windows, the commands below go
-  in **Git Bash**);
-- an **Android phone** with Android 10 or later, of any brand (it does not have to be a Samsung),
-  with **the app** on it: from [Google Play](https://play.google.com/store/apps/details?id=com.simoneluconi.revive360), or download
-  `Revive360-*.apk` from the [latest GitHub release](https://github.com/simoneluconi/Revive360/releases/latest) on the phone and open it (Android
-  asks once to allow installing apps from the browser). The two are signed differently: to
-  switch from one to the other, uninstall the app first;
-- **Samsung's original firmware file** `C200GLU0AQK1_171121_1257_REV00_user.bin`: download it from
-  the [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93)
-  and put it in the `firmware/stock` folder of this project. We cannot share it ourselves: it is
-  Samsung's.
+   | Camera | File |
+   |---|---|
+   | Gear 360 2016 | `C200GLU0AQK1_171121_1257_REV00_user.bin` |
+   | Gear 360 2017 | `R210GLU0ARB2_180201_1739_REV00_user.bin` |
 
-**Good to know:**
+6. **The app** on an Android phone (Android 10 or later, any brand): from
+   [Google Play](https://play.google.com/store/apps/details?id=com.simoneluconi.revive360) or the
+   APK in the [latest release](https://github.com/simoneluconi/Revive360/releases/latest).
 
-- You install it at your own risk. Nothing is lost for good: [step 5](#5-going-back-to-samsungs-firmware)
-  puts Samsung's firmware back.
-- With our firmware the camera takes about **30 seconds to start, with nothing on the screen**.
-  It is not broken: wait, and do not press power again.
-- If anything goes wrong: hold power until the camera is off, **take the card out**, and only then
-  switch it on again. Do not keep switching it on and off with the card in.
-
-All commands are typed in a terminal opened in the project folder.
-
-## 1. Build
+## Step 1: build
 
 ```sh
 ./install.sh build
 ```
 
-The first time it takes a while (it downloads its tools). It ends with `Built.`
+The first time takes a while. It ends with `Built.`
 
-## 2. Install the firmware on the camera
+## Step 2: update the camera
 
-Put the SD card in the camera and take **one photo** (if it has none from this camera yet). Then
-put the card in the computer and run:
+Card in the computer:
 
 ```sh
 ./install.sh flash
 ```
 
-Then on the camera, as the script tells you:
+Then card in the camera, and:
 
-1. battery charged to near full, USB cable unplugged, card in, camera off;
-2. **hold the Shutter (OK) button and press the power button**;
-3. the update starts by itself: from now on **do not touch anything**;
-4. it shows a progress bar, **"Updated"**, and restarts by itself (the 3 red LEDs are normal).
+1. battery charged, **USB cable unplugged**, camera off;
+2. **hold the Shutter button and press power**;
+3. the update starts by itself: **don't touch anything** until the camera has restarted
+   (a few minutes; lit LEDs are normal).
 
-## 3. Activate it
+## Step 3: switch it on
 
-Camera off, card back in the computer:
+Camera off, card in the computer:
 
 ```sh
 ./install.sh activate
 ```
 
-Then put the card in the camera and switch it on normally. The screen shows a **factory screen**
-with a few codes and the battery level (for example `QK1  38%`): that is expected for this step.
-**Do not press any button while it is shown.** Wait for **1 beep** (started), then **2 beeps**
-(done). Switch it off and on again, and wait the 30 seconds.
+Card in the camera, switch it on, and **don't press any button**. Wait for **1 beep**, then
+**2 beeps**. Switch the camera off and on again.
 
-## 4. Get it ready for everyday use
+On the 2016 a screen with codes and the battery level shows meanwhile: that is expected.
 
-Camera off, card back in the computer:
+## Step 4: ready (Gear 360 2016 only)
+
+The 2017 skips this step: its card is ready already.
+
+Camera off, card in the computer:
 
 ```sh
 ./install.sh sd
 ```
 
-Put the card in the camera and switch it on: after the 30 seconds the LEDs go around the camera
-and **1 beep** says it is ready.
+Card back in the camera, switch it on.
 
-Then, **within 3 minutes of switching the camera on**, open the app on the phone and tap
-**Find the camera**: the app finds it over Bluetooth, gets its Wi-Fi by itself (nothing to type)
-and Android asks once to confirm the camera's network (`G360R-...`). The camera only lets a new
-phone pair in those first minutes: if they are over, switch it off and on again.
+## Pair the phone
 
-That's it. The app's home lists your cameras: tap one and the app connects to it (its card shows
-how far it got) and opens it once it is connected. From then on the camera's Wi-Fi stays off until the app needs it: the app switches
-it on over Bluetooth by itself, and it goes off again after 10 minutes without use. To update
-our software later, run `./install.sh build` and `./install.sh sd` again.
+Switch the camera on and wait: it now takes **about 30 seconds, with nothing on the screen**, then
+the LEDs go around it and it beeps once. Within 3 minutes, open the app and tap **Find the
+camera**. It finds it by itself; Android asks once to confirm the camera's network
+(`G360R-...`). Nothing to type.
 
-## 5. Going back to Samsung's firmware
+Done. The app's home lists your cameras: tap one to connect to it. The camera's Wi-Fi switches on
+only while the app needs it.
+
+To update our software later: `./install.sh build`, then `./install.sh sd` with the card.
+
+## Going back to Samsung's firmware
 
 ```sh
 ./install.sh stock
 ```
 
-Then the same buttons as in step 2. The camera ends up exactly as it came from Samsung.
-
-## Gear 360 (2017, SM-R210)
-
-The same steps, with `r210` after `./install.sh` (for example `./install.sh r210 build`), and one
-card swap fewer:
-
-- **Firmware:** only **R210GLU0ARB2**, Samsung's last one, is supported. Put
-  `R210GLU0ARB2_180201_1739_REV00_user.bin` (same XDA thread) in `firmware/stock`. A camera with an
-  older firmware is updated first: `./install.sh r210 stock`, then the buttons of step 2.
-- **Step 2,** `./install.sh r210 flash`: the card also gets everything for everyday use, and the
-  script prints the camera's **Wi-Fi passphrase**: keep it, in case you ever pair by hand. The
-  buttons are the same: hold the **Shutter** (the big record button) and press power. If the card
-  holds an image under Samsung's own name (`R210GL..._user.bin`), the script stops: the 2017 would
-  install that file instead of ours, so delete it first.
-- **Step 3,** `./install.sh r210 activate`: there is no factory screen on the 2017; just wait for
-  the **1 beep**, then the **2 beeps**, and switch it off and on.
-- **No step 4:** the card already has everything. Leave it in and pair the camera as in step 4.
-- **Not on the 2017 yet:** RAW photos.
+Then the same buttons as in step 2. The camera is back as it came from Samsung. This is also how
+a camera with an older firmware is updated to the last one before step 1.
 
 ## If something goes wrong
 
-Put the card in the computer and run:
+- **Nothing on the screen after switching on:** normal, wait a full minute.
+- **3 beeps:** an error. Camera off, card in the computer, run `./install.sh status`: it says what
+  the card is set up for and shows the camera's log.
+- **The update doesn't start (the camera starts as usual):** unplug the USB cable and charge the
+  battery.
+- **Stuck:** hold power until the camera is off, **take the card out**, switch it on: without the
+  card it starts as Samsung's.
+- **Wrong camera:** the script stops if the card's photos come from another model.
 
-```sh
-./install.sh status
-```
+The script finds the camera model by itself. To choose it, put `c200` or `r210` right after
+`./install.sh` (for example `./install.sh r210 flash`).
 
-It says what the card is set up for and shows the camera's latest log lines.
-
-- **3 beeps:** an error. Switch off and run `./install.sh status`.
-- **No update screen (it starts as usual):** the USB cable is plugged in, or the battery is not charged enough.
-- **Nothing happens after switching on:** wait a full minute (the 30 seconds start). Still
-  nothing: hold power, take the card out, switch on without it; the camera starts as Samsung's.
-- **A factory screen with codes and the battery level:** expected during step 3 only, while the
-  activation runs; never press buttons on it. If it shows up at any other time, switch off, take
-  the card out and run `./install.sh status`: the card still has the activation files on it.
-
-The details behind every step (what the scripts do, the firmware build, the camera's start-up)
-are in the [developer notes](DEVELOPMENT.md) and [camera/fw/README.md](../camera/fw/README.md).
+Changing the camera's software is at your own risk; `./install.sh stock` always puts Samsung's
+back. The details behind every step are in the [developer notes](DEVELOPMENT.md) and
+[camera/fw/README.md](../camera/fw/README.md).

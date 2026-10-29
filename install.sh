@@ -10,44 +10,54 @@
 #   ./install.sh [model] stock    [card]    card to go back to Samsung's firmware
 #   ./install.sh [model] status   [card]    what is on the card now
 #
-# [model] is c200 (Gear 360 2016, the default) or r210 (Gear 360 2017, details in
-# docs/firmware/15_r210_port.md). On the r210 the flash card already gets everything
-# for everyday use, so there is no sd step after the activation.
+# [model] is c200 (Gear 360 2016) or r210 (Gear 360 2017, details in
+# docs/firmware/15_r210_port.md). Left out, it is found by itself: build does every model
+# whose stock firmware is in firmware/stock, the card steps read it from the camera's
+# photos on the card (or from our files on it). On the r210 the flash card already gets
+# everything for everyday use, so there is no sd step after the activation.
 # [card] is a drive letter (E:) or a mount point. Left out, the only removable card
 # connected is used. The card is never formatted and the camera's photos stay: only
 # files of ours are written, and ours that are no longer needed are removed.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-MODEL=c200
+# Given on the command line, or found by the step itself (auto_model)
+MODEL=
 case "${1:-}" in
     c200|r210) MODEL=$1; shift ;;
 esac
-# Per model: Samsung's last firmware (the only one supported), our image and its name
-# on the card, the camera libraries, and what the camera writes in its photos' Exif
-if [ "$MODEL" = r210 ]; then
-    STOCK=firmware/stock/R210GLU0ARB2_180201_1739_REV00_user.bin
-    CARD_IMAGE=smr210.bin
-    SYSROOT=camera/.toolchain/arb2/sysroot
-    EXIF_MODEL=SM-R210
-    EXIF_VERSION=""
-    CAMERA_NAME="SM-R210 (Gear 360 2017)"
-else
-    STOCK=firmware/stock/C200GLU0AQK1_171121_1257_REV00_user.bin
-    CARD_IMAGE=smc200.bin
-    SYSROOT=camera/.toolchain/aqk1/sysroot
-    EXIF_MODEL=SM-C200
-    EXIF_VERSION=0.85
-    CAMERA_NAME="SM-C200 (Gear 360 2016)"
-fi
-IMAGE=firmware/out/$CARD_IMAGE
+GIVEN_MODEL=$MODEL
+STOCK_C200=firmware/stock/C200GLU0AQK1_171121_1257_REV00_user.bin
+STOCK_R210=firmware/stock/R210GLU0ARB2_180201_1739_REV00_user.bin
 SD_SRC=camera/out/sd
-# The shim loads the plugin from the card as g360r/libg360r_plugin.so: the r210 has its own
-PLUGIN=camera/out/libg360r_plugin.so
-[ "$MODEL" = r210 ] && PLUGIN=camera/out/libg360r_plugin_r210.so
 BLE=camera/out/g360r-ble
 export MSYS_NO_PATHCONV=1
-export G360R_SYSROOT=${SYSROOT#camera/}
+
+# Per model: Samsung's last firmware (the only one supported), our image and its name
+# on the card, the camera libraries, and what the camera writes in its photos' Exif
+set_model() {
+    MODEL=$1
+    if [ "$MODEL" = r210 ]; then
+        STOCK=$STOCK_R210
+        CARD_IMAGE=smr210.bin
+        SYSROOT=camera/.toolchain/arb2/sysroot
+        EXIF_MODEL=SM-R210
+        EXIF_VERSION=""
+        CAMERA_NAME="SM-R210 (Gear 360 2017)"
+        # The shim loads the plugin from the card as g360r/libg360r_plugin.so: the r210 has its own
+        PLUGIN=camera/out/libg360r_plugin_r210.so
+    else
+        STOCK=$STOCK_C200
+        CARD_IMAGE=smc200.bin
+        SYSROOT=camera/.toolchain/aqk1/sysroot
+        EXIF_MODEL=SM-C200
+        EXIF_VERSION=0.85
+        CAMERA_NAME="SM-C200 (Gear 360 2016)"
+        PLUGIN=camera/out/libg360r_plugin.so
+    fi
+    IMAGE=firmware/out/$CARD_IMAGE
+    export G360R_SYSROOT=${SYSROOT#camera/}
+}
 
 say() { printf '\n%s\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -131,6 +141,28 @@ camera_of() {
         "$(printf '%s\n' "$head" | grep -E -x '[0-9]\.[0-9]{2}' | head -n 1)"
 }
 
+# The model of the camera this card belongs to, when not given: its newest photo, else
+# our image on the card, else the only stock firmware in firmware/stock.
+auto_model() {
+    if [ -n "$MODEL" ]; then set_model "$MODEL"; return 0; fi
+    local found
+    found=$(camera_of "$1")
+    case ${found%% *} in
+        SM-R210) set_model r210 ;;
+        SM-C200) set_model c200 ;;
+        SM-*) die "the photos on this card come from a ${found%% *}: only the SM-C200 and SM-R210 are supported" ;;
+        *)
+            if [ -e "$1/smr210.bin" ]; then set_model r210
+            elif [ -e "$1/smc200.bin" ]; then set_model c200
+            elif [ -f "$STOCK_R210" ] && [ ! -f "$STOCK_C200" ]; then set_model r210
+            elif [ -f "$STOCK_C200" ] && [ ! -f "$STOCK_R210" ]; then set_model c200
+            else
+                die "cannot tell which camera this card is for: take one photo with the camera (card in), or name it: ./install.sh c200 $CMD (2016) or ./install.sh r210 $CMD (2017)"
+            fi ;;
+    esac
+    step "camera: $CAMERA_NAME"
+}
+
 # Stops for another camera model, warns for another firmware version or no photo to tell.
 check_camera() {
     local found model version
@@ -166,7 +198,23 @@ flash_instructions() {
 
 # ---------------------------------------------------------------- steps
 
+# Every model whose stock firmware is in firmware/stock, or the one given.
 cmd_build() {
+    local m models=$MODEL
+    if [ -z "$models" ]; then
+        if [ -f "$STOCK_C200" ]; then models=c200; fi
+        if [ -f "$STOCK_R210" ]; then models="$models r210"; fi
+        [ -n "$models" ] || die "no Samsung firmware in firmware/stock/: put ${STOCK_C200##*/} (Gear 360 2016) or ${STOCK_R210##*/} (Gear 360 2017) there (see firmware/README.md)"
+    fi
+    for m in $models; do
+        set_model "$m"
+        say "==== $CAMERA_NAME"
+        build_model
+    done
+    say "Built. Next: put the SD card in the PC and run ./install.sh $(model_arg)flash"
+}
+
+build_model() {
     docker info >/dev/null 2>&1 || die "Docker is not running: start Docker Desktop and try again"
     [ -f "$STOCK" ] || die "no $STOCK: download Samsung's firmware (see firmware/README.md) and put it in firmware/stock/"
     if ! docker image inspect g360r-fwtools:1 >/dev/null 2>&1; then
@@ -184,11 +232,10 @@ cmd_build() {
     sh camera/build.sh ble
     say "== firmware"
     sh camera/tools/make_firmware.sh "$STOCK"
-    say "Built. Next: put the SD card in the PC and run ./install.sh $(model_arg)flash"
 }
 
-# "r210 " when that is the model, so the commands we print can be pasted as they are
-model_arg() { [ "$MODEL" = c200 ] || printf '%s ' "$MODEL"; }
+# The model as given on the command line, so the commands we print can be pasted as they are
+model_arg() { [ -z "$GIVEN_MODEL" ] || printf '%s ' "$GIVEN_MODEL"; }
 
 # The controller, the model's plugin and the Bluetooth side in card/g360r/, and the
 # settings (kept when the card has some). A new r210 card gets its Wi-Fi passphrase
@@ -226,6 +273,7 @@ copy_payload() {
 cmd_flash() {
     local card
     card=$(card_dir "${1:-}")
+    auto_model "$card"
     [ -f "$IMAGE" ] || die "no $IMAGE yet: run ./install.sh $(model_arg)build first"
     say "Preparing $card for the firmware update ($CAMERA_NAME)"
     check_camera "$card"
@@ -245,6 +293,7 @@ cmd_flash() {
 cmd_activate() {
     local card
     card=$(card_dir "${1:-}")
+    auto_model "$card"
     say "Preparing $card for the activation"
     # The update is done: its image and trigger would start it again
     drop "$card/$CARD_IMAGE" "$card"
@@ -278,6 +327,7 @@ cmd_activate() {
 cmd_sd() {
     local card
     card=$(card_dir "${1:-}")
+    auto_model "$card"
     say "Preparing $card for everyday use"
     tidy "$card"
     copy_payload "$card"
@@ -295,6 +345,7 @@ cmd_sd() {
 cmd_stock() {
     local card
     card=$(card_dir "${1:-}")
+    auto_model "$card"
     [ -f "$STOCK" ] || die "no $STOCK: put Samsung's firmware in firmware/stock/"
     say "Preparing $card to go back to Samsung's firmware"
     no_stock_named_image "$card"
@@ -311,6 +362,7 @@ cmd_status() {
     local card
     card=$(card_dir "${1:-}")
     say "Card $card"
+    auto_model "$card"
     local cam
     cam=$(camera_of "$card")
     if [ -n "${cam// /}" ]; then step "camera (from its newest photo): $cam"; fi

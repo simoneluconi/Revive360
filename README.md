@@ -58,7 +58,7 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 | Gear 360 (2017) with an older firmware | Yes, after updating it to R210GLU0ARB2 first |
 
 Only the last firmware Samsung released for each camera is supported. If your camera has an
-older one, update it to the last one first: the [install guide](docs/INSTALL.md#before-you-start)
+older one, update it to the last one first: the [install guide](docs/INSTALL.md#what-you-need)
 says how.
 
 ## How to get started
