@@ -53,8 +53,12 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 | Camera | Works? |
 |---|---|
 | Gear 360 (2016, SM-C200) with firmware C200GLU0AQK1 | Yes |
-| Gear 360 (2016) with other firmware | Should work (the install updates it to C200GLU0AQK1), not tested yet |
+| Gear 360 (2016) with an older firmware | Yes, after updating it to C200GLU0AQK1 first |
 | Gear 360 (2017, SM-R210) | Not yet |
+
+Only the last firmware Samsung released for each camera is supported. If your camera has an
+older one, update it to the last one first: the [install guide](docs/INSTALL.md#before-you-start)
+says how.
 
 ## How to get started
 

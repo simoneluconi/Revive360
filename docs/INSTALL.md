@@ -7,10 +7,14 @@ you exactly what to do on the camera.
 
 **You need:**
 
-- a **Gear 360 (2016, SM-C200)**, best with firmware **C200GLU0AQK1**. To see yours, look at
-  the details of any photo it took: "Software" (on Windows: Properties, Details, "Program name")
-  is **0.85** for C200GLU0AQK1. You do not have to check by hand: `./install.sh flash` reads it
-  from the photos on the card and stops if the camera is not a supported one;
+- a **Gear 360 (2016, SM-C200)** with firmware **C200GLU0AQK1**, the last one Samsung released.
+  Only the last firmware of each camera is supported. To see yours, look at the details of any
+  photo it took: "Software" (on Windows: Properties, Details, "Program name") is **0.85** for
+  C200GLU0AQK1. You do not have to check by hand: `./install.sh flash` reads it from the photos
+  on the card, stops if the camera is not an SM-C200 and warns if its firmware is older. **If your
+  camera has an older firmware, update it first**: run `./install.sh stock` and do
+  [step 5](#5-going-back-to-samsungs-firmware), which installs Samsung's C200GLU0AQK1, then
+  start from step 1;
 - a **microSD card** and a card reader for the computer (the photos already on it stay). **Take
   at least one photo with the camera on this card** before you start: the script reads the
   camera's model and firmware from it;

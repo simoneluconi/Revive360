@@ -41,9 +41,13 @@ Camera side:
 | Camera | Firmware | Status |
 |---|---|---|
 | Samsung Gear 360 (2016), SM-C200 | C200GLU0AQK1 ("AQK1") | **Supported, tested** (adapter `c200`) |
-| Samsung Gear 360 (2016), SM-C200 | other versions (e.g. APE4) | Not yet: the custom firmware is built per firmware version |
-| Samsung Gear 360 (2017), SM-R210 | any | Not yet: adapter `r210` is a stub (status and files only, no capture) |
+| Samsung Gear 360 (2016), SM-C200 | older versions (e.g. APE4) | Not supported: update the camera to stock AQK1 first (`./install.sh stock`) |
+| Samsung Gear 360 (2017), SM-R210 | R210GLU0ARB2 ("ARB2") | In progress: adapter `r210` is a stub (status and files only, no capture); see [firmware/15_r210_port.md](firmware/15_r210_port.md) |
 | Any other model | any | Adapter `generic`: status and files only, no capture, no LEDs |
+
+Only the last firmware Samsung released for each model is supported: the custom firmware, the
+symbol names and the RTOS addresses are worked out for that one build. A camera on an older
+build is updated to the stock last build first, with Samsung's own SD update.
 
 The controller detects the model at start and reports it (`adapter`, `adapter_status`) in
 `GET /api/v1/info`. Contributions for other models and firmware versions are welcome: start from
