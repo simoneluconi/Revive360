@@ -1,0 +1,3 @@
+// Revive360 sound test: dfmsd plays through mm-sound, like the camera app
+sound play low_battery
+shell script /sdcard/g360r/r210_sound.sh

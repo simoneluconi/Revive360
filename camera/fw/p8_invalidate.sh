@@ -19,16 +19,25 @@ if [ "$1" != "__detached" ]; then
 fi
 
 mkdir -p /sdcard/g360r/log
-# Audible progress: 1 beep = started, 2 = done (safe to power off), 3 cancel = aborted
+# Audible progress: 1 beep = started, 2 = done (safe to power off), 3 cancel = aborted.
+# The SM-C200 has 04_N_OK/05_N_Cancel; the SM-R210 has confirm/error instead, and
+# its speaker stays silent for paplay until the rt5659 'Ext Spk' switches are on
+# (docs/firmware/15_r210_port.md; no such controls on the C200: amixer just fails).
 SND=/usr/apps/com.samsung.di-camera-app/res/sounds/camera
+WAV_OK=$SND/04_N_OK.wav
+WAV_ERR=$SND/05_N_Cancel.wav
+[ -e "$WAV_OK" ] || WAV_OK=$SND/confirm.wav
+[ -e "$WAV_ERR" ] || WAV_ERR=$SND/error.wav
+amixer -q sset 'Ext Spk L' on >/dev/null 2>&1
+amixer -q sset 'Ext Spk R' on >/dev/null 2>&1
 beep() {
-    n=$1; w=$SND/$2; i=0
+    n=$1; w=$2; i=0
     while [ "$i" -lt "$n" ]; do paplay "$w" >/dev/null 2>&1; i=$((i + 1)); sleep 0.3; done
 }
 log() { echo "$(date '+%H:%M:%S') $*" >> "$LOG"; sync; }
 page0_tail() { dd if="$SNAP" bs=4096 count=1 2>/dev/null | tail -c 16 | od -An -c | tr -s ' '; }
 
-beep 1 04_N_OK.wav
+beep 1 "$WAV_OK"
 log "=== p8 invalidate start (uptime $(cut -d' ' -f1 /proc/uptime))"
 log "device: $(ls -la $SNAP 2>&1)"
 log "page 0 tail before: $(page0_tail)"
@@ -69,7 +78,7 @@ else
     log "ERROR: $SNAP or mkswap missing; nothing written"
     echo "error: nothing written" > /sdcard/g360r/p8_invalidate.done
     sync
-    beep 3 05_N_Cancel.wav
+    beep 3 "$WAV_ERR"
     exit 0
 fi
 sync
@@ -77,4 +86,4 @@ log "page 0 tail after: $(page0_tail)"
 log "=== done: power off, then power on without info.tg for a cold boot"
 echo done > /sdcard/g360r/p8_invalidate.done
 sync
-beep 2 04_N_OK.wav
+beep 2 "$WAV_OK"

@@ -28,6 +28,9 @@ export PATH=/usr/sbin:/sbin:/usr/bin:/bin
 SND_DIR=/usr/apps/com.samsung.di-camera-app/res/sounds/camera
 WAV_OK="$SND_DIR/04_N_OK.wav"
 WAV_ERR="$SND_DIR/05_N_Cancel.wav"
+# The SM-R210 has confirm/error instead of the C200's OK/Cancel sounds
+[ -e "$WAV_OK" ] || WAV_OK="$SND_DIR/confirm.wav"
+[ -e "$WAV_ERR" ] || WAV_ERR="$SND_DIR/error.wav"
 VCONF_KEY=memory/sysman/battery_skip_low_batt_power_off
 WDT=/sys/devices/platform/jack/set_watchdog
 MODE=${G360R_MODE:-factory}
@@ -104,6 +107,10 @@ ensure_psk() {
 beep() {
     n=$1; wav=$2; i=0
     [ -x /usr/bin/paplay ] && [ -e "$wav" ] || return 0
+    # SM-R210: paplay is silent until the rt5659 speaker switches are on (only the
+    # camera's own player switches them); the C200 has no such controls
+    amixer -q sset 'Ext Spk L' on >/dev/null 2>&1
+    amixer -q sset 'Ext Spk R' on >/dev/null 2>&1
     while [ $i -lt "$n" ]; do
         paplay "$wav" >/dev/null 2>&1
         i=$((i + 1))
@@ -158,6 +165,8 @@ status_led() {
 # (lens LEDs red when ready) is not overwritten.
 led_signature() {
     [ "$MODE" = normal ] || return 0
+    # The LED map above is the SM-C200's; the SM-R210's 7 LEDs are not mapped yet
+    grep -q 'Model=SMC200' /etc/info.ini 2>/dev/null || return 0
     L=/sys/class/leds
     saved=""
     for n in 0 1 2 3 4; do

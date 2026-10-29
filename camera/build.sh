@@ -5,6 +5,9 @@
 #   camera/build.sh          build
 #   camera/build.sh smoke    build + sim smoke test
 #   camera/build.sh clean
+#
+# G360R_SYSROOT picks the camera libraries the shim, plugin and Bluetooth helper
+# link against (default .toolchain/aqk1/sysroot, relative to camera/).
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 IMAGE=g360r-build:1
@@ -24,4 +27,4 @@ case "$TARGET" in
 esac
 
 # MSYS_NO_PATHCONV keeps git-bash on Windows from rewriting /src.
-MSYS_NO_PATHCONV=1 docker run --rm -v "$HERE:/src" -w /src "$IMAGE" make $TARGETS
+MSYS_NO_PATHCONV=1 docker run --rm -v "$HERE:/src" -w /src "$IMAGE" make $TARGETS ${G360R_SYSROOT:+SYSROOT=$G360R_SYSROOT}

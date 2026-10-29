@@ -114,6 +114,25 @@ The card for normal mode must **not** have `info.tg` (that is the factory-mode h
 
 Testing: `sdb.conf` at the card root disables the stock idle auto power-off.
 
+## SM-R210 (Gear 360 2017)
+
+Same procedure, driven by `./install.sh r210 build|flash|activate|stock|status`. It is built
+from the stock `R210GLU0ARB2_180201_1739_REV00_user.bin` (the only supported R210 build) and
+written as `firmware/out/smr210.bin`. Background: [docs/firmware/15_r210_port.md](../../docs/firmware/15_r210_port.md).
+
+- **No shim yet**: `make_firmware.sh` stages the overlay with `noshim`, so `di-camera-app` stays
+  exactly stock and Samsung's SD update path (the way back) cannot be affected by our code.
+- **Card name.** The R210 flashes an image under Samsung's own name (`R210GL…_user.bin`) before
+  `smr210.bin`. With such a file on the card the update installs that one instead, so
+  `install.sh` refuses to prepare a card that has one.
+- **Fewer card swaps.** On the R210 the flash card already gets `g360r/` (controller, Bluetooth
+  side, settings with a Wi-Fi passphrase made on the PC and printed for manual pairing). After the
+  activation the card stays in: there is no `sd` step.
+- **Sounds.** The R210 has `confirm.wav`/`error.wav` instead of `04_N_OK`/`05_N_Cancel`, and
+  `paplay` stays silent until the rt5659 `Ext Spk L/R` switches are on. `p8_invalidate.sh` and
+  `launcher.sh` pick the sound that exists and switch the speaker on first.
+- The C200 LED signature is skipped on the R210, whose 7 LEDs are not mapped yet.
+
 ## Recovery
 
 Flash the stock `C200GLU0AQK1_171121_1257_REV00_user.bin` as in step 2, with the same conditions
