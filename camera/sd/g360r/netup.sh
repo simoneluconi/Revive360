@@ -365,11 +365,24 @@ _netup_wl_ap_quiet() {
 _netup_ap_healthy() {
     _netup_hostapd_running || return 1
     case "$("$BIN" ifflags "$G360R_AP_IF" 2>/dev/null)" in *UP*) : ;; *) return 1 ;; esac
-    # `wl ap` is advisory only: its answer under cfg80211/hostapd is not confirmed on the
-    # hardware, and a false "not AP" here would drop the phone every 5 s
-    if ! _netup_wl_ap_quiet && [ "$_netup_wl_warned" != 1 ]; then
-        log "netup: wl does not report AP mode (advisory, AP kept)"
-        _netup_wl_warned=1
+    # `wl ap` is advisory on the C200: its answer under cfg80211/hostapd is not confirmed
+    # there, and a false "not AP" would drop the phone every 5 s. On the SM-R210 it says 1
+    # while the AP serves and 0 once the radio firmware hung under a fast upload (hostapd
+    # alive, nothing on the air): three checks in a row (15 s) there mean not healthy.
+    _netup_wl_ap_quiet; wl_rc=$?
+    if [ "$wl_rc" = 1 ]; then
+        _netup_wl_bad=$((_netup_wl_bad + 1))
+        if [ "$_netup_wl_strict" = 1 ] && [ "$_netup_wl_bad" -ge 3 ]; then
+            log "netup: wl reports no AP mode $_netup_wl_bad times in a row: the radio hung"
+            _netup_wl_bad=0
+            return 1
+        fi
+        if [ "$_netup_wl_warned" != 1 ]; then
+            log "netup: wl does not report AP mode (advisory, AP kept)"
+            _netup_wl_warned=1
+        fi
+    else
+        _netup_wl_bad=0
     fi
     _netup_dhcp_running || pgrep -f "dnsmasq -C $_netup_dhcp_conf" >/dev/null 2>&1 || return 1
     return 0
@@ -390,6 +403,9 @@ _netup_teardown() {
 # re-run the full bring-up. No wall-clock heuristic: the app sets the camera clock on
 # every connection (POST /api/v1/time), a jump of years that must not drop the AP.
 _netup_wl_warned=0
+_netup_wl_bad=0
+_netup_wl_strict=0
+grep -q 'Model=SMR210' /etc/info.ini 2>/dev/null && _netup_wl_strict=1
 _netup_last_reinit=0
 
 dhcp_check() {
