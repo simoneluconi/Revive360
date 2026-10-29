@@ -1,6 +1,7 @@
 package com.simoneluconi.revive360.link
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Network
 import androidx.compose.ui.graphics.ImageBitmap
 import com.simoneluconi.revive360.BuildConfig
@@ -748,9 +749,12 @@ class CameraController(
                     before += file.size
                 }
                 val layout = RawLayout.of(raw.front.name) ?: error("no layout in ${raw.front.name}")
+                val reference = dngReference(client, photo)
+                var grey = 0
                 MediaSaver.publish(context, "${photo.baseName}.dng", FileKind.RAW, "image/x-adobe-dng", photo.mtime) { out ->
-                    DngWriter.write(parts[0].second, parts[1].second, layout, out)
+                    grey = DngWriter.write(parts[0].second, parts[1].second, layout, out, reference)
                 }
+                EventLog.log("DNG: white balance ${if (grey > 0) "from the camera ($grey grey cells)" else "grey world"}")
                 parts.forEach { it.second.delete() }
             }
             saved.add(dngSavedKey(photo))
@@ -768,6 +772,15 @@ class CameraController(
             return false
         }
     }
+
+    /** The photo's thumbnail, for the camera's white balance in the DNG; null without one */
+    private fun dngReference(client: CameraClient, photo: CameraFile): DngWriter.Reference? = runCatching {
+        val bytes = client.thumbnail(photo.path) ?: return null
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        DngWriter.Reference(bitmap.width, bitmap.height, pixels).also { bitmap.recycle() }
+    }.getOrNull()
 
     fun cancelDng(photo: CameraFile) {
         downloadJobs.remove(dngKey(photo))?.cancel()

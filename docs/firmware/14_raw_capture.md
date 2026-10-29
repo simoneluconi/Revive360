@@ -90,9 +90,9 @@ patch lives in the app's memory: it is applied again after every boot.
 
 ## DNG, and the colour matrix
 
-[tools/raw/](../../tools/raw/): `ssif2dng.py OUT.dng FRONT.raw [REAR.raw]` writes an uncompressed
-12-bit DNG (both lenses side by side like the JPEG, per-site black level from the black rows,
-grey-world AsShotNeutral). Checked with libraw (rawpy). `rawcheck.py` inspects a dump (bit depth,
+[tools/raw/](../../tools/raw/): `ssif2dng.py OUT.dng FRONT.raw [REAR.raw] [PHOTO.JPG]` writes an
+uncompressed 12-bit DNG (both lenses side by side like the JPEG, per-site black level from the black
+rows, AsShotNeutral as below). Checked with libraw (rawpy). `rawcheck.py` inspects a dump (bit depth,
 Bayer or not, CFA guess, preview). Its "not Bayer" verdict uses a 0.02 margin heuristic and can
 fire wrongly on a scene with little colour.
 
@@ -112,6 +112,20 @@ under-determined (it changes a lot with the ridge weight); a colourful scene (36
 it. The camera neutral under the room's LED light is about [0.73, 1, 0.49]. The DNG comes out a
 little more saturated than the JPEG. Only one illuminant so far: a colourful daylight shot could
 add `ColorMatrix2`.
+
+### White balance (AsShotNeutral)
+
+The first DNGs used grey world (the picture's mean colour taken as grey). Outdoors that fails: on
+nine daylight shots (360_0385–0393, 2026-10-29) sky and grass pushed it to B/G 0.65–0.78, where the
+camera's own white is 0.58–0.64 in raw terms, so the DNGs came out yellowish with a dull sky. The
+colour matrix was fine: with the camera's white the developed DNG matches the JPEG's colours.
+
+So the DNG takes the camera's white from the photo's JPEG: on a 320×160 grid (the size of the EXIF
+thumbnail), the cells the JPEG shows as neutral grey (linear max 0.15–0.85, (max − min)/max < 0.06)
+whose raw pixels did not clip (< 4000); AsShotNeutral is the median raw R/G and B/G over them.
+Hundreds to thousands of cells qualify in an ordinary scene; under 16 falls back to grey world. The
+app uses the camera's thumbnail (`/api/v1/thumb`, a few KB), the script the full JPEG scaled down:
+they agree within about 0.03.
 
 ## In g360rd (setting `raw`)
 
@@ -135,7 +149,7 @@ The gallery takes each photo's pair out of the list and marks the photo "RAW" (`
 the photo deletes its pair. The photo's page saves the pair as one DNG in the phone's
 `Download/Revive360/` (out of the photo gallery, so a shot is not shown twice): both dumps to the
 cache (a broken transfer resumes), then `DngWriter` (the Kotlin port of `ssif2dng.py`) streams the DNG
-straight into shared storage. Its output decodes identically to the script's (libraw: same raw
+straight into shared storage, with the white balance from the photo's thumbnail. Its output decodes identically to the script's (libraw: same raw
 data, black, white balance, developed picture). The dumps stay on the camera.
 
 Many at once: the gallery's RAW button saves the DNG of every photo not saved yet (or of the chosen

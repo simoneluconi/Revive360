@@ -8,13 +8,17 @@ Facts measured on the first real dump (2026-10-26, AQK1, normal mode):
   - CFA RGGB, black ~128, white 4095 (12-bit)
 
 Usage:
-  ssif2dng.py OUT.dng FRONT.raw [REAR.raw]
+  ssif2dng.py OUT.dng FRONT.raw [REAR.raw] [PHOTO.JPG]
 One file -> one-lens DNG; two files -> one DNG with front and rear side by side (as the JPEG).
 
 ColorMatrix1 was fitted (ccmfit.py) against the camera's own JPEG of a colourful indoor shot
 (360_0382, 2026-10-26): chromaticities of raw vs JPEG near each lens centre, white kept, so a raw
-developer gives colours close to the camera's JPEG. Env SSIF_CM=file.npy overrides it. White balance is
-the grey-world estimate of the picture, written as AsShotNeutral (editable in any raw editor).
+developer gives colours close to the camera's JPEG. Env SSIF_CM=file.npy overrides it.
+
+White balance (AsShotNeutral, editable in any raw editor): the camera's own, when the photo's JPEG is
+given with both lenses: the raw colour of what the JPEG shows as neutral grey, measured on a 320x160
+copy of it (the size of the EXIF thumbnail the app uses). Else, or with too little grey in the
+picture, the grey-world estimate, which outdoors (sky, grass) comes out too blue: yellowish DNGs.
 """
 import os
 import re
@@ -66,6 +70,38 @@ def grey_world(img, black):
     b = c[1::2, 1::2] - black[1, 1]
     m = np.array([r.mean(), g.mean(), b.mean()])
     return m / m[1]
+
+
+REF_W, REF_H = 320, 160    # the JPEG's EXIF thumbnail size; the app measures on that thumbnail
+REF_MIN_CELLS = 16
+
+
+def camera_white(img, black, jpeg):
+    """The camera's white balance as raw R/G, B/G: medians over the cells of a REF_W x REF_H grid
+    whose JPEG pixel is neutral grey (linear max 0.15..0.85, (max-min)/max < 0.06) and whose raw
+    pixels are not clipped. None when fewer than REF_MIN_CELLS cells qualify."""
+    from PIL import Image
+    h, w = img.shape
+    ref = np.asarray(Image.open(jpeg).convert('RGB').resize((REF_W, REF_H), Image.BOX), np.float64) / 255
+    lin = np.where(ref <= 0.04045, ref / 12.92, ((ref + 0.055) / 1.055) ** 2.4)
+    cx = np.arange(w) * REF_W // w
+    cy = np.arange(h) * REF_H // h
+    cell = cy[:, None] * REF_W + cx[None, :]
+    n = REF_W * REF_H
+    v = img.astype(np.float64)
+    sums = []
+    for sy, sx in ((0, 0), (0, 1), (1, 0), (1, 1)):    # R, G, G, B sites
+        sums.append(np.bincount(cell[sy::2, sx::2].ravel(), v[sy::2, sx::2].ravel(), n)
+                    / np.maximum(np.bincount(cell[sy::2, sx::2].ravel(), None, n), 1))
+    clipped = np.bincount(cell.ravel(), (img >= 4000).ravel(), n)
+    r = sums[0] - black[0, 0]
+    g = (sums[1] - black[0, 1] + sums[2] - black[1, 0]) / 2
+    b = sums[3] - black[1, 1]
+    mx, mn = lin.max(-1).ravel(), lin.min(-1).ravel()
+    sel = (mx > 0.15) & (mx < 0.85) & ((mx - mn) / np.maximum(mx, 1e-6) < 0.06) & (clipped == 0) & (g > 20)
+    if sel.sum() < REF_MIN_CELLS:
+        return None
+    return np.array([np.median(r[sel] / g[sel]), 1.0, np.median(b[sel] / g[sel])]), int(sel.sum())
 
 
 def ifd_entry(tag, typ, count, value_bytes):
@@ -155,13 +191,19 @@ def main():
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     out = sys.argv[1]
-    lenses = [load_lens(p) for p in sys.argv[2:4]]
+    raws = [a for a in sys.argv[2:] if not a.lower().endswith(('.jpg', '.jpeg'))][:2]
+    jpegs = [a for a in sys.argv[2:] if a.lower().endswith(('.jpg', '.jpeg'))]
+    lenses = [load_lens(p) for p in raws]
     img = np.hstack([l[0] for l in lenses])
     black = np.mean([l[1] for l in lenses], axis=0)
-    neutral = grey_world(img, black)
+    found = camera_white(img, black, jpegs[0]) if jpegs and len(lenses) == 2 else None
+    if found:
+        neutral, how = found[0], f'camera white from {found[1]} grey cells of the JPEG'
+    else:
+        neutral, how = grey_world(img, black), 'grey world'
     write_dng(out, img, black, neutral, 'Gear 360 (SM-C200)')
     print(f'{out}: {img.shape[1]}x{img.shape[0]}, black {black.round(1).tolist()}, '
-          f'AsShotNeutral {neutral.round(3).tolist()}')
+          f'AsShotNeutral {neutral.round(3).tolist()} ({how})')
 
 
 if __name__ == '__main__':

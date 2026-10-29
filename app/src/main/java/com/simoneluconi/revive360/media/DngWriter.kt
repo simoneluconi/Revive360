@@ -18,6 +18,9 @@ import kotlin.math.roundToLong
  *
  * Each dump: 16-bit little-endian words, 12-bit values shifted left by 4; rows 0-15 optical black,
  * the picture the width x width square from row 40. Bayer RGGB, white 4095.
+ *
+ * White balance: the camera's own when the photo's JPEG thumbnail is given ([Reference]), else grey
+ * world, which outdoors (sky, grass) comes out too blue and the DNG yellowish.
  */
 object DngWriter {
     private const val SHIFT = 4
@@ -25,6 +28,13 @@ object DngWriter {
     private const val OB_ROWS = 40
     private const val WHITE = 4095
     private const val STRIP_OFFSET = 16L
+    /** A raw value from here up counts as clipped */
+    private const val CLIPPED = 4000
+    /** Fewer grey cells than this in the thumbnail: grey world instead */
+    private const val MIN_GREY_CELLS = 16
+
+    /** The photo's JPEG thumbnail as ARGB pixels (320 x 160 on the C200), the same framing as the DNG */
+    class Reference(val width: Int, val height: Int, val argb: IntArray)
 
     /**
      * XYZ (D65) -> camera, fitted against the camera's own JPEGs (tools/raw/ccmfit.py, shot 360_0382):
@@ -36,7 +46,11 @@ object DngWriter {
         0.2728, -0.0814, 0.2876,
     )
 
-    fun write(front: File, rear: File, layout: RawLayout, out: OutputStream) {
+    /**
+     * Writes the DNG to [out]. The white balance comes from [reference] when it shows enough neutral
+     * grey; answers how many grey cells it used, 0 for grey world.
+     */
+    fun write(front: File, rear: File, layout: RawLayout, out: OutputStream, reference: Reference? = null): Int {
         val lenses = listOf(front, rear)
         val expected = layout.rowBytes.toLong() * layout.rows
         for (f in lenses) if (f.length() != expected) throw IOException("${f.name}: ${f.length()} bytes, expected $expected")
@@ -53,6 +67,12 @@ object DngWriter {
         val sums = DoubleArray(4)
         val counts = LongArray(4)
         val black = DoubleArray(4)
+        // Per thumbnail cell: the sum and count of each CFA site, and whether any pixel clipped
+        val cells = reference?.let { it.width * it.height } ?: 0
+        val cellSums = DoubleArray(4 * cells)
+        val cellCounts = IntArray(4 * cells)
+        val cellClipped = BooleanArray(cells)
+        val cellX = reference?.let { ref -> IntArray(width) { (it.toLong() * ref.width / width).toInt() } }
 
         val ins = lenses.map { DataInputStream(it.inputStream().buffered(1 shl 20)) }
         try {
@@ -88,6 +108,17 @@ object DngWriter {
                         row[2 * (base + x)] = v.toByte()
                         row[2 * (base + x) + 1] = (v ushr 8).toByte()
                     }
+                    if (reference != null && cellX != null) {
+                        val rowCell = (y.toLong() * reference.height / height).toInt() * reference.width
+                        val site = (y and 1) * 2
+                        for (x in 0 until side) {
+                            val cell = rowCell + cellX[base + x]
+                            val at = 4 * cell + site + ((base + x) and 1)
+                            cellSums[at] += w[x].toDouble()
+                            cellCounts[at]++
+                            if (w[x] >= CLIPPED) cellClipped[cell] = true
+                        }
+                    }
                     if (y >= y0 && y < y0 + height / 2) {
                         val site = (y and 1) * 2
                         for (x in maxOf(x0, base) until minOf(x0 + width / 2, base + side)) {
@@ -99,14 +130,54 @@ object DngWriter {
                 sink.write(row)
             }
 
-            val r = sums[0] / counts[0] - black[0]
-            val g = (sums[1] / counts[1] - black[1] + sums[2] / counts[2] - black[2]) / 2
-            val b = sums[3] / counts[3] - black[3]
-            sink.write(ifd(STRIP_OFFSET + stripBytes, width, height, black, doubleArrayOf(r / g, 1.0, b / g)))
+            val camera = reference?.let { cameraWhite(it, cellSums, cellCounts, cellClipped, black) }
+            val neutral = camera?.first ?: run {
+                val r = sums[0] / counts[0] - black[0]
+                val g = (sums[1] / counts[1] - black[1] + sums[2] / counts[2] - black[2]) / 2
+                val b = sums[3] / counts[3] - black[3]
+                doubleArrayOf(r / g, 1.0, b / g)
+            }
+            sink.write(ifd(STRIP_OFFSET + stripBytes, width, height, black, neutral))
             sink.flush()
+            return camera?.second ?: 0
         } finally {
             ins.forEach { runCatching { it.close() } }
         }
+    }
+
+    /**
+     * The camera's white balance as raw (R/G, 1, B/G): medians over the cells whose thumbnail pixel
+     * is neutral grey (linear max 0.15..0.85, (max - min) / max < 0.06) and whose raw pixels did not
+     * clip; with the number of such cells. Null when fewer than [MIN_GREY_CELLS]. As ssif2dng.py.
+     */
+    private fun cameraWhite(
+        ref: Reference, sums: DoubleArray, counts: IntArray, clipped: BooleanArray, black: DoubleArray,
+    ): Pair<DoubleArray, Int>? {
+        fun linear(c: Int): Double = (c / 255.0).let { if (it <= 0.04045) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
+        val rg = ArrayList<Double>()
+        val bg = ArrayList<Double>()
+        for (cell in clipped.indices) {
+            val p = ref.argb[cell]
+            val lin = doubleArrayOf(linear((p ushr 16) and 0xff), linear((p ushr 8) and 0xff), linear(p and 0xff))
+            val max = lin.max()
+            val min = lin.min()
+            if (clipped[cell] || max <= 0.15 || max >= 0.85 || (max - min) / max >= 0.06) continue
+            fun mean(site: Int) = sums[4 * cell + site] / maxOf(counts[4 * cell + site], 1)
+            val r = mean(0) - black[0]
+            val g = (mean(1) - black[1] + mean(2) - black[2]) / 2
+            val b = mean(3) - black[3]
+            if (g <= 20) continue
+            rg += r / g
+            bg += b / g
+        }
+        if (rg.size < MIN_GREY_CELLS) return null
+        return doubleArrayOf(median(rg), 1.0, median(bg)) to rg.size
+    }
+
+    private fun median(v: MutableList<Double>): Double {
+        v.sort()
+        val n = v.size
+        return if (n % 2 == 1) v[n / 2] else (v[n / 2 - 1] + v[n / 2]) / 2
     }
 
     private fun header(ifdOffset: Long): ByteArray =

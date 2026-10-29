@@ -68,13 +68,51 @@ class DngWriterTest {
         assertEquals(4095, t.long(50717))
     }
 
-    /** The real dumps, when RAW_TEST_DIR names a folder with 360_0384_front/rear_…raw: writes 360_0384_app.dng there */
+    @Test
+    fun whiteBalanceFromTheGreyOfTheThumbnail() {
+        val side = 8
+        // R 628, G 1128, B 828 above black 128: raw R/G 0.5, B/G 0.7, which grey world would also give;
+        // the left half of the rear is pure green, which only grey world counts
+        val grey = { y: Int, x: Int -> if (y % 2 == 0 && x % 2 == 0) 628 else if (y % 2 == 1 && x % 2 == 1) 828 else 1128 }
+        val front = dump("f.raw", side) { y, x -> if (y < 40) 128 else grey(y, x) }
+        val rear = dump("r.raw", side) { y, x -> if (y < 40) 128 else if (x < side / 2) (if ((x + y) % 2 == 1) 3000 else 128) else grey(y, x) }
+        // An 8 x 4 thumbnail: 2 x 2 raw pixels per cell; grey where the raw is grey, green elsewhere
+        val ref = DngWriter.Reference(8, 4, IntArray(32) { if (it % 8 in 4..5) 0xff00ff00.toInt() else 0xff808080.toInt() })
+        val out = temp.newFile("o.dng")
+        val cells = out.outputStream().use { DngWriter.write(front, rear, RawLayout(side * 2, side, 40 + side), it, ref) }
+        assertEquals(24, cells)
+        val neutral = Tiff(out.readBytes()).rationals(50728)
+        assertEquals(0.5, neutral[0], 1e-6)
+        assertEquals(1.0, neutral[1], 1e-6)
+        assertEquals(0.7, neutral[2], 1e-6)
+    }
+
+    /**
+     * The real dumps, when RAW_TEST_DIR names a folder with <photo>_front/rear_7776x3888x3950.raw and
+     * <photo>.JPG: writes <photo>_app.dng there for each, with the white balance from the JPEG.
+     */
     @Test
     fun realDumps() {
         val dir = System.getenv("RAW_TEST_DIR")?.let(::File)
-        assumeTrue(dir != null && File(dir, "360_0384_front_7776x3888x3950.raw").exists())
-        val front = File(dir, "360_0384_front_7776x3888x3950.raw")
-        val rear = File(dir, "360_0384_rear_7776x3888x3950.raw")
-        File(dir, "360_0384_app.dng").outputStream().use { DngWriter.write(front, rear, RawLayout.of(front.name)!!, it) }
+        val fronts = dir?.listFiles { f -> f.name.endsWith("_front_7776x3888x3950.raw") }.orEmpty()
+        assumeTrue(fronts.isNotEmpty())
+        for (front in fronts.sorted()) {
+            val photo = front.name.substringBefore("_front_")
+            val rear = File(dir, "${photo}_rear_7776x3888x3950.raw")
+            val ref = File(dir, "$photo.JPG").takeIf { it.exists() }?.let { jpeg ->
+                // The camera's EXIF thumbnail is 320 x 160: the JPEG scaled to that
+                val img = javax.imageio.ImageIO.read(jpeg)
+                val small = java.awt.image.BufferedImage(320, 160, java.awt.image.BufferedImage.TYPE_INT_RGB)
+                small.createGraphics().apply {
+                    setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                    drawImage(img.getScaledInstance(320, 160, java.awt.Image.SCALE_AREA_AVERAGING), 0, 0, null)
+                    dispose()
+                }
+                DngWriter.Reference(320, 160, small.getRGB(0, 0, 320, 160, null, 0, 320))
+            }
+            val out = File(dir, "${photo}_app.dng")
+            val cells = out.outputStream().use { DngWriter.write(front, rear, RawLayout.of(front.name)!!, it, ref) }
+            println("$photo: AsShotNeutral ${Tiff(out.readBytes()).rationals(50728)}, $cells grey cells")
+        }
     }
 }
