@@ -68,14 +68,14 @@ phone and a computer.
 
 1. **Get the app** from [Google Play](https://play.google.com/store/apps/details?id=com.simoneluconi.revive360), or download the APK from the
    [latest GitHub release](https://github.com/simoneluconi/Revive360/releases/latest).
-2. **Set up the camera**: four commands on the computer do the work, and each one tells you
-   what to do next on the camera:
+2. **Set up the camera**: the same commands for the 2016 and the 2017 (the script recognises the
+   camera), each one telling you what to do next on the camera:
 
 ```sh
 ./install.sh build      # prepare everything on the computer
 ./install.sh flash      # update the camera
 ./install.sh activate   # switch the update on
-./install.sh sd         # get the camera ready, then pair it in the app
+./install.sh sd         # get the camera ready (2016 only), then pair it in the app
 ```
 
 The step-by-step guide: **[docs/INSTALL.md](docs/INSTALL.md)**.
