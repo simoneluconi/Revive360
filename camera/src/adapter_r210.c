@@ -10,7 +10,6 @@
  * awake while a client talks to us.
  *
  * TODO(r210):
- *  - live view (CUINETDlnaMan, as on the C200);
  *  - map /sys/class/leds/led.0-6 (run `g360rd ledtest`) and call adapter_discover_leds;
  *  - RAW (the RTOS has the same ssifdump command as the C200's).
  */
@@ -24,7 +23,7 @@
 #include <unistd.h>
 
 /* Tested on ARB2 with the second modified image (2026-10-29): every setting read and
- * written, a still in 2.1 s, a video recorded and stopped */
+ * written, a still in 2.1 s, a video recorded and stopped, the live stream read */
 #define R210_STATUS   "experimental"
 #define ST_BIN        "/usr/bin/st"
 #define ST_TIMEOUT_MS 10000
@@ -339,6 +338,52 @@ static int r210_record(adapter_t *a, int start, char *err, size_t errlen)
     return 0;
 }
 
+/* ------------------------------------------------------------ live view */
+
+/* As on the C200: the stock remote viewfinder (CUINETDlnaMan, started by the
+ * plugin without its own network bring-up) serves Samsung's TTTS stream on
+ * 7679. ARB2 serves /livestream_high.avi only (2560x1280, 15 fps; _middle and
+ * _low answer 400), so every quality gets that one. As on the C200 the stream's
+ * camcorder session must be stopped between clients (CUINETFuncDLNA::
+ * dlna_mpeg_stop), or the next one gets the header only or nothing. But while
+ * the DLNA stack still sends to a client that left ("Cannot send data", until
+ * "Streaming Failed") that stop holds the camera app's main loop for up to a
+ * minute: so the service is stopped first (its sockets closed), then the
+ * session, both quick (tested on ARB2), and the service started again. */
+static void r210_stream_stop(void)
+{
+    char reply[256];
+    shim_plugin("dlnastop", reply, sizeof reply);
+    shim_plugin("mpegstop", reply, sizeof reply);
+}
+#define LIVEVIEW_PORT 7679
+
+static int r210_liveview_open(adapter_t *a, const char *quality, char *host, size_t hostlen, int *port,
+                              char *path, size_t pathlen, char *err, size_t errlen)
+{
+    char reply[256];
+    const char *u;
+    (void)a;
+    (void)quality;
+    r210_stream_stop();
+    /* "ok dlna was=0 now=1 url=http://192.168.107.1:7676/smp_2_" */
+    if (shim_plugin("dlnastart", reply, sizeof reply) < 0 || !(u = strstr(reply, "url=http://"))) {
+        snprintf(err, errlen, "the camera's stream service did not start: %s", reply);
+        return -1;
+    }
+    u += strlen("url=http://");
+    snprintf(host, hostlen, "%.*s", (int)strcspn(u, ":/"), u);
+    *port = LIVEVIEW_PORT;
+    snprintf(path, pathlen, "/livestream_high.avi");
+    return 0;
+}
+
+static void r210_liveview_close(adapter_t *a)
+{
+    (void)a;
+    r210_stream_stop();
+}
+
 /* ------------------------------------------------------------ power timer */
 
 /* The camera switches itself off after its auto power off time. `st app dev
@@ -370,7 +415,7 @@ static void *r210_awake_thread(void *arg)
     for (;;) {
         int64_t now = now_ms_mono();
         int client = g_srv.last_request_ms && now - g_srv.last_request_ms < CLIENT_AWAKE_MS;
-        if (keep_awake() || client || g_srv.recording) {
+        if (keep_awake() || client || g_liveview || g_srv.recording) {
             if (!held || now - held_at >= REASSERT_S * 1000LL) {
                 if (st_dev("power") == 0) {
                     if (!held)
@@ -446,6 +491,10 @@ void adapter_r210_init(adapter_t *a, const config_t *cfg)
         a->set_setting = r210_set_setting;
         a->setting_available = r210_setting_available;
         a->record = r210_record;
+        if (config_get_int(cfg, "liveview_enable", 1)) {
+            a->liveview_open = r210_liveview_open;
+            a->liveview_close = r210_liveview_close;
+        }
     } else {
         a->status = "stub";
         a->capture_modes = 0;

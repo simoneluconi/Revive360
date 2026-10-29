@@ -25,6 +25,9 @@
  *   state                   photo video timelapse looping recording tlrun dual standby timer
  *                           (tlrun: a time-lapse's interval capture runs)
  *   powerstop | powerrestart   holds off / re-arms the auto power off timer
+ *   dlnastart | dlnastop    the stock remote viewfinder service (CUINETDlnaMan), as
+ *                           CUINETFuncDLNA::process_common_activate starts it
+ *   mpegstop                stops its live stream session
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -174,6 +177,59 @@ static int state(char *resp, size_t len)
     return 0;
 }
 
+/* ------------------------------------------------ remote viewfinder (DLNA/UPnP) */
+
+/* CUINETFuncDLNA (1860 bytes on ARB2) holds its CUINETDlnaMan* at +0x608 and the
+ * INETDlnaReciever it hands to StartDlna at +0x5d4; the manager keeps "started"
+ * at +4. process_common_activate calls StartDlna(man, func + 0x5d4, type == 0,
+ * no card), type 0 being the viewfinder. Started here without the function's
+ * own network bring-up, which would replace our softAP. */
+#define FUNC_DLNA_MAN   0x608
+#define FUNC_DLNA_RECV  0x5d4
+
+static int dlna(int start, int stop, char *resp, size_t len)
+{
+    unsigned char *func = instance("_ZZN14CUINETFuncDLNA11getInstanceEvE4inst",
+                                   "_ZGVZN14CUINETFuncDLNA11getInstanceEvE4inst");
+    void (*begin)(void *, void *, int, int) =
+        (void (*)(void *, void *, int, int))app_sym("_ZN13CUINETDlnaMan9StartDlnaEP16INETDlnaRecieverbb");
+    void (*end)(void *, int) = (void (*)(void *, int))app_sym("_ZN13CUINETDlnaMan8StopDlnaEb");
+    void (*desc_url)(char **) = (void (*)(char **))app_sym("DlnaGetDeviceDescUrl");
+    char url[128] = "", *p = url;
+    unsigned char *man;
+    int was, nocard;
+
+    if (!func || !begin || !end || !desc_url || !(man = *(unsigned char **)(func + FUNC_DLNA_MAN))) {
+        snprintf(resp, len, "error a DLNA object or function is missing");
+        return -1;
+    }
+    was = man[4];
+    if (start && !was) {
+        nocard = flag("_ZN10CUINETUtil8IsNoCardEv") == 1 || flag("_ZN10CUINETUtil11IsErrorCardEv") == 1;
+        begin(man, func + FUNC_DLNA_RECV, 1, nocard);
+    }
+    if (stop && was)
+        end(man, 0);
+    if (man[4])
+        desc_url(&p);
+    snprintf(resp, len, "ok dlna was=%d now=%d url=%s", was, man[4], url);
+    return 0;
+}
+
+static int mpeg_stop(char *resp, size_t len)
+{
+    void *func = instance("_ZZN14CUINETFuncDLNA11getInstanceEvE4inst",
+                          "_ZGVZN14CUINETFuncDLNA11getInstanceEvE4inst");
+    void (*stop)(void *, int) = (void (*)(void *, int))app_sym("_ZN14CUINETFuncDLNA14dlna_mpeg_stopEi");
+    if (!func || !stop) {
+        snprintf(resp, len, "error no dlna_mpeg_stop");
+        return -1;
+    }
+    stop(func, 0);
+    snprintf(resp, len, "ok mpegstop");
+    return 0;
+}
+
 static int call_static(const char *mangled, const char *what, char *resp, size_t len)
 {
     void (*f)(void) = (void (*)(void))app_sym(mangled);
@@ -218,7 +274,15 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         return call_static("_ZN10CUINETUtil14StopPowerTimerEv", "powerstop", resp, len);
     if (strcmp(verb, "powerrestart") == 0)
         return call_static("_ZN10CUINETUtil17RestartPowerTimerEv", "powerrestart", resp, len);
+    if (strcmp(verb, "dlnastart") == 0)
+        return dlna(1, 0, resp, len);
+    if (strcmp(verb, "dlnastop") == 0)
+        return dlna(0, 1, resp, len);
+    if (strcmp(verb, "dlnastate") == 0)
+        return dlna(0, 0, resp, len);
+    if (strcmp(verb, "mpegstop") == 0)
+        return mpeg_stop(resp, len);
     snprintf(resp, len, "error usage: ping | menus | menu TYPE | menuset TYPE VALUE | shot | recstart | recstop"
-                        " | state | powerstop | powerrestart");
+                        " | state | powerstop | powerrestart | dlnastart | dlnastop | dlnastate | mpegstop");
     return -1;
 }

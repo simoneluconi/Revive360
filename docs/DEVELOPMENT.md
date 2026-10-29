@@ -42,7 +42,7 @@ Camera side:
 |---|---|---|
 | Samsung Gear 360 (2016), SM-C200 | C200GLU0AQK1 ("AQK1") | **Supported, tested** (adapter `c200`) |
 | Samsung Gear 360 (2016), SM-C200 | older versions (e.g. APE4) | Not supported: update the camera to stock AQK1 first (`./install.sh stock`) |
-| Samsung Gear 360 (2017), SM-R210 | R210GLU0ARB2 ("ARB2") | **Experimental, tested** (adapter `r210`: settings, photo, video; no live view, LEDs or RAW yet); see [firmware/15_r210_port.md](firmware/15_r210_port.md) |
+| Samsung Gear 360 (2017), SM-R210 | R210GLU0ARB2 ("ARB2") | **Experimental, tested** (adapter `r210`: settings, photo, video, live view; no LEDs or RAW yet); see [firmware/15_r210_port.md](firmware/15_r210_port.md) |
 | Any other model | any | Adapter `generic`: status and files only, no capture, no LEDs |
 
 Only the last firmware Samsung released for each model is supported: the custom firmware, the
