@@ -1,4 +1,4 @@
-Revive360 makes the Samsung Gear 360 (2016, SM-C200) camera work again, with any Android phone.
+Revive360 makes the Samsung Gear 360 (2016, SM-C200) and Gear 360 (2017, SM-R210) cameras work again, with any Android phone.
 
 Samsung's Gear 360 apps no longer work on today's phones. Revive360 is a free, open source app that brings the camera back: shoot from your phone, see what the camera sees, change its settings and get real 360° photos.
 
@@ -13,7 +13,7 @@ WHAT YOU CAN DO
 • Copy photos and videos to your phone, or delete them from the camera, one or many at a time
 • Turn the camera's photos into real 360° photos that Google Photos and other apps recognise
 • Look around a 360° photo, straighten it, pick a frame or make a "little planet", and save it as a normal photo
-• Shoot RAW, which Samsung's app never offered: the camera also keeps the sensor data of both lenses, and the app saves it as a DNG for Lightroom and other raw editors (360° photos in good light)
+• Shoot RAW, which Samsung's app never offered: the camera also keeps the sensor data of both lenses, and the app saves it as a DNG for Lightroom and other raw editors (360° photos in good light, Gear 360 2016 for now)
 
 SIMPLE
 • Works with any Android phone (Android 10 or later): it does not have to be a Samsung
@@ -26,7 +26,7 @@ PRIVATE
 
 SUPPORTED CAMERAS
 • Samsung Gear 360 (2016, SM-C200)
-• The Gear 360 (2017, SM-R210) is not supported yet
+• Samsung Gear 360 (2017, SM-R210)
 
 FREE AND OPEN SOURCE
 Revive360 is free software under the GNU GPL v3. Source code, install guide and issue tracker: https://github.com/simoneluconi/Revive360

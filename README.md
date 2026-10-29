@@ -22,9 +22,9 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 |---|---|
 | **The problem** | Samsung's Gear 360 apps are gone. Without them you cannot see the camera's photos on your phone or use it from the phone. |
 | **What this does** | Use the camera from your phone again: shoot, see live, change the settings, copy photos and videos, and get ready-made 360° photos. |
-| **Who it is for** | Anyone with a Gear 360 (2016) and an Android phone of any brand. |
+| **Who it is for** | Anyone with a Gear 360 (2016 or 2017) and an Android phone of any brand. |
 | **What it costs** | Nothing. Free and open source, with no account, no cloud and no ads. |
-| **Status** | Works today. Tested end to end, from setup to everyday use, on the Gear 360 (2016). |
+| **Status** | Works today. Tested end to end, from setup to everyday use, on the Gear 360 (2016) and the Gear 360 (2017). |
 
 ## What you can do
 
@@ -35,7 +35,7 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 - **Get real 360° photos**, ready for Google Photos and other apps.
 - **Shoot RAW**, which Samsung's own app never offered: the camera also keeps the sensor data of
   both lenses, and the app turns it into a DNG for Lightroom and other raw editors, one photo or
-  many at once. 360° photos in good light; about 60 MB per photo.
+  many at once. 360° photos in good light; about 60 MB per photo. Gear 360 (2016) only for now.
 - **Make normal photos from a 360° one**: look around, straighten it, choose the frame you want,
   or make a "little planet".
 
@@ -54,7 +54,8 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 |---|---|
 | Gear 360 (2016, SM-C200) with firmware C200GLU0AQK1 | Yes |
 | Gear 360 (2016) with an older firmware | Yes, after updating it to C200GLU0AQK1 first |
-| Gear 360 (2017, SM-R210) | Not yet |
+| Gear 360 (2017, SM-R210) with firmware R210GLU0ARB2 | Yes (RAW not yet) |
+| Gear 360 (2017) with an older firmware | Yes, after updating it to R210GLU0ARB2 first |
 
 Only the last firmware Samsung released for each camera is supported. If your camera has an
 older one, update it to the last one first: the [install guide](docs/INSTALL.md#before-you-start)

@@ -29,7 +29,7 @@
 
 /* Tested on ARB2 with the second modified image (2026-10-29): every setting read and
  * written, a still in 2.1 s, a video recorded and stopped, the live stream read */
-#define R210_STATUS   "experimental"
+#define R210_STATUS   "supported"
 #define ST_BIN        "/usr/bin/st"
 #define ST_TIMEOUT_MS 10000
 

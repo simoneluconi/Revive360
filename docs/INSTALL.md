@@ -1,7 +1,8 @@
 # Installing Revive360
 
 Five steps. In each one a script does the work on your computer and on the SD card, then tells
-you exactly what to do on the camera.
+you exactly what to do on the camera. The steps below are for the Gear 360 (2016); the Gear 360
+(2017) takes the same ones with a few differences: see [Gear 360 (2017)](#gear-360-2017-sm-r210).
 
 ## Before you start
 
@@ -106,6 +107,24 @@ our software later, run `./install.sh build` and `./install.sh sd` again.
 ```
 
 Then the same buttons as in step 2. The camera ends up exactly as it came from Samsung.
+
+## Gear 360 (2017, SM-R210)
+
+The same steps, with `r210` after `./install.sh` (for example `./install.sh r210 build`), and one
+card swap fewer:
+
+- **Firmware:** only **R210GLU0ARB2**, Samsung's last one, is supported. Put
+  `R210GLU0ARB2_180201_1739_REV00_user.bin` (same XDA thread) in `firmware/stock`. A camera with an
+  older firmware is updated first: `./install.sh r210 stock`, then the buttons of step 2.
+- **Step 2,** `./install.sh r210 flash`: the card also gets everything for everyday use, and the
+  script prints the camera's **Wi-Fi passphrase**: keep it, in case you ever pair by hand. The
+  buttons are the same: hold the **Shutter** (the big record button) and press power. If the card
+  holds an image under Samsung's own name (`R210GL..._user.bin`), the script stops: the 2017 would
+  install that file instead of ours, so delete it first.
+- **Step 3,** `./install.sh r210 activate`: there is no factory screen on the 2017; just wait for
+  the **1 beep**, then the **2 beeps**, and switch it off and on.
+- **No step 4:** the card already has everything. Leave it in and pair the camera as in step 4.
+- **Not on the 2017 yet:** RAW photos.
 
 ## If something goes wrong
 

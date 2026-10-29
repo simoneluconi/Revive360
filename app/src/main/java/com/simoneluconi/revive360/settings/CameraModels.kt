@@ -16,7 +16,7 @@ data class CameraModel(val name: String, val code: String, val requirement: Requ
 object CameraModels {
     val all = listOf(
         CameraModel("Gear 360 (2016)", "SM-C200", Requirement.CUSTOM_FIRMWARE, Support.SUPPORTED),
-        CameraModel("Gear 360 (2017)", "SM-R210", Requirement.UNKNOWN, Support.COMING),
+        CameraModel("Gear 360 (2017)", "SM-R210", Requirement.CUSTOM_FIRMWARE, Support.SUPPORTED),
     )
 
     /** The install guide: the Revive360 firmware and the SD card, step by step. */
