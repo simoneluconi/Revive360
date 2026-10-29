@@ -120,8 +120,18 @@ Same procedure, driven by `./install.sh r210 build|flash|activate|stock|status`.
 from the stock `R210GLU0ARB2_180201_1739_REV00_user.bin` (the only supported R210 build) and
 written as `firmware/out/smr210.bin`. Background: [docs/firmware/15_r210_port.md](../../docs/firmware/15_r210_port.md).
 
-- **No shim yet**: `make_firmware.sh` stages the overlay with `noshim`, so `di-camera-app` stays
-  exactly stock and Samsung's SD update path (the way back) cannot be affected by our code.
+- **Shim without interposers**: `make_firmware.sh` stages the R210 overlay with `shim-r210`
+  (`make shim-r210`: the same `g360r_shim.c` built with `G360R_SHIM_NO_INTERPOSE`). It keeps the
+  socket, the main-loop requests and the plugin loader, but wraps none of the camera app's
+  functions. Everything model-specific goes in the plugin on the card. (The first R210 image,
+  2026-10-29, had no shim at all: `noshim`.)
+- **Flash prepared over Wi-Fi** (no card swap): the image goes to the card with
+  `debug/upload` (`UPLOAD_MAX` 400 MB, streamed) and a `debug/script` moves it to the root, writes
+  `fwupgrade.txt` and arms the activation hook with `g360r/p8_hook/expect_version` (the new image's
+  `/usr/share/g360r/VERSION`). With that file `p8_invalidate.sh` waits on boots before the flash.
+  After the flash it invalidates the factory snapshot, or only disarms if the new firmware already
+  cold-boots, and removes the image and `fwupgrade.txt`. On the R210, `finishPowerOn` takes the update
+  branch before the factory-hook check, so `info.tg` on the card does not get in the flash's way.
 - **Card name.** The R210 flashes an image under Samsung's own name (`R210GL…_user.bin`) before
   `smr210.bin`. With such a file on the card the update installs that one instead, so
   `install.sh` refuses to prepare a card that has one.

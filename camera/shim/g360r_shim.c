@@ -15,6 +15,9 @@
  *   (ecore_main_loop_thread_safe_call_async) and run there, serialized with
  *   the app's own camera calls; the socket thread only waits for the answer.
  * - Logs to /tmp/g360r/shim.log.
+ * - Built with G360R_SHIM_NO_INTERPOSE (the SM-R210's), it has no mm_camera
+ *   interposers and no usr/var/userspec requests: only the main-loop requests,
+ *   mcb and the plugin, so the stock app's own calls are never wrapped.
  *
  * Built against the camera's own glibc 2.13 (camera/.toolchain/aqk1/sysroot),
  * everything else is looked up with dlsym at run time.
@@ -67,6 +70,7 @@ static void slog(const char *fmt, ...)
 
 /* ------------------------------------------------------------ interposers */
 
+#ifndef G360R_SHIM_NO_INTERPOSE
 typedef int (*set3_fn)(handle_t, int, int);
 typedef int (*set4_fn)(handle_t, int, int, int);
 
@@ -137,13 +141,14 @@ int mm_camera_set_userspec(handle_t h, int item, int flag)
         slog("app: set_userspec(item=%d 0x%x, flag=%d) -> %d", item, item, flag, rc);
     return rc;
 }
+#endif /* G360R_SHIM_NO_INTERPOSE */
 
 /* ------------------------------------------------------------ main loop */
 
 /* One request run on the app's main loop; the socket thread waits on done. */
 struct job {
-    char req[256];
-    char resp[512];
+    char req[1024];
+    char resp[16384];   /* a plugin's listing (all of the R210's 44 menus) fits */
     int done;
     pthread_mutex_t mu;
     pthread_cond_t cv;
@@ -267,6 +272,9 @@ static void run_on_main(struct job *j)
         snprintf(j->resp, sizeof j->resp, "ok mcb 0x%lx %ld -> rc=%d", a, b, rc);
         return;
     }
+#ifdef G360R_SHIM_NO_INTERPOSE
+    snprintf(j->resp, sizeof j->resp, "error usage: ping | handle | mcb ID VAL | plugin PATH | p TEXT");
+#else
     if (n != 3) {
         snprintf(j->resp, sizeof j->resp, "error usage: ping | handle | mcb ID VAL | usr ID VAL | var CMD VAL | userspec ITEM FLAG | plugin PATH | p TEXT");
         return;
@@ -286,6 +294,7 @@ static void run_on_main(struct job *j)
         return;
     }
     snprintf(j->resp, sizeof j->resp, "ok %s %ld %ld -> rc=%d", verb, a, b, rc);
+#endif
 }
 
 static void main_cb(void *data)

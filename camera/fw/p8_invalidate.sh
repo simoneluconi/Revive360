@@ -37,6 +37,32 @@ beep() {
 log() { echo "$(date '+%H:%M:%S') $*" >> "$LOG"; sync; }
 page0_tail() { dd if="$SNAP" bs=4096 count=1 2>/dev/null | tail -c 16 | od -An -c | tr -s ' '; }
 
+# Armed over Wi-Fi before the flash, with the image put on the card the same way
+# (expect_version next to this script = the new image's /usr/share/g360r/VERSION): then
+# the hook also runs on boots before the flash, and must act only on the first one
+# after it. A snapshot on p8 (S1SUSPEND at the end of page 0) = the flash has just
+# written the factory one: invalidate it, below. The new firmware already running =
+# the flash wrote no snapshot: only disarm. Anything else is a boot before the
+# flash: stay armed and do nothing. Without expect_version: as before.
+EXPECT=$(dirname "$0")/expect_version
+flash_files() { rm -f /sdcard/smr210.bin /sdcard/smc200.bin /sdcard/fwupgrade.txt "$EXPECT"; }
+if [ -f "$EXPECT" ]; then
+    if dd if="$SNAP" bs=4096 count=1 2>/dev/null | tail -c 16 | grep -q S1SUSPEND; then
+        log "=== armed over Wi-Fi: a snapshot on p8, so the flash is done"
+    elif [ "$(cat /usr/share/g360r/VERSION 2>/dev/null)" = "$(cat "$EXPECT")" ]; then
+        log "=== armed over Wi-Fi: the new firmware already runs and p8 holds no snapshot: disarming"
+        rm -f /sdcard/info.tg.done
+        mv /sdcard/info.tg /sdcard/info.tg.done
+        flash_files
+        sync
+        beep 2 "$WAV_OK"
+        exit 0
+    else
+        log "armed over Wi-Fi, before the flash (firmware: $(cat /usr/share/g360r/VERSION 2>/dev/null)): waiting"
+        exit 0
+    fi
+fi
+
 beep 1 "$WAV_OK"
 log "=== p8 invalidate start (uptime $(cut -d' ' -f1 /proc/uptime))"
 log "device: $(ls -la $SNAP 2>&1)"
@@ -83,6 +109,8 @@ else
 fi
 sync
 log "page 0 tail after: $(page0_tail)"
+# Flashed from an image put on the card over Wi-Fi: the image and its trigger go too
+[ -f "$EXPECT" ] && flash_files && log "flash image and fwupgrade.txt removed"
 log "=== done: power off, then power on without info.tg for a cold boot"
 echo done > /sdcard/g360r/p8_invalidate.done
 sync

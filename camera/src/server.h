@@ -12,7 +12,7 @@
 #define HDR_MAX   8192          /* protocol §2: header block max 8 KiB */
 #define BODY_MAX  4096          /* protocol §2: JSON body max 4 KiB */
 #define UPLOAD_PATH "/api/v1/debug/upload"
-#define UPLOAD_MAX (8L * 1024 * 1024)   /* its body is read by the handler, from the socket */
+#define UPLOAD_MAX (400L * 1024 * 1024) /* its body is streamed to the card by the handler: a firmware image fits */
 
 /* ------------------------------------------------------------ global state */
 

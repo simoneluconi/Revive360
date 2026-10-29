@@ -11,8 +11,8 @@
 # The result is firmware/out/smc200.bin (SM-C200) or firmware/out/smr210.bin
 # (SM-R210), the file the flash takes from the SD card (docs/INSTALL.md,
 # camera/fw/README.md). Only the last stock firmware of each model is supported.
-# The SM-R210 image has no shim yet: its camera app stays stock
-# (docs/firmware/15_r210_port.md).
+# The SM-R210 image gets the shim without mm_camera interposers (shim-r210):
+# the camera app's own calls stay stock (docs/firmware/15_r210_port.md).
 set -eu
 cd "$(dirname "$0")/../.."
 
@@ -21,11 +21,11 @@ OUT=firmware/out
 STAGE=camera/out/fw-stage
 
 # The stock images the overlay is built and tested against, by SHA-256:
-# "<model> <firmware> <image name on the card> <shim|noshim> <sysroot>"
+# "<model> <firmware> <image name on the card> <shim|shim-r210|noshim> <sysroot>"
 supported() {
     case "$1" in
         150bc48362555a4812e8871ff581c693f50f80e3e31e4647d2b563e9072c48db) echo "SM-C200 C200GLU0AQK1 smc200.bin shim aqk1" ;;
-        81765495ee2dfa3f67f0543e8f99f0df2e5310e3f0b10f8dabddbf64015d8324) echo "SM-R210 R210GLU0ARB2 smr210.bin noshim arb2" ;;
+        81765495ee2dfa3f67f0543e8f99f0df2e5310e3f0b10f8dabddbf64015d8324) echo "SM-R210 R210GLU0ARB2 smr210.bin shim-r210 arb2" ;;
         *) return 1 ;;
     esac
 }
@@ -55,8 +55,8 @@ fi
 echo "== controller and Bluetooth helper ($SHIM)"
 export G360R_SYSROOT=${SYSROOT#camera/}
 sh camera/build.sh
-if [ "$SHIM" = shim ]; then
-    sh camera/build.sh shim
+if [ "$SHIM" != noshim ]; then
+    sh camera/build.sh "$SHIM"
 fi
 sh camera/build.sh ble
 

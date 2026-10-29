@@ -77,9 +77,25 @@ $(OUT)/libg360r_shim.so: shim/g360r_shim.c
 	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -o $@ $< -nostdlib -Wl,--no-undefined 		$(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2 $(SYSROOT)/lib/libpthread.so.0 $(SYSROOT)/lib/librt.so.1
 	@$(CROSS)readelf -V $@ | grep -oE "GLIBC_[0-9.]+" | sort -uV | tr '\n' ' '; echo "<- glibc versions needed (camera has 2.13)"
 
+# The SM-R210's shim: the same loader without the mm_camera interposers, so the
+# stock camera app's own calls stay untouched (docs/firmware/15_r210_port.md).
+shim-r210: $(OUT)/libg360r_shim_r210.so
+$(OUT)/libg360r_shim_r210.so: shim/g360r_shim.c
+	@mkdir -p $(OUT)
+	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -DG360R_SHIM_NO_INTERPOSE -o $@ $< -nostdlib -Wl,--no-undefined \
+		$(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2 $(SYSROOT)/lib/libpthread.so.0 $(SYSROOT)/lib/librt.so.1
+	@$(CROSS)readelf -V $@ | grep -oE "GLIBC_[0-9.]+" | sort -uV | tr '\n' ' '; echo "<- glibc versions needed (camera has 2.13)"
+	@! $(CROSS)nm -D --defined-only $@ | grep -q mm_camera || { echo "mm_camera symbols in the r210 shim" >&2; exit 1; }
+
 # libg360r_plugin.so: dlopened by the shim from the card (no flash to change it).
 plugin: $(OUT)/libg360r_plugin.so
 $(OUT)/libg360r_plugin.so: shim/g360r_plugin.c
+	@mkdir -p $(OUT)
+	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -o $@ $< -nostdlib -Wl,--no-undefined $(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2
+
+# The SM-R210's plugin (its own AppNet managers): on the card as libg360r_plugin.so.
+plugin-r210: $(OUT)/libg360r_plugin_r210.so
+$(OUT)/libg360r_plugin_r210.so: shim/g360r_plugin_r210.c
 	@mkdir -p $(OUT)
 	$(CC_ARM) -shared -fPIC -O2 -Wall -Wextra -o $@ $< -nostdlib -Wl,--no-undefined $(SYSROOT)/lib/libc.so.6 $(SYSROOT)/lib/libdl.so.2
 
