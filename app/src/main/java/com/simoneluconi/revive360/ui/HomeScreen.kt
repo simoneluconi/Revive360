@@ -61,11 +61,13 @@ import com.simoneluconi.revive360.protocol.SettingIds
 import com.simoneluconi.revive360.protocol.SettingValues
 import com.simoneluconi.revive360.protocol.ShootingModes
 import com.simoneluconi.revive360.protocol.Storage
+import com.simoneluconi.revive360.settings.PairedCamera
 import com.simoneluconi.revive360.ui.theme.LocalAppColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** The paired cameras, one card each, also with a single one: a tap opens that camera's page. */
 @Composable
 fun HomeScreen() {
     val nav = LocalActions.current
@@ -73,6 +75,80 @@ fun HomeScreen() {
     val state by controller.state.collectAsStateWithLifecycle()
     val camera by nav.app.store.camera.collectAsStateWithLifecycle()
     val cameras by nav.app.store.cameras.collectAsStateWithLifecycle()
+
+    ScreenScaffold(
+        title = stringResource(R.string.app_name),
+        showBack = false,
+        actions = {
+            RoundIconButton(AppIcons.Settings, label = stringResource(R.string.settings_title)) { nav.navigate(Screen.Settings) }
+        },
+    ) {
+        if (cameras.isEmpty()) {
+            WelcomeCard()
+            return@ScreenScaffold
+        }
+        cameras.forEach { c ->
+            // Only the camera in use has a link: the others show as not connected
+            CameraCard(c, if (c.id == camera?.id) state else LinkState.Idle) {
+                controller.select(c.id)
+                nav.navigate(Screen.Camera)
+            }
+        }
+        PillButton(stringResource(R.string.settings_add_camera), Modifier.fillMaxWidth(), icon = AppIcons.Camera360) {
+            nav.navigate(Screen.Pair())
+        }
+        // What is already on the phone, whichever camera is on
+        Card(padding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+            SettingRow(
+                title = stringResource(R.string.gallery_tab_phone),
+                subtitle = stringResource(R.string.phone_subtitle),
+                icon = AppIcons.Gallery,
+                onClick = { nav.navigate(Screen.Gallery) },
+            )
+        }
+    }
+}
+
+/** One paired camera in the list: its model's icon, name, model and firmware, and its link. */
+@Composable
+private fun CameraCard(camera: PairedCamera, state: LinkState, onClick: () -> Unit) {
+    val colors = LocalAppColors.current
+    val resources = LocalResources.current
+    val dot = when (state) {
+        is LinkState.Connected -> colors.good
+        is LinkState.Failed -> colors.bad
+        LinkState.Waking, LinkState.Joining, LinkState.Handshake -> colors.warn
+        else -> colors.text2
+    }
+    Card(Modifier.fillMaxWidth().pressable(label = camera.label, onClick = onClick)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(52.dp).clip(CircleShape).background(colors.surface2), contentAlignment = Alignment.Center) {
+                Icon(AppIcons.cameraFor(camera.model), colors.text, size = 28.dp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Label(camera.label, size = 17.sp, weight = FontWeight.ExtraBold, maxLines = 1)
+                listOfNotNull(camera.model, camera.firmware).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                    Label(it, size = 13.sp, color = colors.text2, mono = true, maxLines = 1)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Dot(dot, size = 8.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Label(Format.state(resources, state), size = 14.sp, color = colors.text2, maxLines = 1)
+                }
+            }
+            Icon(AppIcons.Chevron, colors.text2, size = 20.dp)
+        }
+    }
+}
+
+/** The page of the camera in use: its link, battery and card, capture and gallery. */
+@Composable
+fun CameraScreen() {
+    val nav = LocalActions.current
+    val controller = nav.app.controller
+    val state by controller.state.collectAsStateWithLifecycle()
+    val camera by nav.app.store.camera.collectAsStateWithLifecycle()
     val status by controller.status.collectAsStateWithLifecycle()
     val files by controller.files.collectAsStateWithLifecycle()
     val resources = LocalResources.current
@@ -85,27 +161,14 @@ fun HomeScreen() {
     }
 
     ScreenScaffold(
-        title = stringResource(R.string.app_name),
-        showBack = false,
+        title = camera?.label ?: stringResource(R.string.camera_generic),
         actions = {
             RoundIconButton(AppIcons.Settings, label = stringResource(R.string.settings_title)) { nav.navigate(Screen.Settings) }
         },
         // The mode and the shutter stay put, whatever the page shows and wherever it is scrolled
         bottomBar = connectedInfo?.takeIf { it.capabilities.canCapture }?.let { info -> { CaptureBar(info, shot, changer) } },
     ) {
-        if (state == LinkState.NotPaired && camera == null) {
-            WelcomeCard()
-            return@ScreenScaffold
-        }
-        if (cameras.size > 1) {
-            // More than one camera paired: switch with a tap
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                cameras.forEach { c ->
-                    Chip(c.label, selected = c.id == camera?.id) { controller.select(c.id) }
-                }
-            }
-        }
-        ConnectionCard(state, camera?.label)
+        ConnectionCard(state, camera?.label, camera?.model)
         val info = (state as? LinkState.Connected)?.info
         if (info == null) {
             // Without the camera, what is already on the phone is still there to look at
@@ -174,7 +237,7 @@ private fun WelcomeCard() {
 }
 
 @Composable
-private fun ConnectionCard(state: LinkState, savedName: String?) {
+private fun ConnectionCard(state: LinkState, savedName: String?, savedModel: String?) {
     val nav = LocalActions.current
     val colors = LocalAppColors.current
     val resources = LocalResources.current
@@ -188,7 +251,7 @@ private fun ConnectionCard(state: LinkState, savedName: String?) {
     Card {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(52.dp).clip(CircleShape).background(colors.surface2), contentAlignment = Alignment.Center) {
-                Icon(AppIcons.Camera360, colors.text, size = 28.dp)
+                Icon(AppIcons.cameraFor(info?.model ?: savedModel), colors.text, size = 28.dp)
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {

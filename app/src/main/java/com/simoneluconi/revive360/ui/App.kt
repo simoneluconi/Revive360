@@ -58,6 +58,8 @@ import kotlinx.coroutines.delay
 /** The app's screens; the back stack is a plain list. */
 sealed interface Screen {
     data object Home : Screen
+    /** The page of the camera in use (picked in the list on [Home]). */
+    data object Camera : Screen
     /** Pairs a new camera, or sets up [replaceId] again. */
     data class Pair(val replaceId: String? = null) : Screen
     data object Gallery : Screen
@@ -143,6 +145,7 @@ fun AppRoot(app: Revive360App, findCamera: ((CompanionWifi.Found?) -> Unit) -> U
                     saved.SaveableStateProvider(entry.id) {
                         when (val screen = entry.screen) {
                             Screen.Home -> HomeScreen()
+                            Screen.Camera -> CameraScreen()
                             is Screen.Pair -> PairScreen(screen.replaceId)
                             Screen.Gallery -> GalleryScreen()
                             is Screen.File -> FileScreen(screen.path)

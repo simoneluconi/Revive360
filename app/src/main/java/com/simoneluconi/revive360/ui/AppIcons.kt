@@ -22,6 +22,15 @@ object AppIcons {
         circle(12f, 10f, 2.5f),
         "M9 17l-1 4h8l-1-4",
     )
+    /** The Gear 360 (2017, SM-R210): a smaller round head on a long grip. */
+    val Camera360R210 = icon(
+        circle(12f, 8f, 5.5f),
+        circle(12f, 8f, 2f),
+        "M9.8 13.1L10.5 21h3l0.7-7.9",
+    )
+
+    /** The icon for a camera model as `info` reports it (SM-C200, SM-R210); [Camera360] when unknown. */
+    fun cameraFor(model: String?) = if (model == "SM-R210") Camera360R210 else Camera360
     val Shutter = icon(circle(12f, 12f, 8f), circle(12f, 12f, 4f))
     val Photo = icon(
         "M5 5h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z",

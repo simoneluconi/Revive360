@@ -69,7 +69,7 @@ fun SettingsScreen() {
                     SettingRow(
                         title = other.label,
                         subtitle = listOfNotNull(other.model, other.ssid).joinToString(" · ").ifEmpty { null },
-                        icon = AppIcons.Camera360,
+                        icon = AppIcons.cameraFor(other.model),
                         onClick = { app.controller.select(other.id) },
                     )
                 }

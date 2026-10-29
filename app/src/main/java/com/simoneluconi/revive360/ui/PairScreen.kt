@@ -135,6 +135,7 @@ fun PairScreen(replaceId: String? = null) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 PillButton(
                     stringResource(if (scanning) R.string.pair_searching else R.string.pair_find),
+                    Modifier.weight(1f),
                     icon = AppIcons.Camera360,
                     style = ButtonStyle.PRIMARY,
                     enabled = !scanning && busy == null,
@@ -241,6 +242,7 @@ private fun ManualPairing(replaceId: String?) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             PillButton(
                 stringResource(R.string.pair_find_wifi),
+                Modifier.weight(1f),
                 icon = AppIcons.Wifi,
                 enabled = valid && !searching,
             ) {
