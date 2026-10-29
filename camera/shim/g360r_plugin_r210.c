@@ -28,11 +28,19 @@
  *   dlnastart | dlnastop    the stock remote viewfinder service (CUINETDlnaMan), as
  *                           CUINETFuncDLNA::process_common_activate starts it
  *   mpegstop                stops its live stream session
+ *   rawfix                  guards the RTOS dump's file I/O in libcapture (see raw_fix)
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
+#include <elf.h>
+#include <errno.h>
+#include <link.h>
+#include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #define MENU_TYPES 44
 
@@ -230,6 +238,280 @@ static int mpeg_stop(char *resp, size_t len)
     return 0;
 }
 
+/* ------------------------------------------------ RTOS dump file I/O */
+
+/* The A7 RTOS writes its SSIF raw dumps ("st cap back unitest ssifdump on")
+ * through libcapture's RunAdjustFunction: fopen() of the name straight from the
+ * RTOS's RAM, one fwrite() per row, fclose(). On the C200 a name reached Linux
+ * with leftovers after ".raw" (the RTOS cleans its cache for strlen bytes only);
+ * on the R210 a still with the dump on restarted the camera, the front file
+ * missing and the rear one empty. "rawfix" points libcapture's fopen, fwrite and
+ * fclose slots at wrappers that cut card names after ".raw", skip a write to a
+ * stream that failed to open (instead of crashing the app) and log every card
+ * file to the card, synced line by line so it outlives a restart. */
+#define RAW_LIB  "libcapture-fw-prod.so"
+#define RAW_CARD "/mnt/mmc/"
+#define RAW_LOG  "/opt/storage/sdcard/g360r/log/rawfix.log"
+#define RAW_FILES 4
+
+typedef FILE *(*fopen_fn)(const char *, const char *);
+typedef size_t (*fwrite_fn)(const void *, size_t, size_t, FILE *);
+typedef int (*fclose_fn)(FILE *);
+typedef void *(*mmap_fn)(void *, size_t, int, int, int, off_t);
+static fopen_fn g_libc_fopen;
+static fwrite_fn g_libc_fwrite;
+static fclose_fn g_libc_fclose;
+static mmap_fn g_libc_mmap;
+static int g_raw_opens, g_raw_cut, g_null_writes, g_bad_writes, g_map_fails, g_other_writes;
+static int g_probe[2] = { -1, -1 };
+
+static struct {
+    FILE *f;
+    char name[96];
+    unsigned writes;
+    unsigned long long bytes;
+} g_raw_files[RAW_FILES];
+
+static void raw_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void raw_log(const char *fmt, ...)
+{
+    FILE *f;
+    va_list ap;
+    if (!g_libc_fopen || !(f = g_libc_fopen(RAW_LOG, "a")))
+        return;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fputc('\n', f);
+    fflush(f);
+    fsync(fileno(f));
+    g_libc_fclose(f);
+}
+
+/* the name as it came, bytes outside printable ASCII as \xNN */
+static void shown(char *out, size_t cap, const char *path, size_t n)
+{
+    size_t o = 0;
+    for (size_t i = 0; i < n && o + 5 < cap; i++) {
+        unsigned char c = (unsigned char)path[i];
+        o += (size_t)snprintf(out + o, cap - o, c >= 0x20 && c < 0x7f ? "%c" : "\\x%02x", c);
+    }
+    out[o] = 0;
+}
+
+static FILE *raw_fopen(const char *path, const char *mode)
+{
+    char name[256], text[512];
+    const char *ext;
+    size_t n, tail;
+    FILE *res;
+
+    if (!path || strncmp(path, RAW_CARD, sizeof RAW_CARD - 1) != 0) {
+        /* a dump name that reached Linux garbled does not start with the card: show it too */
+        res = g_libc_fopen(path, mode);
+        if (path) {
+            tail = 4096 - ((uintptr_t)path & 4095);
+            shown(text, sizeof text, path, strnlen(path, tail < 96 ? tail : 96));
+            raw_log("fopen (not on the card) \"%s\" mode %s -> %s%s", text, mode, res ? "open" : "FAILED",
+                    res || errno == 0 ? "" : strerror(errno));
+        } else {
+            raw_log("fopen NULL mode %s", mode);
+        }
+        return res;
+    }
+    g_raw_opens++;
+    ext = strstr(path, ".raw");
+    n = ext ? (size_t)(ext - path) + 4 : strlen(path);
+    if (n < sizeof name && ext && path[n]) {
+        memcpy(name, path, n);
+        name[n] = 0;
+        g_raw_cut++;
+    } else {
+        snprintf(name, sizeof name, "%s", path);
+    }
+    res = g_libc_fopen(name, mode);
+    /* the name with up to 32 bytes after it, but not past the page (mapped from /dev/mem) */
+    tail = 4096 - (((uintptr_t)path + n) & 4095);
+    shown(text, sizeof text, path, n + strnlen(path + n, tail < 32 ? tail : 32));
+    raw_log("fopen \"%s\" mode %s -> %s%s", text, mode, res ? "open" : "FAILED",
+            strcmp(name, path) != 0 ? " (name cut)" : "");
+    for (int i = 0; res && i < RAW_FILES; i++) {
+        if (!g_raw_files[i].f) {
+            g_raw_files[i].f = res;
+            snprintf(g_raw_files[i].name, sizeof g_raw_files[i].name, "%.95s", name + sizeof RAW_CARD - 1);
+            g_raw_files[i].writes = 0;
+            g_raw_files[i].bytes = 0;
+            break;
+        }
+    }
+    return res;
+}
+
+/* whether the byte at P can be read: the kernel copies it into a pipe or says EFAULT */
+static int readable(const void *p)
+{
+    char c;
+    if (g_probe[0] < 0)
+        return 1;
+    if (write(g_probe[1], p, 1) != 1)
+        return 0;
+    return read(g_probe[0], &c, 1) == 1;
+}
+
+/* FILE_WRITE hands fwrite the address GetVirtualAddr left behind, which is stale or NULL when its
+ * mmap of /dev/mem failed: a buffer that cannot be read is skipped instead of crashing the app */
+static size_t raw_fwrite(const void *p, size_t size, size_t count, FILE *f)
+{
+    size_t r, n = size * count;
+    int i;
+
+    for (i = 0; f && i < RAW_FILES && g_raw_files[i].f != f; i++)
+        ;
+    if (!f) {
+        if (++g_null_writes == 1 || g_null_writes % 1000 == 0)
+            raw_log("fwrite of %u bytes to a stream that did not open: skipped (%d so far)", (unsigned)n,
+                    g_null_writes);
+        return 0;
+    }
+    if (i == RAW_FILES) {
+        if (++g_other_writes <= 3)
+            raw_log("fwrite of %u bytes from %p to a stream not on the card (%p)", (unsigned)n, p, (void *)f);
+        return g_libc_fwrite(p, size, count, f);
+    }
+    if (g_raw_files[i].writes == 0)
+        raw_log("first fwrite to %s: %u bytes from %p", g_raw_files[i].name, (unsigned)n, p);
+    if (n && (!p || !readable(p) || !readable((const char *)p + n - 1))) {
+        if (++g_bad_writes <= 3 || g_bad_writes % 1000 == 0)
+            raw_log("fwrite %u to %s: %u bytes from %p cannot be read: skipped (%d so far)",
+                    g_raw_files[i].writes, g_raw_files[i].name, (unsigned)n, p, g_bad_writes);
+        g_raw_files[i].writes++;
+        return 0;
+    }
+    r = g_libc_fwrite(p, size, count, f);
+    g_raw_files[i].writes++;
+    g_raw_files[i].bytes += r * size;
+    return r;
+}
+
+/* GetVirtualAddr's mapping of the RTOS buffer: a failure is logged with the physical address */
+static void *raw_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off)
+{
+    void *res = g_libc_mmap(addr, len, prot, flags, fd, off);
+    if (res == MAP_FAILED) {
+        int e = errno;
+        if (++g_map_fails <= 5 || g_map_fails % 1000 == 0)
+            raw_log("mmap of %u bytes at 0x%08lx (fd %d) failed: %s (%d so far)", (unsigned)len,
+                    (unsigned long)off, fd, strerror(e), g_map_fails);
+        errno = e;
+    }
+    return res;
+}
+
+static int raw_fclose(FILE *f)
+{
+    for (int i = 0; f && i < RAW_FILES; i++) {
+        if (g_raw_files[i].f == f) {
+            raw_log("fclose %s: %u writes, %llu bytes", g_raw_files[i].name, g_raw_files[i].writes,
+                    g_raw_files[i].bytes);
+            g_raw_files[i].f = NULL;
+            break;
+        }
+    }
+    return g_libc_fclose(f);
+}
+
+/* the GOT slot of SYM in the loaded library whose path ends in LIB */
+struct got_find {
+    const char *lib, *sym;
+    void **slot;
+};
+
+static int got_find_cb(struct dl_phdr_info *info, size_t size, void *data)
+{
+    struct got_find *g = data;
+    const char *name = info->dlpi_name;
+    size_t ln = strlen(name), lb = strlen(g->lib);
+    uintptr_t base = info->dlpi_addr, jmprel = 0, symtab = 0, strtab = 0, relsz = 0;
+    const ElfW(Dyn) *dyn = NULL;
+
+    (void)size;
+    if (ln < lb || strcmp(name + ln - lb, g->lib) != 0)
+        return 0;
+    for (int i = 0; i < info->dlpi_phnum; i++)
+        if (info->dlpi_phdr[i].p_type == PT_DYNAMIC)
+            dyn = (const ElfW(Dyn) *)(base + info->dlpi_phdr[i].p_vaddr);
+    for (; dyn && dyn->d_tag != DT_NULL; dyn++) {
+        /* glibc relocates these in place on ARM; an unrelocated one is below the base */
+        uintptr_t p = dyn->d_un.d_ptr < base ? base + dyn->d_un.d_ptr : dyn->d_un.d_ptr;
+        switch (dyn->d_tag) {
+        case DT_JMPREL:   jmprel = p; break;
+        case DT_SYMTAB:   symtab = p; break;
+        case DT_STRTAB:   strtab = p; break;
+        case DT_PLTRELSZ: relsz = dyn->d_un.d_val; break;
+        }
+    }
+    if (!jmprel || !symtab || !strtab)
+        return 1;
+    for (const ElfW(Rel) *r = (const ElfW(Rel) *)jmprel; (uintptr_t)(r + 1) <= jmprel + relsz; r++) {
+        const ElfW(Sym) *s = (const ElfW(Sym) *)symtab + ELF32_R_SYM(r->r_info);
+        if (ELF32_R_TYPE(r->r_info) == R_ARM_JUMP_SLOT && strcmp((const char *)strtab + s->st_name, g->sym) == 0) {
+            g->slot = (void **)(base + r->r_offset);
+            break;
+        }
+    }
+    return 1;
+}
+
+static int got_hook(const char *sym, void *to, char *resp, size_t len)
+{
+    struct got_find g = { RAW_LIB, sym, NULL };
+    long page = sysconf(_SC_PAGESIZE);
+    uintptr_t at;
+
+    dl_iterate_phdr(got_find_cb, &g);
+    if (!g.slot) {
+        snprintf(resp, len, "error no %s slot in %s (not loaded here?)", sym, RAW_LIB);
+        return -1;
+    }
+    if (*g.slot != to) {
+        at = (uintptr_t)g.slot & ~(uintptr_t)(page - 1);
+        if (mprotect((void *)at, (size_t)page, PROT_READ | PROT_WRITE) != 0) {
+            snprintf(resp, len, "error mprotect %p failed", (void *)at);
+            return -1;
+        }
+        *(void *volatile *)g.slot = to;   /* one aligned word: atomic on ARM */
+    }
+    return 0;
+}
+
+static int raw_fix(char *resp, size_t len)
+{
+    int mapped;
+
+    if (!g_libc_fopen) {
+        g_libc_fopen = (fopen_fn)dlsym(RTLD_DEFAULT, "fopen");
+        g_libc_fwrite = (fwrite_fn)dlsym(RTLD_DEFAULT, "fwrite");
+        g_libc_fclose = (fclose_fn)dlsym(RTLD_DEFAULT, "fclose");
+        g_libc_mmap = (mmap_fn)dlsym(RTLD_DEFAULT, "mmap");
+        if (pipe(g_probe) != 0)
+            g_probe[0] = g_probe[1] = -1;
+    }
+    if (!g_libc_fopen || !g_libc_fwrite || !g_libc_fclose || !g_libc_mmap) {
+        snprintf(resp, len, "error no libc stdio");
+        return -1;
+    }
+    /* fwrite and fclose first: a card stream is only ever opened through the new fopen */
+    if (got_hook("fwrite", (void *)raw_fwrite, resp, len) < 0 || got_hook("fclose", (void *)raw_fclose, resp, len) < 0 ||
+        got_hook("fopen", (void *)raw_fopen, resp, len) < 0)
+        return -1;
+    /* only to log a failed mapping: not having it is no reason to refuse */
+    mapped = got_hook("mmap", (void *)raw_mmap, resp, len) == 0;
+    snprintf(resp, len,
+             "ok rawfix: card opens %d, names cut %d, writes to no stream %d, unreadable %d, mmap %s (failed %d)",
+             g_raw_opens, g_raw_cut, g_null_writes, g_bad_writes, mapped ? "hooked" : "not hooked", g_map_fails);
+    return 0;
+}
+
 static int call_static(const char *mangled, const char *what, char *resp, size_t len)
 {
     void (*f)(void) = (void (*)(void))app_sym(mangled);
@@ -282,7 +564,9 @@ int g360r_plugin_request(const char *req, char *resp, size_t len)
         return dlna(0, 0, resp, len);
     if (strcmp(verb, "mpegstop") == 0)
         return mpeg_stop(resp, len);
+    if (strcmp(verb, "rawfix") == 0)
+        return raw_fix(resp, len);
     snprintf(resp, len, "error usage: ping | menus | menu TYPE | menuset TYPE VALUE | shot | recstart | recstop"
-                        " | state | powerstop | powerrestart | dlnastart | dlnastop | dlnastate | mpegstop");
+                        " | state | powerstop | powerrestart | dlnastart | dlnastop | dlnastate | mpegstop | rawfix");
     return -1;
 }

@@ -10,7 +10,7 @@
 #   ./install.sh [model] stock    [card]    card to go back to Samsung's firmware
 #   ./install.sh [model] status   [card]    what is on the card now
 #
-# [model] is c200 (Gear 360 2016, the default) or r210 (Gear 360 2017, first steps:
+# [model] is c200 (Gear 360 2016, the default) or r210 (Gear 360 2017, details in
 # docs/firmware/15_r210_port.md). On the r210 the flash card already gets everything
 # for everyday use, so there is no sd step after the activation.
 # [card] is a drive letter (E:) or a mount point. Left out, the only removable card
