@@ -159,4 +159,4 @@ is on the phone.
 
 ## Open
 
-- The high-ISO pipeline (low light) has no dump.
+- The high-ISO pipeline (low light) has no dump. Manual exposure (M, ISO 100, up to ~1 s) keeps the RAW: [16_manual_exposure.md](16_manual_exposure.md).
