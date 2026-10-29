@@ -10,7 +10,6 @@
  * awake while a client talks to us.
  *
  * TODO(r210):
- *  - time-lapse and looping video sizes (their own menus, 27/28 and 14/15);
  *  - live view (CUINETDlnaMan, as on the C200);
  *  - map /sys/class/leds/led.0-6 (run `g360rd ledtest`) and call adapter_discover_leds;
  *  - RAW (the RTOS has the same ssifdump command as the C200's).
@@ -79,6 +78,15 @@ static const r210_setting_t R210_SETTINGS[] = {
 };
 #define N_R210_SETTINGS ((int)(sizeof R210_SETTINGS / sizeof R210_SETTINGS[0]))
 
+/* video_size has its own menus in time-lapse (10 fps sizes) and looping (one size per lens) */
+#define MODE_VALUE_TIMELAPSE 2
+#define MODE_VALUE_LOOPING   3
+static const r210_setting_t R210_VIDEO_TIMELAPSE = {
+    "video_size", 27, 28, 3, { "4096x2048@10", "2560x1280@10", "1920x960@10" }, { 0, 1, 2 },
+    2, { "1920x1080@10", "1280x720@10" }, { 7, 8 } };
+static const r210_setting_t R210_VIDEO_LOOPING = {
+    "video_size", 14, 15, 1, { "2560x1280@30" }, { 1 }, 1, { "1920x1080@30" }, { 7 } };
+
 /* EV: the camera's items are -3.0 ... +3.0 in 0.1 (value 30 = 0.0); the protocol's
  * 0.5 steps are every fifth */
 #define MENU_EV 2
@@ -132,9 +140,16 @@ static int dual_lens(void)
     return lens == LENS_DUAL;
 }
 
-/* The menu, tokens and values for the lens in use */
+/* The menu, tokens and values for the shooting mode and the lens in use */
 static void r210_menu(const r210_setting_t *s, int *menu, int *n, const char *const **tok, const int **val)
 {
+    int mode;
+    if (strcmp(s->id, "video_size") == 0 && menu_value(MENU_MODE, &mode) == 0) {
+        if (mode == MODE_VALUE_TIMELAPSE)
+            s = &R210_VIDEO_TIMELAPSE;
+        else if (mode == MODE_VALUE_LOOPING)
+            s = &R210_VIDEO_LOOPING;
+    }
     if (s->menu_single >= 0 && !dual_lens()) {
         *menu = s->menu_single, *n = s->n_single, *tok = s->tok_single, *val = s->val_single;
     } else {
@@ -405,12 +420,25 @@ void adapter_r210_init(adapter_t *a, const config_t *cfg)
         a->trigger_capture = r210_capture;
         for (int i = 0; i < N_R210_SETTINGS; i++) {
             const r210_setting_t *s = &R210_SETTINGS[i];
-            const char *all[16];
+            const r210_setting_t *more[] = { &R210_VIDEO_TIMELAPSE, &R210_VIDEO_LOOPING };
+            const char *all[MAX_SETTING_VALUES];
             int n = 0;
-            for (int j = 0; j < s->n && n < 16; j++)
+            for (int j = 0; j < s->n && n < MAX_SETTING_VALUES; j++)
                 all[n++] = s->tok[j];
-            for (int j = 0; j < s->n_single && n < 16; j++)
+            for (int j = 0; j < s->n_single && n < MAX_SETTING_VALUES; j++)
                 all[n++] = s->tok_single[j];
+            /* video_size: every mode's sizes, each once */
+            for (int k = 0; strcmp(s->id, "video_size") == 0 && k < 2; k++) {
+                const r210_setting_t *m = more[k];
+                for (int j = 0; j < m->n + m->n_single && n < MAX_SETTING_VALUES; j++) {
+                    const char *t = j < m->n ? m->tok[j] : m->tok_single[j - m->n];
+                    int seen = 0;
+                    for (int q = 0; q < n; q++)
+                        seen |= strcmp(all[q], t) == 0;
+                    if (!seen)
+                        all[n++] = t;
+                }
+            }
             adapter_def_setting(a, s->id, all, n);
         }
         adapter_def_setting(a, "ev", R210_EV, N_R210_EV);
