@@ -3,8 +3,10 @@
  * (docs/protocol.md §9). Everything else goes over the Wi-Fi it switches on.
  *
  * It advertises the G360R service and serves three characteristics through the
- * camera's own BlueZ (Tizen 5.30: GattManager1.RegisterService, the object model
- * of Tizen's libbluetooth-api):
+ * camera's own BlueZ: the SM-C200's Tizen 5.30 takes GattManager1.RegisterService
+ * (the object model of Tizen's libbluetooth-api), the SM-R210's Tizen 5.37 only
+ * RegisterApplication, on an ObjectManager above the service (APP_PATH). Both call
+ * ReadValue/WriteValue with the same (address, id, offset) arguments.
  *
  *   INFO  read   {"v":1,"name":...,"ssid":...,"wifi":"off|starting|on|failed","pair":bool}
  *   WIFI  read   {"ssid":...,"psk":...} while pairing is open, else {"pair":false}
@@ -35,7 +37,8 @@
 #define INFO_UUID      BASE_UUID("0004")
 #define WIFI_UUID      BASE_UUID("0005")
 
-#define SERVICE_PATH   "/org/g360r/gatt/service0"
+#define APP_PATH       "/org/g360r/gatt"
+#define SERVICE_PATH   APP_PATH "/service0"
 #define CMD_PATH       SERVICE_PATH "/char0"
 #define INFO_PATH      SERVICE_PATH "/char1"
 #define WIFI_PATH      SERVICE_PATH "/char2"
@@ -407,11 +410,28 @@ static GVariant *chrc_get(GDBusConnection *c, const gchar *sender, const gchar *
 
 /* ------------------------------------------------------------------ registration and advertising */
 
+static void registered(GObject *source, GAsyncResult *res, gpointer data);
+
+static GVariant *no_options(void)
+{
+    return g_variant_builder_end(g_variant_builder_new(G_VARIANT_TYPE("a{sv}")));
+}
+
+/* data: NULL after RegisterService, non-NULL after RegisterApplication */
 static void registered(GObject *source, GAsyncResult *res, gpointer data)
 {
     GError *error = NULL;
     GVariant *ret = g_dbus_connection_call_finish(g_bus, res, &error);
-    (void)source; (void)data;
+    (void)source;
+    if (!ret && !data && error && strstr(error->message, "UnknownMethod")) {
+        /* A BlueZ without RegisterService (SM-R210, 5.37): the standard way */
+        log_line("no RegisterService here: RegisterApplication on %s", APP_PATH);
+        g_error_free(error);
+        g_dbus_connection_call(g_bus, "org.bluez", ADAPTER_PATH, "org.bluez.GattManager1", "RegisterApplication",
+                               g_variant_new("(o@a{sv})", APP_PATH, no_options()),
+                               NULL, G_DBUS_CALL_FLAGS_NONE, 20000, NULL, registered, (gpointer)APP_PATH);
+        return;
+    }
     if (ret) {
         log_line("service registered");
         write_state("ble.state", "ready");
@@ -428,8 +448,7 @@ static gboolean register_service(gpointer data)
 {
     (void)data;
     g_dbus_connection_call(g_bus, "org.bluez", ADAPTER_PATH, "org.bluez.GattManager1", "RegisterService",
-                           g_variant_new("(o@a{sv})", SERVICE_PATH,
-                                         g_variant_builder_end(g_variant_builder_new(G_VARIANT_TYPE("a{sv}")))),
+                           g_variant_new("(o@a{sv})", SERVICE_PATH, no_options()),
                            NULL, G_DBUS_CALL_FLAGS_NONE, 20000, NULL, registered, NULL);
     return 0;
 }
@@ -439,10 +458,19 @@ static void adapter_call(const char *method, GVariant *params)
     GError *error = NULL;
     GVariant *ret = g_dbus_connection_call_sync(g_bus, "org.bluez", ADAPTER_PATH, "org.bluez.Adapter1", method,
                                                 params, NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
+    static char last[200];
+    char now[200];
+
     if (ret) {
         g_variant_unref(ret);
+        last[0] = 0;
     } else {
-        log_line("%s failed: %s", method, error ? error->message : "?");
+        /* Logged once per run of the same failure: the SM-R210 refuses every
+         * SetAdvertising while it already advertises, every 15 s (keep_advertising) */
+        snprintf(now, sizeof now, "%s failed: %s", method, error ? error->message : "?");
+        if (strcmp(now, last) != 0)
+            log_line("%s", now);
+        snprintf(last, sizeof last, "%s", now);
         if (error)
             g_error_free(error);
     }
@@ -532,6 +560,9 @@ int main(int argc, char **argv)
         return 1;
     }
     if (!g_dbus_connection_register_object(g_bus, SERVICE_PATH,
+                                           g_dbus_node_info_lookup_interface(sinfo, "org.freedesktop.DBus.ObjectManager"),
+                                           &service_vt, NULL, NULL, &error) ||
+        !g_dbus_connection_register_object(g_bus, APP_PATH,
                                            g_dbus_node_info_lookup_interface(sinfo, "org.freedesktop.DBus.ObjectManager"),
                                            &service_vt, NULL, NULL, &error) ||
         !g_dbus_connection_register_object(g_bus, SERVICE_PATH,
