@@ -14,6 +14,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.Closeable
 import java.io.IOException
@@ -65,7 +66,7 @@ class BleSession private constructor(private val gatt: BluetoothGatt, private va
         val done = CompletableDeferred<ByteArray>()
         callback.pendingRead = done
         if (!gatt.readCharacteristic(c)) throw IOException("read refused")
-        withTimeout(OP_TIMEOUT_MS) { done.await() }
+        withTimeoutOrNull(OP_TIMEOUT_MS) { done.await() } ?: throw IOException("the camera did not answer a read")
     }
 
     private suspend fun write(uuid: UUID, value: ByteArray): Unit = mutex.withLock {
@@ -82,7 +83,9 @@ class BleSession private constructor(private val gatt: BluetoothGatt, private va
             gatt.writeCharacteristic(c)
         }
         if (!started) throw IOException("write refused")
-        withTimeout(OP_TIMEOUT_MS) { done.await() }
+        // A timeout must be an IOException: withTimeout's TimeoutCancellationException is a
+        // CancellationException, which the callers pass on, and it ended the whole wake silently
+        withTimeoutOrNull(OP_TIMEOUT_MS) { done.await() } ?: throw IOException("the camera did not confirm a write")
     }
 
     private class Callback : BluetoothGattCallback() {
