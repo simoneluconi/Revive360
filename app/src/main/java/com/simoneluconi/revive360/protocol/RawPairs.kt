@@ -1,8 +1,8 @@
 package com.simoneluconi.revive360.protocol
 
 /**
- * One RAW dump of the C200 (docs/firmware/14): a lens's sensor data, 16-bit words per row. Its name
- * carries the layout: `360_0384_front_7776x3888x3950.raw` = row bytes x width x rows.
+ * One RAW dump (docs/firmware/14, 15): a lens's sensor data, 16-bit words per row. Its name carries
+ * the layout: `360_0384_front_7776x3888x3950.raw` = row bytes x width x rows (the R210's: 5824x2912x2896).
  */
 data class RawLayout(val rowBytes: Int, val width: Int, val rows: Int) {
     companion object {

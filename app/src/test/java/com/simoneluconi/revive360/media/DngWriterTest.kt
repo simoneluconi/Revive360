@@ -87,18 +87,46 @@ class DngWriterTest {
         assertEquals(0.7, neutral[2], 1e-6)
     }
 
+    @Test
+    fun r210TenBitGrbgWithoutOpticalBlack() {
+        // 12 px per row, 8 rows (fewer rows than pixels: the R210's shape); 10-bit values << 6, GRBG:
+        // G 700, R 400 on even rows, B 300 on odd ones. The 8 x 8 square from column 3 is RGGB.
+        val width = 12
+        val rows = 8
+        val grbg = { y: Int, x: Int -> if (y % 2 == 0) (if (x % 2 == 1) 400 else 700) else (if (x % 2 == 0) 300 else 700) }
+        fun r210(name: String) = temp.newFile(name).apply {
+            val buf = ByteBuffer.allocate(width * 2 * rows).order(ByteOrder.LITTLE_ENDIAN)
+            for (y in 0 until rows) for (x in 0 until width) buf.putShort((grbg(y, x) shl 6).toShort())
+            writeBytes(buf.array())
+        }
+        val out = temp.newFile("o.dng")
+        out.outputStream().use { DngWriter.write(r210("f.raw"), r210("r.raw"), RawLayout(width * 2, width, rows), it) }
+        val t = Tiff(out.readBytes())
+
+        assertEquals(16, t.long(256))
+        assertEquals(8, t.long(257))
+        assertEquals(400 * 4, t.pixel(0, 0))   // R, on the 12-bit scale
+        assertEquals(700 * 4, t.pixel(0, 1))
+        assertEquals(300 * 4, t.pixel(1, 1))   // B
+        assertEquals(400 * 4, t.pixel(0, 8))   // the rear starts on R too
+        assertEquals(listOf(256.0, 256.0, 256.0, 256.0), t.rationals(50714))
+        val neutral = t.rationals(50728)
+        assertEquals((1600.0 - 256) / (2800 - 256), neutral[0], 1e-6)
+        assertEquals((1200.0 - 256) / (2800 - 256), neutral[2], 1e-6)
+    }
+
     /**
-     * The real dumps, when RAW_TEST_DIR names a folder with <photo>_front/rear_7776x3888x3950.raw and
+     * The real dumps, when RAW_TEST_DIR names a folder with <photo>_front/rear_AxBxC.raw and
      * <photo>.JPG: writes <photo>_app.dng there for each, with the white balance from the JPEG.
      */
     @Test
     fun realDumps() {
         val dir = System.getenv("RAW_TEST_DIR")?.let(::File)
-        val fronts = dir?.listFiles { f -> f.name.endsWith("_front_7776x3888x3950.raw") }.orEmpty()
+        val fronts = dir?.listFiles { f -> f.name.contains("_front_") && f.name.endsWith(".raw") }.orEmpty()
         assumeTrue(fronts.isNotEmpty())
         for (front in fronts.sorted()) {
             val photo = front.name.substringBefore("_front_")
-            val rear = File(dir, "${photo}_rear_7776x3888x3950.raw")
+            val rear = File(dir, front.name.replace("_front_", "_rear_"))
             val ref = File(dir, "$photo.JPG").takeIf { it.exists() }?.let { jpeg ->
                 // The camera's EXIF thumbnail is 320 x 160: the JPEG scaled to that
                 val img = javax.imageio.ImageIO.read(jpeg)

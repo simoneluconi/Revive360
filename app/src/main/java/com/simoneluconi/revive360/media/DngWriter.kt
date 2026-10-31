@@ -11,21 +11,23 @@ import java.nio.ByteOrder
 import kotlin.math.roundToLong
 
 /**
- * A DNG from the two RAW dumps of a C200 photo, both lenses side by side like the camera's JPEG: the
- * phone's port of tools/raw/ssif2dng.py (format: docs/firmware/14). Streamed row by row, so it needs
- * no more memory than a row: the picture first, its tags after it (TIFF allows the IFD anywhere),
- * since the white balance is measured on the way.
+ * A DNG from the two RAW dumps of a photo, both lenses side by side like the camera's JPEG: the
+ * phone's port of tools/raw/ssif2dng.py (format: docs/firmware/14 and 15). Streamed row by row, so it
+ * needs no more memory than a row: the picture first, its tags after it (TIFF allows the IFD
+ * anywhere), since the white balance is measured on the way.
  *
- * Each dump: 16-bit little-endian words, 12-bit values shifted left by 4; rows 0-15 optical black,
- * the picture the width x width square from row 40. Bayer RGGB, white 4095.
+ * Each dump: 16-bit little-endian words, read on a 12-bit scale (>> 4), white 4095. The camera is
+ * told by the shape ([Format.of]):
+ *  - C200 (more rows than pixels per row): 12-bit values; rows 0-15 optical black, the picture the
+ *    width x width square from row 40; Bayer RGGB.
+ *  - R210: 10-bit values (so steps of 4 here), no optical black (black 64 in 10 bits, from the dark
+ *    corners); Bayer GRBG, so the rows x rows square is taken from an odd column, which makes it RGGB.
  *
  * White balance: the camera's own when the photo's JPEG thumbnail is given ([Reference]), else grey
  * world, which outdoors (sky, grass) comes out too blue and the DNG yellowish.
  */
 object DngWriter {
     private const val SHIFT = 4
-    private const val BLACK_ROWS = 16
-    private const val OB_ROWS = 40
     private const val WHITE = 4095
     private const val STRIP_OFFSET = 16L
     /** A raw value from here up counts as clipped */
@@ -33,8 +35,20 @@ object DngWriter {
     /** Fewer grey cells than this in the thumbnail: grey world instead */
     private const val MIN_GREY_CELLS = 16
 
-    /** The photo's JPEG thumbnail as ARGB pixels (320 x 160 on the C200), the same framing as the DNG */
+    /** The photo's JPEG thumbnail as ARGB pixels (320 x 160), the same framing as the DNG */
     class Reference(val width: Int, val height: Int, val argb: IntArray)
+
+    /**
+     * Where the picture sits in each dump: [obRows] rows above it, of which the first [blackRows] are
+     * optical black (none: [black] instead), then [side] x [side] pixels from column [x0].
+     */
+    private class Format(val model: String, val obRows: Int, val blackRows: Int, val black: Double, val x0: Int, val side: Int) {
+        companion object {
+            fun of(layout: RawLayout): Format =
+                if (layout.rows > layout.width) Format("SM-C200", 40, 16, 0.0, 0, layout.width)
+                else Format("SM-R210", 0, 0, 256.0, ((layout.width - layout.rows) / 2) or 1, layout.rows)
+        }
+    }
 
     /**
      * XYZ (D65) -> camera, fitted against the camera's own JPEGs (tools/raw/ccmfit.py, shot 360_0382):
@@ -54,9 +68,13 @@ object DngWriter {
         val lenses = listOf(front, rear)
         val expected = layout.rowBytes.toLong() * layout.rows
         for (f in lenses) if (f.length() != expected) throw IOException("${f.name}: ${f.length()} bytes, expected $expected")
-        val side = layout.width
+        val format = Format.of(layout)
+        val side = format.side
+        val x0Raw = format.x0
         val wordsPerRow = layout.rowBytes / 2
-        if (side > wordsPerRow || OB_ROWS + side > layout.rows) throw IOException("unexpected RAW layout $layout")
+        if (x0Raw + side > minOf(layout.width, wordsPerRow) || format.obRows + side > layout.rows) {
+            throw IOException("unexpected RAW layout $layout")
+        }
         val width = side * lenses.size
         val height = side
         val stripBytes = width.toLong() * height * 2
@@ -81,21 +99,24 @@ object DngWriter {
             fun readRow(lens: Int) {
                 ins[lens].readFully(raw)
                 val w = words[lens]
-                for (x in 0 until side) w[x] = ((raw[2 * x].toInt() and 0xff) or ((raw[2 * x + 1].toInt() and 0xff) shl 8)) ushr SHIFT
+                for (x in 0 until side) {
+                    val at = 2 * (x0Raw + x)
+                    w[x] = ((raw[at].toInt() and 0xff) or ((raw[at + 1].toInt() and 0xff) shl 8)) ushr SHIFT
+                }
             }
 
             val sink = BufferedOutputStream(out, 1 shl 20)
             sink.write(header(STRIP_OFFSET + stripBytes))
             sink.write(ByteArray((STRIP_OFFSET - 8).toInt()))
             // Optical black, per CFA site, both lenses averaged
-            for (y in 0 until OB_ROWS) {
+            for (y in 0 until format.obRows) {
                 for (lens in lenses.indices) {
                     readRow(lens)
-                    if (y < BLACK_ROWS) for (x in 0 until side) black[(y and 1) * 2 + (x and 1)] += words[lens][x].toDouble()
+                    if (y < format.blackRows) for (x in 0 until side) black[(y and 1) * 2 + (x and 1)] += words[lens][x].toDouble()
                 }
             }
-            val perSite = BLACK_ROWS / 2.0 * side / 2.0 * lenses.size
-            for (i in 0..3) black[i] /= perSite
+            val perSite = format.blackRows / 2.0 * side / 2.0 * lenses.size
+            for (i in 0..3) black[i] = if (format.blackRows > 0) black[i] / perSite else format.black
 
             val row = ByteArray(width * 2)
             for (y in 0 until height) {
@@ -137,7 +158,7 @@ object DngWriter {
                 val b = sums[3] / counts[3] - black[3]
                 doubleArrayOf(r / g, 1.0, b / g)
             }
-            sink.write(ifd(STRIP_OFFSET + stripBytes, width, height, black, neutral))
+            sink.write(ifd(STRIP_OFFSET + stripBytes, width, height, black, neutral, format.model))
             sink.flush()
             return camera?.second ?: 0
         } finally {
@@ -186,7 +207,7 @@ object DngWriter {
 
     private class Entry(val tag: Int, val type: Int, val count: Int, val data: ByteArray)
 
-    private fun ifd(offset: Long, width: Int, height: Int, black: DoubleArray, neutral: DoubleArray): ByteArray {
+    private fun ifd(offset: Long, width: Int, height: Int, black: DoubleArray, neutral: DoubleArray, model: String): ByteArray {
         val entries = ArrayList<Entry>()
         fun le(n: Int) = ByteBuffer.allocate(n).order(ByteOrder.LITTLE_ENDIAN)
         fun bytes(tag: Int, vararg v: Int) = entries.add(Entry(tag, 1, v.size, ByteArray(v.size) { v[it].toByte() }))
@@ -203,7 +224,7 @@ object DngWriter {
         shorts(259, 1)                             // uncompressed
         shorts(262, 32803)                         // CFA
         ascii(271, "Samsung")
-        ascii(272, "Gear 360 (SM-C200)")
+        ascii(272, "Gear 360 ($model)")
         longs(273, STRIP_OFFSET)
         shorts(274, 1)
         shorts(277, 1)
@@ -215,7 +236,7 @@ object DngWriter {
         bytes(33422, 0, 1, 1, 2)                   // CFAPattern RGGB
         bytes(50706, 1, 4, 0, 0)                   // DNGVersion
         bytes(50707, 1, 1, 0, 0)                   // DNGBackwardVersion
-        ascii(50708, "Samsung Gear 360 SM-C200")   // UniqueCameraModel
+        ascii(50708, "Samsung Gear 360 $model")    // UniqueCameraModel
         shorts(50713, 2, 2)                        // BlackLevelRepeatDim
         rationals(50714, 5, 100, black)            // BlackLevel per CFA site
         longs(50717, WHITE.toLong())
