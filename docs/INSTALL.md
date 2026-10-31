@@ -17,8 +17,7 @@ command on the computer, and it tells you what to do on the camera. About half a
    terminal in the `Revive360` folder.
 5. **Samsung's firmware file** for your camera: click its name below to download it from the
    [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93)
-   (XDA may ask you to log in), and put it in the `firmware/stock` folder (we cannot share it: it is
-   Samsung's):
+   (XDA may ask you to log in), and put it in the `firmware/stock` folder:
 
    | Camera | File | SHA-256 |
    |---|---|---|
