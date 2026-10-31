@@ -1,11 +1,16 @@
-"""Convert the C200 RTOS SSIF dumps to a DNG: DCIM/RAW/<photo>_front_<A>x<B>x<C>.raw and _rear_
+"""Convert the RTOS SSIF dumps to a DNG: DCIM/RAW/<photo>_front_<A>x<B>x<C>.raw and _rear_
 (as g360rd names them; the RTOS's own ssif_front_<A>x<B>x<C>_<n>_10bit(16bit).raw works too).
+The camera is told by the shape: more rows than pixels per row = C200, else R210.
 
-Facts measured on the first real dump (2026-10-26, AQK1, normal mode):
+C200, measured on the first real dump (2026-10-26, AQK1, normal mode), 7776x3888x3950:
   - 16-bit little-endian words holding 12-bit values shifted left by 4 (low 4 bits always 0)
   - rows 0..~19 are optical black (~128), rows 20..39 a brighter band; the image is the 3888x3888
     square from row 40
   - CFA RGGB, black ~128, white 4095 (12-bit)
+R210 (2026-10-31, ARB2, with the RTOS RAM patch of docs/firmware/15_r210_port.md), 5824x2912x2896:
+  - 10-bit values shifted left by 6, read here on the same 12-bit scale (>> 4): black 256, white 4092
+  - no optical black rows: 2896 rows of image, 2912 pixels per row
+  - CFA GRBG (checked against the camera's JPEG): the 2896 square taken from an odd column is RGGB
 
 Usage:
   ssif2dng.py OUT.dng FRONT.raw [REAR.raw] [PHOTO.JPG]
@@ -31,6 +36,7 @@ OB_ROWS = 40          # rows above the image in each lens readout
 BLACK_ROWS = 16       # of those, the first ~20 are optical black (~128); rows 20..39 are not black
 SHIFT = 4             # 12-bit values left-aligned in 16 bits
 WHITE = 4095
+R210_BLACK = 256      # 64 in 10 bits: the dark corners outside the lens circle
 
 # XYZ(D65) -> linear sRGB (ccmfit.py builds ColorMatrix1 from it)
 XYZ_TO_SRGB = [[3.2406, -1.5372, -0.4986],
@@ -55,9 +61,16 @@ def load_lens(path):
     if a.size != rowbytes // 2 * rows:
         sys.exit(f'{path}: {a.size * 2} bytes, expected {rowbytes * rows}')
     a = a.reshape(rows, rowbytes // 2)[:, :width] >> SHIFT
-    black = a[:BLACK_ROWS].reshape(BLACK_ROWS // 2, 2, width // 2, 2).mean(axis=(0, 2))   # per CFA site
-    img = a[OB_ROWS:OB_ROWS + width]        # square active area
-    return img.astype(np.uint16), black
+    if rows > width:
+        black = a[:BLACK_ROWS].reshape(BLACK_ROWS // 2, 2, width // 2, 2).mean(axis=(0, 2))   # per CFA site
+        img = a[OB_ROWS:OB_ROWS + width]    # square active area
+        model = 'SM-C200'
+    else:
+        x0 = (width - rows) // 2 | 1        # centred, odd: GRBG -> RGGB
+        img = a[:, x0:x0 + rows]
+        black = np.full((2, 2), float(R210_BLACK))
+        model = 'SM-R210'
+    return img.astype(np.uint16), black, model
 
 
 def grey_world(img, black):
@@ -104,6 +117,9 @@ def camera_white(img, black, jpeg):
     return np.array([np.median(r[sel] / g[sel]), 1.0, np.median(b[sel] / g[sel])]), int(sel.sum())
 
 
+NAMES = {'SM-C200': 'Gear 360 (SM-C200)', 'SM-R210': 'Gear 360 (SM-R210)'}
+
+
 def ifd_entry(tag, typ, count, value_bytes):
     return (tag, typ, count, value_bytes)
 
@@ -137,7 +153,7 @@ def write_dng(path, img, black, neutral, model):
     add(259, 3, [1])                      # uncompressed
     add(262, 3, [32803])                  # CFA
     add(271, 2, 'Samsung')
-    add(272, 2, model)
+    add(272, 2, NAMES[model])
     add(273, 4, [0])                      # StripOffsets, patched below
     add(274, 3, [1])
     add(277, 3, [1])
@@ -149,7 +165,7 @@ def write_dng(path, img, black, neutral, model):
     add(33422, 1, [0, 1, 1, 2])           # CFAPattern RGGB
     add(50706, 1, [1, 4, 0, 0])           # DNGVersion
     add(50707, 1, [1, 1, 0, 0])           # DNGBackwardVersion
-    add(50708, 2, 'Samsung Gear 360 SM-C200')
+    add(50708, 2, f'Samsung Gear 360 {model}')
     add(50713, 3, [2, 2])                 # BlackLevelRepeatDim
     add(50714, 5, [rat(v, 100) for v in black.ravel()])   # BlackLevel per CFA site
     add(50717, 4, [WHITE])
@@ -196,12 +212,13 @@ def main():
     lenses = [load_lens(p) for p in raws]
     img = np.hstack([l[0] for l in lenses])
     black = np.mean([l[1] for l in lenses], axis=0)
+    model = lenses[0][2]
     found = camera_white(img, black, jpegs[0]) if jpegs and len(lenses) == 2 else None
     if found:
         neutral, how = found[0], f'camera white from {found[1]} grey cells of the JPEG'
     else:
         neutral, how = grey_world(img, black), 'grey world'
-    write_dng(out, img, black, neutral, 'Gear 360 (SM-C200)')
+    write_dng(out, img, black, neutral, model)
     print(f'{out}: {img.shape[1]}x{img.shape[0]}, black {black.round(1).tolist()}, '
           f'AsShotNeutral {neutral.round(3).tolist()} ({how})')
 

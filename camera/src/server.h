@@ -153,4 +153,20 @@ int shim_ui_get(int item, int *out);
 void api_record(req_t *r);
 void recording_json(sbuf_t *b);
 
+/* raw.c: the RTOS's SSIF dumps behind the "raw" setting (C200, R210) */
+typedef struct {
+    unsigned long addr;
+    uint32_t old, set;              /* old == set: only checked */
+} raw_word_t;
+typedef struct {
+    const char *tag;                /* log prefix */
+    unsigned long flag_phys;        /* the ssifdump flag byte in the RTOS's RAM */
+    const raw_word_t *words;        /* RTOS code patched before the first still */
+    int n_words;
+} raw_camera_t;
+int  raw_init(const adapter_t *a, const raw_camera_t *cam);  /* 0 = RAW offered: its thread runs */
+int  raw_saving(void);
+void raw_arm(void);
+int  raw_set(int on, char *err, size_t errlen);
+
 #endif

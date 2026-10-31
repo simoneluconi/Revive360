@@ -15,8 +15,8 @@
  * two lens LEDs red. 0-4 mean what they mean on the C200; roles still come
  * from the SD config.
  *
- * TODO(r210):
- *  - RAW (the RTOS has the same ssifdump command as the C200's).
+ * RAW: the C200's (raw.c), once the RTOS's still recipes keep the SSIF buffer
+ * for the dump (R210_RAW, docs/firmware/15_r210_port.md).
  */
 #include "adapter.h"
 #include "server.h"
@@ -168,6 +168,10 @@ static int r210_get_setting(adapter_t *a, const char *id, char *out, size_t outl
     const int *val;
     int menu, n, v;
     (void)a;
+    if (strcmp(id, "raw") == 0) {
+        snprintf(out, outlen, "%s", raw_saving() ? "on" : "off");
+        return 0;
+    }
     if (strcmp(id, "ev") == 0) {
         if (menu_value(MENU_EV, &v) < 0)
             return -1;
@@ -217,6 +221,8 @@ static int r210_set_setting(adapter_t *a, const char *id, const char *value, cha
     const int *val;
     int menu, n, v = -1;
     (void)a;
+    if (strcmp(id, "raw") == 0)
+        return raw_set(strcmp(value, "on") == 0, err, errlen);
     if (strcmp(id, "ev") == 0) {
         for (int i = 0; i < N_R210_EV; i++)
             if (strcmp(R210_EV[i], value) == 0)
@@ -295,6 +301,8 @@ static int r210_capture(adapter_t *a, int mode, const char *quality,
             return -1;
         }
     }
+    if (raw_saving())
+        raw_arm();   /* the still's recipe reads the flag when it is built */
     if (shim_plugin("shot", reply, sizeof reply) < 0) {
         snprintf(err, errlen, "%s", reply);
         return -1;
@@ -388,6 +396,45 @@ static void r210_liveview_close(adapter_t *a)
     (void)a;
     r210_stream_stop();
 }
+
+/* ------------------------------------------------------------ RAW */
+
+/* ARB2. The normal 360 still recipes (RecipeNormal "Screen GPU Stitch",
+ * FUN_802abf50 and its time-lapse twin FUN_802ab6b4) link the SSIF buffer for
+ * early release after the sensor's BPP stage, whatever ssifdump says (the C200
+ * skips that link while the flag is on): the dump then reads address 0 and the
+ * A7 dies. In each, the first instruction of the link (ldr r0, [fp, #-N]) becomes
+ * a branch past its bl FUN_80325b84; the registers it skips are all set again
+ * before use. Tested 2026-10-31: both lenses dumped, and a still with the flag
+ * off as before. The bl words around are checked, not written. The flag:
+ * uniTest singleton 0x81884898 (FUN_801ec334), +0x19. */
+static const raw_word_t R210_RAW_WORDS[] = {
+    { 0x802ac1b8UL, 0xeb0b2498, 0xeb0b2498 },   /* bl FUN_80575420 */
+    { 0x802ac1c4UL, 0xeb01e66e, 0xeb01e66e },   /* bl FUN_80325b84 */
+    { 0x802ab914UL, 0xeb0b26c1, 0xeb0b26c1 },
+    { 0x802ab920UL, 0xeb01e897, 0xeb01e897 },
+    { 0x802ac18cUL, 0xe51b0020, 0xea00000d },   /* -> b 0x802ac1c8 */
+    { 0x802ab8e8UL, 0xe51b001c, 0xea00000d },   /* -> b 0x802ab924 */
+    /* Low light: FUN_80133ce0, the HighISO check (raw.c) */
+    { 0x80133ce0UL, 0xe52db004, 0xe5d03053 },   /* ldrb r3, [r0, #0x53] */
+    { 0x80133ce4UL, 0xe28db000, 0xe3530000 },   /* cmp  r3, #0 */
+    { 0x80133ce8UL, 0xe24dd00c, 0x0a000009 },   /* beq  0x80133d14 */
+    { 0x80133cecUL, 0xe50b0008, 0xe590307c },   /* ldr  r3, [r0, #0x7c] */
+    { 0x80133cf0UL, 0xe51b3008, 0xe3530072 },   /* cmp  r3, #0x72 */
+    { 0x80133cf4UL, 0xe5d33053, 0xda000006 },   /* ble  0x80133d14 */
+    { 0x80133cf8UL, 0xe3530000, 0xe30438b1 },   /* movw r3, #0x48b1 */
+    { 0x80133cfcUL, 0x0a000005, 0xe3483188 },   /* movt r3, #0x8188 */
+    { 0x80133d00UL, 0xe51b3008, 0xe5d33000 },   /* ldrb r3, [r3] */
+    { 0x80133d04UL, 0xe593307c, 0xe3530000 },   /* cmp  r3, #0 */
+    { 0x80133d08UL, 0xe3530072, 0x1a000001 },   /* bne  0x80133d14 */
+    { 0x80133d0cUL, 0xda000001, 0xe3a00001 },   /* mov  r0, #1 */
+    { 0x80133d10UL, 0xe3a03001, 0xe12fff1e },   /* bx   lr */
+    { 0x80133d14UL, 0xea000000, 0xe3a00000 },   /* mov  r0, #0 */
+    { 0x80133d18UL, 0xe3a03000, 0xe12fff1e },   /* bx   lr */
+};
+static const raw_camera_t R210_RAW = {
+    "r210", 0x818848b1UL, R210_RAW_WORDS, (int)(sizeof R210_RAW_WORDS / sizeof R210_RAW_WORDS[0])
+};
 
 /* ------------------------------------------------------------ power timer */
 
@@ -492,6 +539,11 @@ void adapter_r210_init(adapter_t *a, const config_t *cfg)
             adapter_def_setting(a, s->id, all, n);
         }
         adapter_def_setting(a, "ev", R210_EV, N_R210_EV);
+        /* Patched at start-up whether "raw" is on or not: a still's code that the
+         * A7 has already cached would not see a later patch */
+        if (strstr(a->firmware, "ARB2") && config_get_int(cfg, "raw_enable", 1) &&
+            raw_init(a, &R210_RAW) == 0)
+            adapter_add_360_setting(a, "raw");
         a->get_setting = r210_get_setting;
         a->set_setting = r210_set_setting;
         a->setting_available = r210_setting_available;

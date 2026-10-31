@@ -32,7 +32,7 @@ def srgb_to_linear(v):
 
 
 def lens_rgb(path):
-    img, black = load_lens(path)
+    img, black, _ = load_lens(path)
     img = img.astype(np.float64)
     r = img[0::2, 0::2] - black[0, 0]
     g = (img[0::2, 1::2] - black[0, 1] + img[1::2, 0::2] - black[1, 0]) / 2
