@@ -35,7 +35,8 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 - **Get real 360° photos**, ready for Google Photos and other apps.
 - **Shoot RAW**, which Samsung's own app never offered: the camera also keeps the sensor data of
   both lenses, and the app turns it into a DNG for Lightroom and other raw editors, one photo or
-  many at once. 360° photos in good light; about 60 MB per photo. Gear 360 (2016) only for now.
+  many at once. 360° photos; in low light they have no noise reduction. 12-bit on the Gear 360
+  (2016), about 60 MB per photo; 10-bit on the 2017, about 34 MB.
 - **Make normal photos from a 360° one**: look around, straighten it, choose the frame you want,
   or make a "little planet".
 
@@ -54,7 +55,7 @@ phone app plus a small add-on for the camera, and the camera does everything it 
 |---|---|
 | Gear 360 (2016, SM-C200) with firmware C200GLU0AQK1 | Yes |
 | Gear 360 (2016) with an older firmware | Yes, after updating it to C200GLU0AQK1 first |
-| Gear 360 (2017, SM-R210) with firmware R210GLU0ARB2 | Yes (RAW not yet) |
+| Gear 360 (2017, SM-R210) with firmware R210GLU0ARB2 | Yes |
 | Gear 360 (2017) with an older firmware | Yes, after updating it to R210GLU0ARB2 first |
 
 Only the last firmware Samsung released for each camera is supported. If your camera has an
@@ -86,7 +87,8 @@ The step-by-step guide: **[docs/INSTALL.md](docs/INSTALL.md)**.
 ## For developers
 
 How it works, how to build it and how to add other cameras: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-How the RAW capture was found and what the files contain: [docs/firmware/14_raw_capture.md](docs/firmware/14_raw_capture.md);
+How the RAW capture was found and what the files contain: [docs/firmware/14_raw_capture.md](docs/firmware/14_raw_capture.md)
+(the 2017: [docs/firmware/15_r210_port.md](docs/firmware/15_r210_port.md#5-raw));
 scripts to make the DNGs on a computer instead: [tools/raw/](tools/raw/).
 Contributions are welcome.
 

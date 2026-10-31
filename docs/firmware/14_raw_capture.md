@@ -10,6 +10,10 @@ This supersedes the RAW sections of [08](08_control_protocol.md) (`.SRW` through
 and the `USERDATA_RAW_SAVE` route, both of which produced nothing) and the "factory-locked" verdict
 that only looked at RTOS strings. Addresses below are AQK1 (`C200GLU0AQK1`).
 
+The Gear 360 2017 (SM-R210) has the same dump, made to work with a runtime patch of its RTOS, and
+saves **10-bit** data instead of 12: [15_r210_port.md, RAW](15_r210_port.md#5-raw), with a table
+of the differences.
+
 ## Architecture
 
 The DRIMe5 has three cores: M4 device init, **A7 T-Kernel** (the ISP/capture RTOS, firmware part05,
@@ -43,9 +47,10 @@ carries on with the normal processing (the JPEG is still made). The dump runs wh
   FUN_802ac484: dual lens, not time-lapse, OSCMODE != 1). That recipe holds the SSIF buffer for
   the dump: it only releases it early when ssifdump is off, so Samsung built the dump for it.
 
-**Limits:** dual-lens photos only (single lens and time-lapse use other recipes). **Low light gives
-no dump**: the camera then processes the still with `CMaterial_NX1_Still_IPC_Main_HighISO`, which
-has no dump call (seen at 1/9 s and high gain). This limit is still open.
+**Limits:** dual-lens photos only (single lens and time-lapse use other recipes). Low light gave
+no dump: the camera then processes the still with `CMaterial_NX1_Still_IPC_Main_HighISO`, which
+has no dump call (seen at 1/9 s and high gain). Solved since 2026-10-31 by a runtime patch of the
+check that picks it: [Low light](#low-light).
 
 The dump takes image key 0x15000 ("SSIF Out Image") and writes two files, the left and right
 halves of the frame:
@@ -129,7 +134,8 @@ they agree within about 0.03.
 
 ## In g360rd (setting `raw`)
 
-[adapter_c200.c](../../camera/src/adapter_c200.c), "RAW dumps"; offered on AQK1 only:
+[raw.c](../../camera/src/raw.c), shared with the R210, which only adds its RTOS patch
+([adapter_r210.c](../../camera/src/adapter_r210.c)); offered on AQK1 and ARB2 only:
 
 - `raw` `on`/`off` in `/api/v1/settings`, kept on the card as `g360r/raw_save` (it survives a
   power-off). `on` sends `rawfix` and switches the flag on; `off` switches it off.
@@ -148,7 +154,7 @@ they agree within about 0.03.
 The gallery takes each photo's pair out of the list and marks the photo "RAW" (`RawPairs`); deleting
 the photo deletes its pair. The photo's page saves the pair as one DNG in the phone's
 `Download/Revive360/` (out of the photo gallery, so a shot is not shown twice): both dumps to the
-cache (a broken transfer resumes), then `DngWriter` (the Kotlin port of `ssif2dng.py`) streams the DNG
+cache (a broken transfer resumes), then `DngWriter` (the Kotlin port of `ssif2dng.py`, both cameras) streams the DNG
 straight into shared storage, with the white balance from the photo's thumbnail. Its output decodes identically to the script's (libraw: same raw
 data, black, white balance, developed picture). The dumps stay on the camera.
 
@@ -159,4 +165,50 @@ is on the phone.
 
 ## Open
 
-- The high-ISO pipeline (low light) has no dump. Manual exposure (M, ISO 100, up to ~1 s) keeps the RAW: [16_manual_exposure.md](16_manual_exposure.md).
+- Manual exposure (M, ISO 100, up to ~1 s) keeps the RAW too: [16_manual_exposure.md](16_manual_exposure.md).
+
+## Low light
+
+The same on both cameras (C200 addresses, R210 in brackets). The pipeline page builder
+`FUN_802bd530` (`FUN_802bbec4`) takes `IPC_Main_HighISO` (0x20400) instead of `IPC_Main` (0x20100)
+when the check `FUN_8013e2d8` (`FUN_80133ce0`) answers 1:
+
+```c
+if (OS[0x53] == 0 || OS[0x7c] < 0x73) return 0;   /* +0x53: USERDATA_ISONR not off; +0x7c: the gain */
+return 1;
+```
+
+0x73 is probably about ISO 450, which fits ISO 400 keeping the RAW. The same check is asked by the
+order sheet (`FUN_80135bc0`: still type 10), every still recipe and the high-ISO buffer handling,
+all during a still. The SSIF material is built in high-ISO shots too.
+
+Three ways were weighed: `st cap capdtm setusr ISONR OFF` (a camera setting changed while RAW is
+on, maybe for bright shots too, maybe reset by the app), `iso_limit` 400 (longer shutter, blur),
+or the check itself. The check is rewritten in place (19 words of `-O0` code, 15 of them rewritten,
+the rest no longer reached), with the dump flag as a third condition:
+
+```
+ldrb r3, [r0, #0x53] ; cmp r3, #0 ; beq ret0      noise reduction off: normal
+ldr  r3, [r0, #0x7c] ; cmp r3, #0x72 ; ble ret0   low gain: normal
+movw/movt r3, flag   ; ldrb r3, [r3] ; cmp r3, #0 ; bne ret0   ssifdump on: normal
+mov r0, #1 ; bx lr                                high ISO
+ret0: mov r0, #0 ; bx lr
+```
+
+With the flag off it answers as before, so a camera with `raw` off is Samsung's. With `raw` on, a
+dark still takes the normal pipeline: the dump runs, and the JPEG has the normal pipeline's noise
+reduction instead of the high-ISO one. Every caller asks the same function, so they agree. `g360rd`
+writes it at start-up with the other words ([raw.c](../../camera/src/raw.c); the tables in
+`adapter_c200.c`, `adapter_r210.c`, checked with a disassembler against both RTOS images; every
+original word is checked on the camera before any is written). The A7 reads the flag from its own RAM, so a change applies to the next still.
+
+Hardware, 2026-10-31, a dark room, cold boot, then two shots each:
+
+| | `raw` on | `raw` off |
+|---|---|---|
+| R210 | 360_0252: ISO 1250, 1/20 s, both dumps, 9.4 s | 360_0253: ISO 1600, no dump, 2.4 s |
+| C200 | 360_0405: ISO 1000, 1/15 s, both dumps, 15.2 s | 360_0406: ISO 1000, no dump, 5.2 s |
+
+The `raw` on JPEGs are a little blotchier than the high-ISO ones, not much; the DNGs have the grain
+of their ISO, for a raw editor's noise reduction. In the dark the white balance taken from the JPEG
+leans a little to purple on the R210.
