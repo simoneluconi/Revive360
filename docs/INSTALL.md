@@ -15,13 +15,15 @@ command on the computer, and it tells you what to do on the camera. About half a
    (running) and [Git](https://git-scm.com/downloads). On Windows, type the commands in **Git Bash**.
 4. **This project**, downloaded: `git clone https://github.com/simoneluconi/Revive360`, then open a
    terminal in the `Revive360` folder.
-5. **Samsung's firmware file** for your camera, from the [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93),
-   put in the `firmware/stock` folder (we cannot share it: it is Samsung's):
+5. **Samsung's firmware file** for your camera: click its name below to download it from the
+   [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93)
+   (XDA may ask you to log in), and put it in the `firmware/stock` folder (we cannot share it: it is
+   Samsung's):
 
    | Camera | File | SHA-256 |
    |---|---|---|
-   | Gear 360 2016 | `C200GLU0AQK1_171121_1257_REV00_user.bin` | `150bc48362555a4812e8871ff581c693f50f80e3e31e4647d2b563e9072c48db` |
-   | Gear 360 2017 | `R210GLU0ARB2_180201_1739_REV00_user.bin` | `81765495ee2dfa3f67f0543e8f99f0df2e5310e3f0b10f8dabddbf64015d8324` |
+   | Gear 360 2016 | [`C200GLU0AQK1_171121_1257_REV00_user.bin`](https://xdaforums.com/attachments/c200glu0aqk1_171121_1257_rev00_user-bin.5193031/) | `150bc48362555a4812e8871ff581c693f50f80e3e31e4647d2b563e9072c48db` |
+   | Gear 360 2017 | [`R210GLU0ARB2_180201_1739_REV00_user.bin`](https://xdaforums.com/attachments/r210glu0arb2_180201_1739_rev00_user-bin.5193015/) | `81765495ee2dfa3f67f0543e8f99f0df2e5310e3f0b10f8dabddbf64015d8324` |
 
    The SHA-256 is the file's fingerprint: `./install.sh build` checks it and refuses any other
    file, so a wrong or damaged download never reaches the camera.
