@@ -18,10 +18,13 @@ command on the computer, and it tells you what to do on the camera. About half a
 5. **Samsung's firmware file** for your camera, from the [XDA thread](https://xdaforums.com/t/mod-port-samsung-gear-360-manager-for-all-devices-updated-10-apr-24-v1-5-00-1-4.3400383/page-93),
    put in the `firmware/stock` folder (we cannot share it: it is Samsung's):
 
-   | Camera | File |
-   |---|---|
-   | Gear 360 2016 | `C200GLU0AQK1_171121_1257_REV00_user.bin` |
-   | Gear 360 2017 | `R210GLU0ARB2_180201_1739_REV00_user.bin` |
+   | Camera | File | SHA-256 |
+   |---|---|---|
+   | Gear 360 2016 | `C200GLU0AQK1_171121_1257_REV00_user.bin` | `150bc48362555a4812e8871ff581c693f50f80e3e31e4647d2b563e9072c48db` |
+   | Gear 360 2017 | `R210GLU0ARB2_180201_1739_REV00_user.bin` | `81765495ee2dfa3f67f0543e8f99f0df2e5310e3f0b10f8dabddbf64015d8324` |
+
+   The SHA-256 is the file's fingerprint: `./install.sh build` checks it and refuses any other
+   file, so a wrong or damaged download never reaches the camera.
 
 6. **The app** on an Android phone (Android 10 or later, any brand): from
    [Google Play](https://play.google.com/store/apps/details?id=com.simoneluconi.revive360) or the
